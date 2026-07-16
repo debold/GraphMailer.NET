@@ -125,19 +125,22 @@ internal sealed class ScheduledReportService : BackgroundService
         }
         _pausedWarned = false;
 
-        if (_nextRun is null)
+        // pauseReason == null guarantees computed is set (see the checks above); unwrap the
+        // field into a local once so the flow analysis can see it is non-null from here on.
+        if (_nextRun is not DateTimeOffset next)
         {
-            _nextRun = computed;
-            _logger.LogInformation("[Report] Next report scheduled for {Time:yyyy-MM-dd HH:mm}", computed!.Value.LocalDateTime);
+            next = computed!.Value;
+            _nextRun = next;
+            _logger.LogInformation("[Report] Next report scheduled for {Time:yyyy-MM-dd HH:mm}", next.LocalDateTime);
         }
 
-        if (now >= _nextRun)
+        if (now >= next)
         {
             _nextRun = null;
             return (TickAction.Run, TimeSpan.Zero);
         }
 
-        var wait = _nextRun.Value - now;
+        var wait = next - now;
         return (TickAction.Wait, wait > MaxSleep ? MaxSleep : wait);
     }
 

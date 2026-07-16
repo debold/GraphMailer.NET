@@ -151,20 +151,23 @@ internal sealed class BackupBackgroundService : BackgroundService
 
         // Adopt a fresh target when we have none (first run, after firing, or after an
         // options change clears it). A stable config keeps the same target until it fires.
-        if (_nextRun is null)
+        // pauseReason == null guarantees computed is set (see the checks above); unwrap the
+        // field into a local once so the flow analysis can see it is non-null from here on.
+        if (_nextRun is not DateTimeOffset next)
         {
-            _nextRun = computed;
+            next = computed!.Value;
+            _nextRun = next;
             _logger.LogInformation("[Backup] Next backup scheduled for {Time:yyyy-MM-dd HH:mm}",
-                computed!.Value.LocalDateTime);
+                next.LocalDateTime);
         }
 
-        if (now >= _nextRun)
+        if (now >= next)
         {
             _nextRun = null;   // recomputed (to the next occurrence) on the next tick
             return (TickAction.Run, TimeSpan.Zero);
         }
 
-        var wait = _nextRun.Value - now;
+        var wait = next - now;
         return (TickAction.Wait, wait > MaxSleep ? MaxSleep : wait);
     }
 
