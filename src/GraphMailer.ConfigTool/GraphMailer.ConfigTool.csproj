@@ -1,0 +1,44 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>GraphMailer.ConfigTool</AssemblyName>
+    <RootNamespace>GraphMailer.ConfigTool</RootNamespace>
+    <!-- Require admin elevation so DataProtection keys (HKLM) can be read/written -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\graphmailer.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\graphmailer.ico" />
+    <Resource Include="Assets\graphmailer-base.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.*" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.*" />
+    <PackageReference Include="Microsoft.Graph" Version="5.*" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.*" />
+    <!-- Pinned (not floating): published into the same folder as the Service,
+         so the shared Serilog DLLs must match the versions in its deps.json -->
+    <PackageReference Include="Serilog" Version="4.3.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GraphMailer.Service\GraphMailer.Service.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="GraphMailer.Tests.Unit" />
+  </ItemGroup>
+
+</Project>

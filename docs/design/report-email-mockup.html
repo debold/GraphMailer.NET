@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>GraphMailer — Weekly Operations Report (Mockup)</title>
+  <!--[if mso]>
+  <style type="text/css">
+    table, td, th { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    body, table, td, th { font-family: 'Segoe UI', Arial, sans-serif !important; }
+    .mono { font-family: Consolas, 'Courier New', monospace !important; }
+  </style>
+  <![endif]-->
+  <style type="text/css">
+    /* Progressive enhancement only — Outlook ignores most of this and falls back to inline styles. */
+    body { margin: 0; padding: 0; background-color: #f6f8fa; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table { border-collapse: collapse; }
+    img { border: 0; line-height: 100%; outline: none; text-decoration: none; }
+    a { color: #0969da; text-decoration: none; }
+    @media only screen and (max-width: 640px) {
+      .container { width: 100% !important; }
+      .kpi-cell { display: block !important; width: 100% !important; box-sizing: border-box; }
+    }
+  </style>
+</head>
+
+<!--
+  GraphMailer — Periodic Operations Report (HTML email mockup)
+  Design language: GitHub Primer (minimal, technical). Email-safe: table layout,
+  inline styles, square chips (border-radius degrades cleanly in Outlook classic).
+  Weekly and monthly reports share this exact layout — only the period changes.
+  All data below is SAMPLE data for design review only.
+
+  Primer palette used:
+    page bg #f6f8fa · surface #ffffff · border #d0d7de · hairline #eaeef2
+    text #1f2328 · muted #656d76 · accent #0969da
+    success fg #1a7f37 / bg #dafbe1 / border #aceebb
+    attention fg #9a6700 / bg #fff8c5 / border #eac54f
+    danger fg #cf222e / bg #ffebe9 / border #ffcecb
+-->
+
+<body style="margin:0; padding:0; background-color:#f6f8fa;">
+
+  <!-- Preheader (hidden) -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#f6f8fa;">
+    Weekly report · 2 messages in failed queue (action required) · 4,812 delivered · 99.6% success
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f6f8fa" style="background-color:#f6f8fa;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+
+        <!--[if mso]>
+        <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0"><tr><td>
+        <![endif]-->
+
+        <table role="presentation" class="container" width="640" cellpadding="0" cellspacing="0" border="0"
+               style="width:640px; max-width:640px; background-color:#ffffff; border:1px solid #d0d7de;">
+
+          <!-- ════════════════════ HEADER ════════════════════ -->
+          <tr>
+            <td bgcolor="#1f2328" style="background-color:#1f2328; padding:20px 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="left" valign="middle" style="font-family:'Segoe UI',Arial,sans-serif;">
+                    <span style="font-family:Consolas,'Courier New',monospace; font-size:18px; font-weight:700; color:#ffffff; letter-spacing:-0.2px;">
+                      Graph<span style="color:#6cb6ff;">Mailer</span>
+                    </span>
+                    <div style="font-family:'Segoe UI',Arial,sans-serif; font-size:12px; color:#9da7b3; padding-top:4px;">
+                      SMTP&nbsp;Relay · Microsoft&nbsp;365&nbsp;Graph
+                    </div>
+                  </td>
+                  <td align="right" valign="middle" style="font-family:'Segoe UI',Arial,sans-serif; font-size:12px; color:#9da7b3; line-height:18px;">
+                    <span style="color:#ffffff; font-size:13px; font-weight:600;">Weekly Operations Report</span><br>
+                    <span class="mono" style="font-family:Consolas,'Courier New',monospace; color:#9da7b3;">2026-06-06 → 2026-06-13 UTC</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Meta strip -->
+          <tr>
+            <td bgcolor="#f6f8fa" style="background-color:#f6f8fa; border-bottom:1px solid #d0d7de; padding:10px 28px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#656d76;">
+              host&nbsp;<span style="color:#1f2328;">SMTP-RELAY-01</span>&nbsp;&nbsp;·&nbsp;&nbsp;service&nbsp;<span style="color:#1f2328;">v1.4.2</span>&nbsp;&nbsp;·&nbsp;&nbsp;generated&nbsp;<span style="color:#1f2328;">2026-06-13 06:00</span>
+            </td>
+          </tr>
+
+          <!-- ════════════════════ SUMMARY BANNER ════════════════════ -->
+          <tr>
+            <td style="padding:20px 28px 4px 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     bgcolor="#ffebe9" style="background-color:#ffebe9; border:1px solid #ffcecb;">
+                <tr>
+                  <td valign="top" width="6" bgcolor="#cf222e" style="background-color:#cf222e; width:6px; font-size:0; line-height:0;">&nbsp;</td>
+                  <td style="padding:12px 16px; font-family:'Segoe UI',Arial,sans-serif;">
+                    <div style="font-size:14px; font-weight:600; color:#cf222e;">Attention — 2 messages in failed queue, 1 warning</div>
+                    <div style="font-size:13px; color:#86181d; padding-top:2px;">2 messages exhausted all retries and need manual review (see below). TLS certificate <span class="mono" style="font-family:Consolas,'Courier New',monospace;">smtp.contoso.com</span> expires in 12 days.</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ════════════════════ QUEUE & BACKLOG (top priority) ════════════════════ -->
+          <tr>
+            <td style="padding:16px 28px 0 28px; font-family:'Segoe UI',Arial,sans-serif;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#656d76; border-bottom:1px solid #eaeef2; padding-bottom:6px;">Mail Queue &amp; Backlog</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:12px 28px 0 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <!-- Failed (danger, drawn first/most prominent) -->
+                  <td class="kpi-cell" width="33%" valign="top" style="padding:0 6px 0 0;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffebe9" style="background-color:#ffebe9; border:1px solid #ffcecb;">
+                      <tr><td style="padding:12px 14px; font-family:'Segoe UI',Arial,sans-serif;">
+                        <div style="font-size:11px; color:#cf222e; text-transform:uppercase; letter-spacing:0.4px; font-weight:600;">Failed queue</div>
+                        <div class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:28px; font-weight:700; color:#cf222e; padding-top:2px;">2</div>
+                        <div style="font-size:12px; color:#86181d; padding-top:2px;">needs manual review</div>
+                      </td></tr>
+                    </table>
+                  </td>
+                  <!-- Queued -->
+                  <td class="kpi-cell" width="33%" valign="top" style="padding:0 6px 0 6px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;">
+                      <tr><td style="padding:12px 14px; font-family:'Segoe UI',Arial,sans-serif;">
+                        <div style="font-size:11px; color:#656d76; text-transform:uppercase; letter-spacing:0.4px;">Queued now</div>
+                        <div class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:28px; font-weight:700; color:#1f2328; padding-top:2px;">3</div>
+                        <div style="font-size:12px; color:#656d76; padding-top:2px;">awaiting delivery</div>
+                      </td></tr>
+                    </table>
+                  </td>
+                  <!-- Delivered period -->
+                  <td class="kpi-cell" width="33%" valign="top" style="padding:0 0 0 6px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;">
+                      <tr><td style="padding:12px 14px; font-family:'Segoe UI',Arial,sans-serif;">
+                        <div style="font-size:11px; color:#656d76; text-transform:uppercase; letter-spacing:0.4px;">Delivered (7d)</div>
+                        <div class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:28px; font-weight:700; color:#1a7f37; padding-top:2px;">4,812</div>
+                        <div style="font-size:12px; color:#656d76; padding-top:2px;">99.6% success</div>
+                      </td></tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ════════════════════ FAILED QUEUE CONTENTS (action required) ════════════════════ -->
+          <tr>
+            <td style="padding:20px 28px 8px 28px; font-family:'Segoe UI',Arial,sans-serif;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#cf222e; border-bottom:1px solid #ffcecb; padding-bottom:6px;">Failed Queue — Action Required<span style="font-weight:400; text-transform:none; letter-spacing:0; color:#8c959f;"> &nbsp;— mail&bsol;failed&bsol;, 2 message(s)</span></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #ffcecb;">
+                <tr bgcolor="#fff5f5">
+                  <th align="left" style="background-color:#fff5f5; border-bottom:1px solid #ffcecb; padding:8px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase; color:#86181d;" width="104">Failed at</th>
+                  <th align="left" style="background-color:#fff5f5; border-bottom:1px solid #ffcecb; padding:8px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase; color:#86181d;">From → To</th>
+                  <th align="left" style="background-color:#fff5f5; border-bottom:1px solid #ffcecb; padding:8px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase; color:#86181d;">Subject / last error</th>
+                </tr>
+                <tr>
+                  <td class="mono" valign="top" style="border-bottom:1px solid #ffe3e0; padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#656d76; white-space:nowrap;">06-12&nbsp;09:15</td>
+                  <td class="mono" valign="top" style="border-bottom:1px solid #ffe3e0; padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328;">crm-app@contoso.com<br><span style="color:#656d76;">→ legacy@onprem.contoso.com</span></td>
+                  <td valign="top" style="border-bottom:1px solid #ffe3e0; padding:9px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:12px; color:#1f2328;">Daily reconciliation export<br><span class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:11px; color:#cf222e;">MailboxNotEnabledForRESTAPI · 10/10 retries</span></td>
+                </tr>
+                <tr>
+                  <td class="mono" valign="top" style="padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#656d76; white-space:nowrap;">06-11&nbsp;22:03</td>
+                  <td class="mono" valign="top" style="padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328;">noreply@contoso.com<br><span style="color:#656d76;">→ team@partner.example</span></td>
+                  <td valign="top" style="padding:9px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:12px; color:#1f2328;">[Build #4471] Nightly status<br><span class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:11px; color:#cf222e;">552 Message size exceeds limit · 10/10 retries</span></td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ════════════════════ HEALTH CHECKS ════════════════════ -->
+          <tr>
+            <td style="padding:24px 28px 8px 28px; font-family:'Segoe UI',Arial,sans-serif;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#656d76; border-bottom:1px solid #eaeef2; padding-bottom:6px;">Health Checks</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;">
+                <tr bgcolor="#f6f8fa">
+                  <th align="left" style="background-color:#f6f8fa; border-bottom:1px solid #d0d7de; padding:8px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase; color:#656d76;">Component</th>
+                  <th align="left" style="background-color:#f6f8fa; border-bottom:1px solid #d0d7de; padding:8px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase; color:#656d76;" width="92">Status</th>
+                  <th align="left" style="background-color:#f6f8fa; border-bottom:1px solid #d0d7de; padding:8px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase; color:#656d76;">Detail</th>
+                </tr>
+                <tr>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#1f2328;">SMTP Service</td>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px;"><span style="font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:600; color:#1a7f37; background-color:#dafbe1; border:1px solid #aceebb; padding:2px 8px;">OK</span></td>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#656d76;">Running</td>
+                </tr>
+                <tr>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#1f2328;">Config Secrets</td>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px;"><span style="font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:600; color:#1a7f37; background-color:#dafbe1; border:1px solid #aceebb; padding:2px 8px;">OK</span></td>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#656d76;">6 encrypted secrets decryptable</td>
+                </tr>
+                <tr>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#1f2328;">TLS Certificate</td>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px;"><span style="font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:600; color:#9a6700; background-color:#fff8c5; border:1px solid #eac54f; padding:2px 8px;">WARN</span></td>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#656d76;">smtp.contoso.com — expires 2026-06-25 (12d)</td>
+                </tr>
+                <tr>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#1f2328;">SMTP Ports</td>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px;"><span style="font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:600; color:#1a7f37; background-color:#dafbe1; border:1px solid #aceebb; padding:2px 8px;">OK</span></td>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#656d76;">Submission:587 OK, SMTP:25 OK</td>
+                </tr>
+                <tr>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#1f2328;">Disk Space</td>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px;"><span style="font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:600; color:#1a7f37; background-color:#dafbe1; border:1px solid #aceebb; padding:2px 8px;">OK</span></td>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#656d76;">142.6 GB free (61.4%) on C:</td>
+                </tr>
+                <tr>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#1f2328;">Mail Queue</td>
+                  <td style="border-bottom:1px solid #eaeef2; padding:9px 12px;"><span style="font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:600; color:#9a6700; background-color:#fff8c5; border:1px solid #eac54f; padding:2px 8px;">WARN</span></td>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#656d76;">3 queued, 2 failed</td>
+                </tr>
+                <tr>
+                  <td style="padding:9px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#1f2328;">Graph API</td>
+                  <td style="padding:9px 12px;"><span style="font-family:'Segoe UI',Arial,sans-serif; font-size:11px; font-weight:600; color:#1a7f37; background-color:#dafbe1; border:1px solid #aceebb; padding:2px 8px;">OK</span></td>
+                  <td class="mono" style="padding:9px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#656d76;">Last delivery: 4m ago</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ════════════════════ EMAIL STATISTICS ════════════════════ -->
+          <tr>
+            <td style="padding:24px 28px 8px 28px; font-family:'Segoe UI',Arial,sans-serif;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#656d76; border-bottom:1px solid #eaeef2; padding-bottom:6px;">Email Statistics<span style="font-weight:400; text-transform:none; letter-spacing:0; color:#8c959f;"> &nbsp;— last 7 days, vs. previous period</span></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 0 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="kpi-cell" width="33%" valign="top" style="padding:0 6px 12px 0;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;"><tr><td style="padding:12px 14px; font-family:'Segoe UI',Arial,sans-serif;">
+                      <div style="font-size:11px; color:#656d76; text-transform:uppercase; letter-spacing:0.4px;">Delivered</div>
+                      <div class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:24px; font-weight:700; color:#1f2328; padding-top:4px;">4,812</div>
+                      <div style="font-size:12px; color:#1a7f37; padding-top:2px;">▲ 6.2% vs prev</div>
+                    </td></tr></table>
+                  </td>
+                  <td class="kpi-cell" width="33%" valign="top" style="padding:0 6px 12px 6px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;"><tr><td style="padding:12px 14px; font-family:'Segoe UI',Arial,sans-serif;">
+                      <div style="font-size:11px; color:#656d76; text-transform:uppercase; letter-spacing:0.4px;">Failed (events)</div>
+                      <div class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:24px; font-weight:700; color:#1f2328; padding-top:4px;">17</div>
+                      <div style="font-size:12px; color:#1a7f37; padding-top:2px;">▼ 30% vs prev</div>
+                    </td></tr></table>
+                  </td>
+                  <td class="kpi-cell" width="33%" valign="top" style="padding:0 0 12px 6px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;"><tr><td style="padding:12px 14px; font-family:'Segoe UI',Arial,sans-serif;">
+                      <div style="font-size:11px; color:#656d76; text-transform:uppercase; letter-spacing:0.4px;">Success rate</div>
+                      <div class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:24px; font-weight:700; color:#1a7f37; padding-top:4px;">99.6%</div>
+                      <div style="font-size:12px; color:#656d76; padding-top:2px;">4,812 / 4,829</div>
+                    </td></tr></table>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="kpi-cell" width="33%" valign="top" style="padding:0 6px 12px 0;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;"><tr><td style="padding:12px 14px; font-family:'Segoe UI',Arial,sans-serif;">
+                      <div style="font-size:11px; color:#656d76; text-transform:uppercase; letter-spacing:0.4px;">Avg delivery</div>
+                      <div class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:24px; font-weight:700; color:#1f2328; padding-top:4px;">842<span style="font-size:13px; color:#656d76;"> ms</span></div>
+                      <div style="font-size:12px; color:#656d76; padding-top:2px;">peak 3.1 s</div>
+                    </td></tr></table>
+                  </td>
+                  <td class="kpi-cell" width="33%" valign="top" style="padding:0 6px 12px 6px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;"><tr><td style="padding:12px 14px; font-family:'Segoe UI',Arial,sans-serif;">
+                      <div style="font-size:11px; color:#656d76; text-transform:uppercase; letter-spacing:0.4px;">Distinct senders</div>
+                      <div class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:24px; font-weight:700; color:#1f2328; padding-top:4px;">23</div>
+                      <div style="font-size:12px; color:#656d76; padding-top:2px;">of 31 authorized</div>
+                    </td></tr></table>
+                  </td>
+                  <td class="kpi-cell" width="33%" valign="top" style="padding:0 0 12px 6px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;"><tr><td style="padding:12px 14px; font-family:'Segoe UI',Arial,sans-serif;">
+                      <div style="font-size:11px; color:#656d76; text-transform:uppercase; letter-spacing:0.4px;">Volume</div>
+                      <div class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:24px; font-weight:700; color:#1f2328; padding-top:4px;">1.8<span style="font-size:13px; color:#656d76;"> GB</span></div>
+                      <div style="font-size:12px; color:#656d76; padding-top:2px;">avg 392 KB / msg</div>
+                    </td></tr></table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ════════════════════ DAILY VOLUME CHART (SVG area/line + MSO bar fallback) ════════════════════ -->
+          <tr>
+            <td style="padding:12px 28px 8px 28px; font-family:'Segoe UI',Arial,sans-serif;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#656d76; border-bottom:1px solid #eaeef2; padding-bottom:6px;">Daily Volume
+                <span style="font-weight:400; text-transform:none; letter-spacing:0; color:#8c959f;"> &nbsp;—
+                  <span style="display:inline-block; width:9px; height:9px; background-color:#0969da; border:1px solid #0969da;">&nbsp;</span> sent (left) &nbsp;
+                  <span style="display:inline-block; width:9px; height:9px; background-color:#cf222e; border:1px solid #cf222e;">&nbsp;</span> failed (right)
+                </span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 28px 0 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;">
+                <tr>
+                  <td style="padding:12px 12px 10px 12px;">
+
+                    <!--[if !mso]><!-->
+                    <!-- Modern clients (incl. Outlook New): inline SVG area + line chart.
+                         Two independent scales so the small "failed" series stays visible
+                         next to the much larger "sent" series. Semi-transparent fills. -->
+                    <svg width="100%" height="168" viewBox="0 0 600 168" preserveAspectRatio="xMidYMid meet"
+                         xmlns="http://www.w3.org/2000/svg" style="display:block; font-family:Consolas,'Courier New',monospace;">
+                      <!-- horizontal gridlines -->
+                      <line x1="38" y1="12"  x2="566" y2="12"  stroke="#eaeef2" stroke-width="1"/>
+                      <line x1="38" y1="42"  x2="566" y2="42"  stroke="#eaeef2" stroke-width="1"/>
+                      <line x1="38" y1="72"  x2="566" y2="72"  stroke="#eaeef2" stroke-width="1"/>
+                      <line x1="38" y1="102" x2="566" y2="102" stroke="#eaeef2" stroke-width="1"/>
+                      <line x1="38" y1="132" x2="566" y2="132" stroke="#d0d7de" stroke-width="1"/>
+
+                      <!-- sent: area fill + line (left axis, max 900) -->
+                      <polygon points="38,132 38,60 126,48 214,41 302,36 390,47 478,24 566,27 566,132"
+                               fill="#0969da" fill-opacity="0.16"/>
+                      <polyline points="38,60 126,48 214,41 302,36 390,47 478,24 566,27"
+                                fill="none" stroke="#0969da" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+
+                      <!-- failed: area fill + line (right axis, max 6) -->
+                      <polygon points="38,132 38,112 126,112 214,72 302,32 390,112 478,52 566,72 566,132"
+                               fill="#cf222e" fill-opacity="0.16"/>
+                      <polyline points="38,112 126,112 214,72 302,32 390,112 478,52 566,72"
+                                fill="none" stroke="#cf222e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+
+                      <!-- sent data points -->
+                      <circle cx="38"  cy="60" r="2" fill="#0969da"/><circle cx="126" cy="48" r="2" fill="#0969da"/>
+                      <circle cx="214" cy="41" r="2" fill="#0969da"/><circle cx="302" cy="36" r="2" fill="#0969da"/>
+                      <circle cx="390" cy="47" r="2" fill="#0969da"/><circle cx="478" cy="24" r="2" fill="#0969da"/>
+                      <circle cx="566" cy="27" r="2" fill="#0969da"/>
+                      <!-- failed data points -->
+                      <circle cx="38"  cy="112" r="2" fill="#cf222e"/><circle cx="126" cy="112" r="2" fill="#cf222e"/>
+                      <circle cx="214" cy="72"  r="2" fill="#cf222e"/><circle cx="302" cy="32"  r="2" fill="#cf222e"/>
+                      <circle cx="390" cy="112" r="2" fill="#cf222e"/><circle cx="478" cy="52"  r="2" fill="#cf222e"/>
+                      <circle cx="566" cy="72"  r="2" fill="#cf222e"/>
+
+                      <!-- left axis labels (sent, blue) -->
+                      <text x="32" y="15"  text-anchor="end" font-size="9" fill="#0969da">900</text>
+                      <text x="32" y="75"  text-anchor="end" font-size="9" fill="#0969da">450</text>
+                      <text x="32" y="135" text-anchor="end" font-size="9" fill="#0969da">0</text>
+                      <!-- right axis labels (failed, red) -->
+                      <text x="572" y="15"  text-anchor="start" font-size="9" fill="#cf222e">6</text>
+                      <text x="572" y="75"  text-anchor="start" font-size="9" fill="#cf222e">3</text>
+                      <text x="572" y="135" text-anchor="start" font-size="9" fill="#cf222e">0</text>
+
+                      <!-- x-axis date labels -->
+                      <text x="38"  y="150" text-anchor="middle" font-size="9" fill="#8c959f">06-06</text>
+                      <text x="126" y="150" text-anchor="middle" font-size="9" fill="#8c959f">06-07</text>
+                      <text x="214" y="150" text-anchor="middle" font-size="9" fill="#8c959f">06-08</text>
+                      <text x="302" y="150" text-anchor="middle" font-size="9" fill="#8c959f">06-09</text>
+                      <text x="390" y="150" text-anchor="middle" font-size="9" fill="#8c959f">06-10</text>
+                      <text x="478" y="150" text-anchor="middle" font-size="9" fill="#8c959f">06-11</text>
+                      <text x="566" y="150" text-anchor="middle" font-size="9" fill="#8c959f">06-12</text>
+                    </svg>
+                    <!--<![endif]-->
+
+                    <!--[if mso]>
+                    <!-- Outlook Classic (Word engine) cannot render SVG — fall back to grouped
+                         bars. Failed bars use their own scale (max 6) so they stay visible. -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" height="92" style="height:92px;">
+                      <tr valign="bottom">
+                        <td valign="bottom" align="center" style="border-bottom:1px solid #d0d7de; padding:0 2px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr valign="bottom"><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="48" bgcolor="#0969da" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="13" bgcolor="#cf222e" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr></table></td>
+                        <td valign="bottom" align="center" style="border-bottom:1px solid #d0d7de; padding:0 2px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr valign="bottom"><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="56" bgcolor="#0969da" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="13" bgcolor="#cf222e" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr></table></td>
+                        <td valign="bottom" align="center" style="border-bottom:1px solid #d0d7de; padding:0 2px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr valign="bottom"><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="60" bgcolor="#0969da" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="40" bgcolor="#cf222e" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr></table></td>
+                        <td valign="bottom" align="center" style="border-bottom:1px solid #d0d7de; padding:0 2px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr valign="bottom"><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="64" bgcolor="#0969da" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="67" bgcolor="#cf222e" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr></table></td>
+                        <td valign="bottom" align="center" style="border-bottom:1px solid #d0d7de; padding:0 2px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr valign="bottom"><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="57" bgcolor="#0969da" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="13" bgcolor="#cf222e" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr></table></td>
+                        <td valign="bottom" align="center" style="border-bottom:1px solid #d0d7de; padding:0 2px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr valign="bottom"><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="72" bgcolor="#0969da" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="53" bgcolor="#cf222e" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr></table></td>
+                        <td valign="bottom" align="center" style="border-bottom:1px solid #d0d7de; padding:0 2px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr valign="bottom"><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="70" bgcolor="#0969da" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td><td valign="bottom" style="padding:0 1px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="13" height="40" bgcolor="#cf222e" style="font-size:0; line-height:0;">&nbsp;</td></tr></table></td></tr></table></td>
+                      </tr>
+                      <tr>
+                        <td align="center" style="padding:5px 0 0 0; font-family:Consolas,'Courier New',monospace; font-size:10px; color:#8c959f;">06-06</td>
+                        <td align="center" style="padding:5px 0 0 0; font-family:Consolas,'Courier New',monospace; font-size:10px; color:#8c959f;">06-07</td>
+                        <td align="center" style="padding:5px 0 0 0; font-family:Consolas,'Courier New',monospace; font-size:10px; color:#8c959f;">06-08</td>
+                        <td align="center" style="padding:5px 0 0 0; font-family:Consolas,'Courier New',monospace; font-size:10px; color:#8c959f;">06-09</td>
+                        <td align="center" style="padding:5px 0 0 0; font-family:Consolas,'Courier New',monospace; font-size:10px; color:#8c959f;">06-10</td>
+                        <td align="center" style="padding:5px 0 0 0; font-family:Consolas,'Courier New',monospace; font-size:10px; color:#8c959f;">06-11</td>
+                        <td align="center" style="padding:5px 0 0 0; font-family:Consolas,'Courier New',monospace; font-size:10px; color:#8c959f;">06-12</td>
+                      </tr>
+                    </table>
+                    <![endif]-->
+
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ════════════════════ TOP SENDERS (by address) ════════════════════ -->
+          <tr>
+            <td style="padding:24px 28px 8px 28px; font-family:'Segoe UI',Arial,sans-serif;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#656d76; border-bottom:1px solid #eaeef2; padding-bottom:6px;">Top Senders<span style="font-weight:400; text-transform:none; letter-spacing:0; color:#8c959f;"> &nbsp;— by sender address</span></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;">
+                <tr>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328;">noreply@contoso.com</td>
+                  <td align="right" class="mono" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328; font-weight:700;" width="70">2,104</td>
+                  <td style="border-bottom:1px solid #eaeef2; padding:8px 12px;" width="180"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#0969da" height="6" style="background-color:#0969da; height:6px; font-size:0; line-height:0; width:100%;">&nbsp;</td></tr></table></td>
+                </tr>
+                <tr>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328;">billing@contoso.com</td>
+                  <td align="right" class="mono" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328; font-weight:700;">980</td>
+                  <td style="border-bottom:1px solid #eaeef2; padding:8px 12px;"><table role="presentation" width="47%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#0969da" height="6" style="background-color:#0969da; height:6px; font-size:0; line-height:0; width:100%;">&nbsp;</td></tr></table></td>
+                </tr>
+                <tr>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328;">alerts@contoso.com</td>
+                  <td align="right" class="mono" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328; font-weight:700;">612</td>
+                  <td style="border-bottom:1px solid #eaeef2; padding:8px 12px;"><table role="presentation" width="29%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#0969da" height="6" style="background-color:#0969da; height:6px; font-size:0; line-height:0; width:100%;">&nbsp;</td></tr></table></td>
+                </tr>
+                <tr>
+                  <td class="mono" style="padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328;">crm-app@contoso.com</td>
+                  <td align="right" class="mono" style="padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328; font-weight:700;">441</td>
+                  <td style="padding:8px 12px;"><table role="presentation" width="21%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#0969da" height="6" style="background-color:#0969da; height:6px; font-size:0; line-height:0; width:100%;">&nbsp;</td></tr></table></td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ════════════════════ TOP SENDING HOSTS (by client IP/host) ════════════════════ -->
+          <tr>
+            <td style="padding:24px 28px 8px 28px; font-family:'Segoe UI',Arial,sans-serif;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#656d76; border-bottom:1px solid #eaeef2; padding-bottom:6px;">Top Sending Hosts<span style="font-weight:400; text-transform:none; letter-spacing:0; color:#8c959f;"> &nbsp;— by SMTP client (IP / host)</span></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;">
+                <tr>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328;">app-srv-01.contoso.local<br><span style="color:#8c959f;">10.20.4.11</span></td>
+                  <td align="right" class="mono" valign="top" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328; font-weight:700;" width="70">2,510</td>
+                  <td valign="top" style="border-bottom:1px solid #eaeef2; padding:10px 12px;" width="180"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#1f2328" height="6" style="background-color:#1f2328; height:6px; font-size:0; line-height:0; width:100%;">&nbsp;</td></tr></table></td>
+                </tr>
+                <tr>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328;">crm-prod.contoso.local<br><span style="color:#8c959f;">10.20.4.32</span></td>
+                  <td align="right" class="mono" valign="top" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328; font-weight:700;">1,140</td>
+                  <td valign="top" style="border-bottom:1px solid #eaeef2; padding:10px 12px;"><table role="presentation" width="45%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#1f2328" height="6" style="background-color:#1f2328; height:6px; font-size:0; line-height:0; width:100%;">&nbsp;</td></tr></table></td>
+                </tr>
+                <tr>
+                  <td class="mono" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328;">10.20.7.5<br><span style="color:#8c959f;">(no PTR record)</span></td>
+                  <td align="right" class="mono" valign="top" style="border-bottom:1px solid #eaeef2; padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328; font-weight:700;">760</td>
+                  <td valign="top" style="border-bottom:1px solid #eaeef2; padding:10px 12px;"><table role="presentation" width="30%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#1f2328" height="6" style="background-color:#1f2328; height:6px; font-size:0; line-height:0; width:100%;">&nbsp;</td></tr></table></td>
+                </tr>
+                <tr>
+                  <td class="mono" style="padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328;">billing-vm.contoso.local<br><span style="color:#8c959f;">10.20.4.18</span></td>
+                  <td align="right" class="mono" valign="top" style="padding:8px 12px; font-family:Consolas,'Courier New',monospace; font-size:12px; color:#1f2328; font-weight:700;">402</td>
+                  <td valign="top" style="padding:10px 12px;"><table role="presentation" width="16%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#1f2328" height="6" style="background-color:#1f2328; height:6px; font-size:0; line-height:0; width:100%;">&nbsp;</td></tr></table></td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ════════════════════ SYSTEM & PERFORMANCE ════════════════════ -->
+          <tr>
+            <td style="padding:24px 28px 8px 28px; font-family:'Segoe UI',Arial,sans-serif;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#656d76; border-bottom:1px solid #eaeef2; padding-bottom:6px;">System &amp; Performance</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px 4px 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d7de;">
+                <tr>
+                  <td style="border-bottom:1px solid #eaeef2; border-right:1px solid #eaeef2; padding:10px 14px; font-family:'Segoe UI',Arial,sans-serif; font-size:12px; color:#656d76;" width="50%">Service uptime<br><span class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:14px; color:#1f2328;">6d 4h</span></td>
+                  <td style="border-bottom:1px solid #eaeef2; padding:10px 14px; font-family:'Segoe UI',Arial,sans-serif; font-size:12px; color:#656d76;" width="50%">Memory (avg / peak)<br><span class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:14px; color:#1f2328;">128 MB / 196 MB</span></td>
+                </tr>
+                <tr>
+                  <td style="border-right:1px solid #eaeef2; padding:10px 14px; font-family:'Segoe UI',Arial,sans-serif; font-size:12px; color:#656d76;">CPU (avg / peak)<br><span class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:14px; color:#1f2328;">2.1% / 14.0%</span></td>
+                  <td style="padding:10px 14px; font-family:'Segoe UI',Arial,sans-serif; font-size:12px; color:#656d76;">Disk free (C:)<br><span class="mono" style="font-family:Consolas,'Courier New',monospace; font-size:14px; color:#1f2328;">61.4%</span></td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ════════════════════ FOOTER ════════════════════ -->
+          <tr>
+            <td bgcolor="#f6f8fa" style="background-color:#f6f8fa; border-top:1px solid #d0d7de; padding:16px 28px; font-family:'Segoe UI',Arial,sans-serif; font-size:11px; color:#8c959f; line-height:16px;">
+              Automatically generated by <span class="mono" style="font-family:Consolas,'Courier New',monospace; color:#656d76;">GraphMailer v1.4.2</span> on <span class="mono" style="font-family:Consolas,'Courier New',monospace; color:#656d76;">SMTP-RELAY-01</span>.<br>
+              Reporting schedule and recipients are managed in the ConfigTool → Notifications page. This is an unmonitored mailbox — do not reply.
+            </td>
+          </tr>
+
+        </table>
+
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
+
+        <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="width:640px; max-width:640px;">
+          <tr><td align="center" style="padding:14px 12px; font-family:'Segoe UI',Arial,sans-serif; font-size:11px; color:#8c959f;">
+            Design mockup — all figures are sample data. Weekly &amp; monthly reports use this same layout.
+          </td></tr>
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

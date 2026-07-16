@@ -1,0 +1,471 @@
+<UserControl x:Class="GraphMailer.ConfigTool.Views.NotificationsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:h="clr-namespace:GraphMailer.ConfigTool.Helpers"
+             Background="{StaticResource BackgroundBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,24,24">
+
+            <!-- Admin recipients card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Admin Recipients"
+                                           Style="{StaticResource SectionHeader}"/>
+                                <TextBlock Text="Email addresses that receive all system notification emails."
+                                           Style="{StaticResource HintText}"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="+ Add"
+                                    Style="{StaticResource SmallPrimaryButton}"
+                                    Click="AddRecipient_Click"/>
+                        </Grid>
+                    </Border>
+                    <DataGrid x:Name="RecipientsGrid"
+                              Margin="0"
+                              MinHeight="40"
+                              MaxHeight="240"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Email Address"
+                                                Binding="{Binding Pattern}"
+                                                Width="*"/>
+                            <DataGridTemplateColumn Header=""
+                                                    Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center">
+                                            <Button Content="&#x270E;"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Margin="0,0,4,0"
+                                                    Click="EditRecipient_Click"/>
+                                            <Button Content="&#x2715;"
+                                                    Style="{StaticResource SmallDangerButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Click="RemoveRecipient_Click"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Notification settings card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Notification Settings"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="12"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0"
+                                   Grid.Column="0"
+                                   Text="Sender email address"
+                                   Style="{StaticResource LabelText}"
+                                   Margin="0,0,0,4"/>
+                        <TextBox    Grid.Row="0"
+                                    Grid.Column="2"
+                                    x:Name="NotifFrom"
+                                    ToolTip="The From address used when sending admin notification emails.&#x0a;Must be a mailbox that the configured Graph API service principal has Mail.Send permission for."
+                                    TextChanged="EmailField_Changed"/>
+                        <TextBlock Grid.Row="1"
+                                   Grid.Column="2"
+                                   x:Name="SenderError"
+                                   Foreground="{StaticResource DangerBrush}" FontSize="12"
+                                   Margin="0,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+
+                        <TextBlock Grid.Row="3"
+                                   Grid.Column="0"
+                                   Text="Subject prefix"
+                                   Style="{StaticResource LabelText}"
+                                   Margin="0,0,0,4"/>
+                        <TextBox    Grid.Row="3"
+                                    Grid.Column="2"
+                                    x:Name="SubjectPrefix"
+                                    Text="[GraphMailer]"
+                                    ToolTip="Prefix prepended to the subject line of every admin notification email.&#x0a;Useful for email rules and filtering. Example: [GraphMailer] Certificate expiring soon."
+                                    TextChanged="AnyField_Changed"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Non-Delivery Report card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <StackPanel>
+                            <TextBlock Text="Non-Delivery Reports (NDR)"
+                                       Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text="When a message is accepted by SMTP but permanently rejected by Microsoft 365, GraphMailer can send a bounce notification to the original sender and/or the admin. Uses the sender address configured in Notification Settings."
+                                       Style="{StaticResource HintText}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Margin="16,12,16,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                            </Grid.RowDefinitions>
+
+                            <CheckBox Grid.Row="0"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NdrEnabled"
+                                      IsChecked="False"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="1"
+                                       Text="Enable Non-Delivery Reports"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="1"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NdrNotifySender"
+                                      IsChecked="True"
+                                      IsEnabled="{Binding IsChecked, ElementName=NdrEnabled}"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="1"
+                                       Text="Send NDR to original sender"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="2"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NdrNotifyAdmin"
+                                      IsChecked="False"
+                                      IsEnabled="{Binding IsChecked, ElementName=NdrEnabled}"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="2"
+                                       Grid.Column="1"
+                                       Text="Send NDR copy to admin recipients"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Event toggles card -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Notify on Events"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <StackPanel Margin="16,12,16,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                            </Grid.RowDefinitions>
+
+                            <CheckBox Grid.Row="0"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifIpBlocked"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="1"
+                                       Text="IP address blocked"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="1"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifDeliveryFailed"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="1"
+                                       Text="Email delivery failed (all retries exhausted)"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="2"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifCertExpiring"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="2"
+                                       Grid.Column="1"
+                                       Text="Certificate expiring within warning threshold"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="3"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifCertExpired"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="3"
+                                       Grid.Column="1"
+                                       Text="Certificate expired"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="4"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifDiskSpace"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="4"
+                                       Grid.Column="1"
+                                       Text="Low disk space"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="5"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifGraphDown"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="5"
+                                       Grid.Column="1"
+                                       Text="Graph API unreachable"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="6"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifPortDown"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="6"
+                                       Grid.Column="1"
+                                       Text="SMTP port connectivity failure"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="7"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifServiceStartStop"
+                                      IsChecked="False"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="7"
+                                       Grid.Column="1"
+                                       Text="Service started / stopped"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="8"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifBackup"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="8"
+                                       Grid.Column="1"
+                                       Text="Configuration backup result (success / failure)"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Periodic report card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,16,0,0">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <StackPanel>
+                            <TextBlock Text="Periodic Reports"
+                                       Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text="Send an HTML operations report (health checks, statistics, mail queue status and recent failures) to the admin recipients above on a weekly or monthly schedule. Uses the sender address from Notification Settings."
+                                       Style="{StaticResource HintText}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Margin="16,12,16,16">
+
+                        <!-- Enable toggle (always active) -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="200"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="Enable periodic reports"
+                                       Style="{StaticResource LabelText}"
+                                       VerticalAlignment="Center"/>
+                            <CheckBox  Grid.Column="2"
+                                       x:Name="ReportEnabled"
+                                       Style="{StaticResource ToggleSwitch}"
+                                       HorizontalAlignment="Left"
+                                       VerticalAlignment="Center"
+                                       Checked="ReportEnabled_Changed"
+                                       Unchecked="ReportEnabled_Changed"/>
+                        </Grid>
+
+                        <!-- Schedule fields (greyed + disabled when not enabled) -->
+                        <Grid x:Name="ReportFields">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="200"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0"
+                                       Text="Frequency"
+                                       Style="{StaticResource LabelText}"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox  Grid.Row="0" Grid.Column="2"
+                                       x:Name="ReportFrequencyBox"
+                                       Width="160" HorizontalAlignment="Left"
+                                       SelectionChanged="ReportFrequency_Changed">
+                                <ComboBoxItem Content="Weekly"/>
+                                <ComboBoxItem Content="Monthly"/>
+                            </ComboBox>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0"
+                                       x:Name="ReportDayOfWeekLabel"
+                                       Text="Day of week"
+                                       Style="{StaticResource LabelText}"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox  Grid.Row="2" Grid.Column="2"
+                                       x:Name="ReportDayOfWeekBox"
+                                       Width="160" HorizontalAlignment="Left"
+                                       SelectionChanged="AnyCombo_Changed">
+                                <ComboBoxItem Content="Sunday"/>
+                                <ComboBoxItem Content="Monday"/>
+                                <ComboBoxItem Content="Tuesday"/>
+                                <ComboBoxItem Content="Wednesday"/>
+                                <ComboBoxItem Content="Thursday"/>
+                                <ComboBoxItem Content="Friday"/>
+                                <ComboBoxItem Content="Saturday"/>
+                            </ComboBox>
+
+                            <TextBlock Grid.Row="4" Grid.Column="0"
+                                       x:Name="ReportDayOfMonthLabel"
+                                       Text="Day of month"
+                                       Style="{StaticResource LabelText}"
+                                       VerticalAlignment="Center"/>
+                            <StackPanel Grid.Row="4" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBox x:Name="ReportDayOfMonthBox" Width="64"
+                                         h:NumericField.Min="1" h:NumericField.Max="28"
+                                         ToolTip="Day of the month to send on (1–28, so it exists in every month)."
+                                         TextChanged="AnyField_Changed"/>
+                                <TextBlock Text="(1–28)" Style="{StaticResource HintText}"
+                                           VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="6" Grid.Column="0"
+                                       Text="Time of day"
+                                       Style="{StaticResource LabelText}"
+                                       VerticalAlignment="Center"/>
+                            <StackPanel Grid.Row="6" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBox x:Name="ReportHourBox" Width="48" MaxLength="2"
+                                         h:NumericField.Min="0" h:NumericField.Max="23"
+                                         ToolTip="Hour (0–23)" TextChanged="AnyField_Changed"/>
+                                <TextBlock Text=":" FontSize="16" Margin="6,0,6,0" VerticalAlignment="Center"/>
+                                <TextBox x:Name="ReportMinuteBox" Width="48" MaxLength="2"
+                                         h:NumericField.Min="0" h:NumericField.Max="59"
+                                         ToolTip="Minute (0–59)" TextChanged="AnyField_Changed"/>
+                                <TextBlock Text="(24-hour, HH:mm — service local time)" Style="{StaticResource HintText}"
+                                           VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

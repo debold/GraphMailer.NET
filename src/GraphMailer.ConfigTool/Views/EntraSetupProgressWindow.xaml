@@ -1,0 +1,186 @@
+﻿<Window x:Class="GraphMailer.ConfigTool.Views.EntraSetupProgressWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Entra ID Setup"
+        Width="600"
+        SizeToContent="Height"
+        MinHeight="300"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Icon="/Assets/graphmailer.ico"
+        Background="{StaticResource BackgroundBrush}"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing">
+
+    <Grid Margin="24,20,24,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Subtitle -->
+        <TextBlock Grid.Row="0"
+                   x:Name="SubtitleText"
+                   Style="{StaticResource HintText}"
+                   TextWrapping="Wrap"/>
+
+        <!-- Steps list -->
+        <ItemsControl Grid.Row="2"
+                x:Name="StepsList">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <!-- Card per step -->
+                    <Border Margin="0,0,0,6"
+                            CornerRadius="6"
+                            BorderThickness="1"
+                            ClipToBounds="True"
+                            Background="{Binding ItemBackground}"
+                            BorderBrush="{Binding ItemBorderBrush}">
+                        <StackPanel>
+
+                            <!-- ── Header row: fixed-width icon + label ── -->
+                            <Grid Margin="12,10,12,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding Icon}"
+                                           Foreground="{Binding IconBrush}"
+                                           FontSize="14"
+                                           Width="22"
+                                           TextAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Label}"
+                                           Foreground="{Binding LabelBrush}"
+                                           FontSize="13"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <!-- ── Summary line (Done / Skipped) ── -->
+                            <TextBlock Margin="34,0,12,8"
+                                       Text="{Binding Detail}"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding SummaryVisibility}"/>
+
+                            <!-- ── Expanded panel (Running / Error) ── -->
+                            <Border Visibility="{Binding ExpandedVisibility}"
+                                    BorderBrush="#FFE0E0E0"
+                                    BorderThickness="0,1,0,0"
+                                    Padding="34,10,12,14">
+                                <StackPanel>
+
+                                    <!-- Detail text -->
+                                    <TextBlock Text="{Binding Detail}"
+                                               FontSize="12"
+                                               TextWrapping="Wrap"
+                                               Foreground="{StaticResource TextBrush}"
+                                               Visibility="{Binding ExpandedDetailVisibility}"/>
+
+                                    <!-- Countdown -->
+                                    <TextBlock Text="{Binding Countdown}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource AccentBrush}"
+                                               Margin="0,6,0,0"
+                                               Visibility="{Binding CountdownVisibility}"/>
+
+                                    <!-- Login URL panel -->
+                                    <StackPanel Visibility="{Binding LoginUrlPanelVisibility}"
+                                                Margin="0,12,0,0">
+                                        <TextBlock Text="Falls der Browser geschlossen wurde, diesen Link verwenden:"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        <TextBox Margin="0,5,0,0"
+                                                 Text="{Binding LoginUrl, Mode=OneWay}"
+                                                 IsReadOnly="True"
+                                                 FontFamily="Consolas"
+                                                 FontSize="10"
+                                                 TextWrapping="Wrap"
+                                                 MaxHeight="56"
+                                                 VerticalScrollBarVisibility="Auto"/>
+                                        <StackPanel Orientation="Horizontal"
+                                                Margin="0,8,0,0">
+                                            <Button Content="Browser öffnen"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Tag="{Binding LoginUrl}"
+                                                    Click="OpenBrowser_Click"/>
+                                            <Button Content="URL kopieren"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Tag="{Binding LoginUrl}"
+                                                    Margin="8,0,0,0"
+                                                    Click="CopyUrl_Click"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Certificate decision panel -->
+                                    <StackPanel Visibility="{Binding DecisionVisibility}"
+                                                Margin="0,12,0,0">
+                                        <Border Style="{StaticResource InfoBox}"
+                                                Margin="0,0,0,10">
+                                            <TextBlock Text="{Binding DecisionText}"
+                                                       FontSize="12"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{StaticResource TextBrush}"/>
+                                        </Border>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="Keep certificate"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Tag="{Binding}"
+                                                    Click="KeepCert_Click"/>
+                                            <Button Content="Replace certificate"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Tag="{Binding}"
+                                                    Margin="8,0,0,0"
+                                                    Click="ReplaceCert_Click"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Result box (separate row so it never overlaps buttons) -->
+        <Border Grid.Row="4"
+                x:Name="ResultBox"
+                Visibility="Collapsed"
+                Margin="0,0,0,12">
+            <TextBlock x:Name="ResultText"
+                       FontFamily="Segoe UI"
+                       FontSize="13"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource TextBrush}"/>
+        </Border>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="5"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button x:Name="CancelButton"
+                    Content="Cancel"
+                    Style="{StaticResource SmallButton}"
+                    Width="100"
+                    Click="Cancel_Click"/>
+            <Button x:Name="CloseButton"
+                    Content="Close"
+                    Style="{StaticResource SmallButton}"
+                    Width="100"
+                    Margin="10,0,0,0"
+                    Visibility="Collapsed"
+                    Click="Close_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -1,0 +1,346 @@
+<UserControl x:Class="GraphMailer.ConfigTool.Views.MonitoringPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:h="clr-namespace:GraphMailer.ConfigTool.Helpers"
+             Background="{StaticResource BackgroundBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,24,24">
+
+            <!-- Certificate monitoring -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Certificate Monitoring"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Warning threshold (days)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="CertWarnDays"
+                                     Text="14"
+                                     h:NumericField.Min="1"
+                                     h:NumericField.Max="60"
+                                     ToolTip="Days before expiry at which a notification is sent.&#x0a;Recommended: 14 days. Range: 1 – 60 days."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Send a notification when a certificate expires within this many days."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Disk space monitoring -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Disk Space Monitoring"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Warning threshold (%)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="DiskWarnPct"
+                                     Text="10"
+                                     h:NumericField.Min="1"
+                                     h:NumericField.Max="100"
+                                     ToolTip="Minimum free disk space percentage before a warning is sent.&#x0a;Example: 10 means a notification is sent when less than 10 % of disk is free.&#x0a;Range: 1 – 100 %."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Send a notification when free disk space falls below this percentage."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Port connectivity checks -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Port Connectivity Checks"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Check interval (minutes)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="PortCheckInterval"
+                                     Text="5"
+                                     h:NumericField.Min="1"
+                                     h:NumericField.Max="1440"
+                                     ToolTip="How often a TCP connection is attempted on each configured SMTP listener port (minutes).&#x0a;A failed probe triggers an admin notification.&#x0a;Range: 1 – 1440 min (24 h)."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Interval between TCP connectivity checks on configured SMTP listener ports."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Graph API health -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Graph API Health Checks"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Check interval (minutes)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="GraphCheckInterval"
+                                     Text="15"
+                                     h:NumericField.Min="1"
+                                     h:NumericField.Max="1440"
+                                     ToolTip="How often the service authenticates against the Graph API to verify credentials are still valid (minutes).&#x0a;A failed probe triggers an admin notification.&#x0a;Range: 1 – 1440 min (24 h)."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Interval between Graph API authentication health probes."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Metrics storage -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,16,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Metrics Storage"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Enable metrics"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <CheckBox x:Name="MetricsEnabled"
+                                      Content="Enabled"
+                                      Checked="AnyCheckBox_Changed"
+                                      Unchecked="AnyCheckBox_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,4,0,0"
+                                   Text="Record email and performance statistics to the SQLite database."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                    <Grid Margin="16,4,16,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Retention (days)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="MetricsRetentionDays"
+                                     Text="90"
+                                     h:NumericField.Min="1"
+                                     h:NumericField.Max="3650"
+                                     ToolTip="Number of days to keep metrics records before automatic cleanup.&#x0a;Range: 1 – 3650 days (10 years)."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Metrics records older than this many days are deleted automatically."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                    <Grid Margin="16,4,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Cleanup interval (hours)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="MetricsCleanupIntervalHours"
+                                     Text="24"
+                                     h:NumericField.Min="1"
+                                     h:NumericField.Max="168"
+                                     ToolTip="How often the cleanup job removes expired metrics records (hours).&#x0a;Range: 1 – 168 hours (1 week)."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Interval between automatic cleanup runs."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Performance metrics -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Performance Metrics"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Enable performance metrics"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <CheckBox x:Name="PerfMetricsEnabled"
+                                      Content="Enabled"
+                                      Checked="AnyCheckBox_Changed"
+                                      Unchecked="AnyCheckBox_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,4,0,0"
+                                   Text="Periodically record memory, CPU, and disk usage to the metrics database."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                    <Grid Margin="16,4,16,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Memory sample interval (s)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="PerfMemoryInterval"
+                                     Text="60"
+                                     h:NumericField.Min="10"
+                                     h:NumericField.Max="3600"
+                                     ToolTip="How often memory usage is sampled and recorded (seconds).&#x0a;Range: 10 – 3600 s."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Sampling interval for working-set memory recordings."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                    <Grid Margin="16,4,16,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="CPU sample interval (s)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="PerfCpuInterval"
+                                     Text="60"
+                                     h:NumericField.Min="10"
+                                     h:NumericField.Max="3600"
+                                     ToolTip="How often CPU usage is sampled and recorded (seconds).&#x0a;Range: 10 – 3600 s."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Sampling interval for CPU usage recordings."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                    <Grid Margin="16,4,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Disk sample interval (s)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="PerfDiskInterval"
+                                     Text="300"
+                                     h:NumericField.Min="10"
+                                     h:NumericField.Max="86400"
+                                     ToolTip="How often disk I/O statistics are sampled and recorded (seconds).&#x0a;Range: 10 – 86400 s (24 h)."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Sampling interval for disk usage recordings."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Logging -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,16,0,0">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Logging"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Log level"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <!-- Items come from MonitoringPage.LogLevels (single source) -->
+                            <ComboBox x:Name="LogLevel"
+                                      Width="160"
+                                      HorizontalAlignment="Left"
+                                      SelectionChanged="LogLevel_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Minimum log level written to the log files. Changes take effect immediately without restarting the service. Microsoft and System framework logs always use Warning."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

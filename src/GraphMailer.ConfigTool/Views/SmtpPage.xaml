@@ -1,0 +1,261 @@
+<UserControl x:Class="GraphMailer.ConfigTool.Views.SmtpPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:h="clr-namespace:GraphMailer.ConfigTool.Helpers"
+             Background="{StaticResource BackgroundBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,24,24"
+                    Width="Auto">
+
+            <!-- Listeners card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="SMTP Listeners"
+                                       Style="{StaticResource SectionHeader}"/>
+                            <Button Grid.Column="1"
+                                    Content="+ Add Listener"
+                                    Style="{StaticResource SmallPrimaryButton}"
+                                    Click="AddListener_Click"/>
+                        </Grid>
+                    </Border>
+                    <DataGrid x:Name="ListenersGrid"
+                              Margin="0"
+                              MinHeight="80"
+                              MaxHeight="240"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              AutoGenerateColumns="False"
+                              GridLinesVisibility="Horizontal">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Enabled"
+                                                    Width="70">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
+                                                  IsChecked="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  Checked="ListenerEnabled_Changed"
+                                                  Unchecked="ListenerEnabled_Changed"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn      Header="Description"
+                                                     Binding="{Binding Description}"
+                                                     Width="*"/>
+                            <DataGridTextColumn      Header="Port"
+                                                     Binding="{Binding Port}"
+                                                     Width="70"/>
+                            <DataGridTextColumn      Header="TLS Mode"
+                                                     Binding="{Binding TlsMode}"
+                                                     Width="170"/>
+                            <DataGridTextColumn      Header="Auth"
+                                                     Binding="{Binding AuthMode}"
+                                                     Width="140"/>
+                            <DataGridTemplateColumn Header=""
+                                                    Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center">
+                                            <Button Content="✎"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Margin="0,0,4,0"
+                                                    Click="EditListener_Click"/>
+                                            <Button Content="✕"
+                                                    Style="{StaticResource SmallDangerButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Click="RemoveListener_Click"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- TLS Certificate card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="TLS Certificate (Server Authentication)"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <StackPanel Margin="16,12,16,16">
+                        <TextBlock Text="Certificate — Windows Certificate Store (LocalMachine\My)"
+                                   Style="{StaticResource HintText}"
+                                   Margin="0,0,0,10"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="240"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Cert list -->
+                            <ListBox x:Name="TlsCertList"
+                                     Grid.Column="0"
+                                     Style="{StaticResource CertList}"
+                                     Height="160"
+                                     SelectionChanged="TlsCertList_SelectionChanged">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem"
+                                           BasedOn="{StaticResource CertListItem}"/>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Subject}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="13"
+                                                       Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock Text="{Binding ExpiryText}"
+                                                       FontSize="11"
+                                                       Foreground="{Binding ExpiryFg}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <!-- Selected cert summary -->
+                            <Border Grid.Column="2"
+                                    x:Name="TlsCertSummary"
+                                    Style="{StaticResource InfoBox}"
+                                    VerticalAlignment="Top">
+                                <StackPanel>
+                                    <TextBlock Text="Selected certificate"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               Foreground="{StaticResource AccentBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <TextBlock Text="Subject (CN)"
+                                               Style="{StaticResource LabelText}"
+                                               Margin="0,0,0,2"/>
+                                    <TextBlock x:Name="TlsCertCn"
+                                               Text="—"
+                                               Style="{StaticResource BodyText}"
+                                               Margin="0,0,0,8"/>
+                                    <TextBlock Text="Issuer"
+                                               Style="{StaticResource LabelText}"
+                                               Margin="0,0,0,2"/>
+                                    <TextBlock x:Name="TlsCertIssuer"
+                                               Text="—"
+                                               Style="{StaticResource BodyText}"
+                                               Margin="0,0,0,8"/>
+                                    <TextBlock Text="Expires"
+                                               Style="{StaticResource LabelText}"
+                                               Margin="0,0,0,2"/>
+                                    <TextBlock x:Name="TlsCertExpiry"
+                                               Text="—"
+                                               Style="{StaticResource BodyText}"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,8,0,0">
+                            <Button Content="↺ Refresh list"
+                                    Style="{StaticResource SmallButton}"
+                                    Margin="0,0,8,0"
+                                    Click="RefreshTlsCerts_Click"/>
+                            <Button x:Name="CreateSmtpCertBtn"
+                                    Content="+ Create self-signed certificate"
+                                    Style="{StaticResource SmallButton}"
+                                    Click="CreateSmtpCert_Click"
+                                    ToolTip="Generates a new self-signed RSA-2048 certificate (CN=GraphMailer SMTP, 10 years) and installs it in LocalMachine\My. The certificate will appear in the list above."/>
+                        </StackPanel>
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="TlsFailClosed"
+                                      VerticalAlignment="Center"
+                                      Checked="TlsFailClosed_Changed"
+                                      Unchecked="TlsFailClosed_Changed"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="Do not start TLS listeners without a certificate (fail-closed)"
+                                       Style="{StaticResource BodyText}"
+                                       ToolTip="Default off (fail-open): when the certificate is missing (e.g. after rotation), TLS/STARTTLS listeners start as plain SMTP with an error log — clients using opportunistic STARTTLS then transmit unencrypted.&#x0a;Enable to skip such listeners instead: encrypted ports stay closed until a certificate is available. Requires a service restart."
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Max message size card -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Limits"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="16"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Max message size (MB)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="MaxSizeMb"
+                                     Text="25"
+                                     Width="120"
+                                     HorizontalAlignment="Left"
+                                     h:NumericField.Min="0"
+                                     h:NumericField.Max="150"
+                                     ToolTip="Maximum message size accepted by the SMTP server (MB).&#x0a;Exchange Online enforces a hard limit of 150 MB.&#x0a;Set to 0 to disable the limit."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="1"
+                                   Margin="16,18,0,0"
+                                   Text="Set 0 to disable the limit."
+                                   Style="{StaticResource HintText}"/>
+                        <StackPanel Grid.Row="2"
+                                    Grid.Column="0">
+                            <TextBlock Text="SMTP banner"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="SmtpBanner"
+                                     Text="GraphMailer"
+                                     Width="200"
+                                     HorizontalAlignment="Left"
+                                     ToolTip="The server name announced in the SMTP greeting (EHLO response). Clients see this string; it does not affect mail delivery."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="2"
+                                   Grid.Column="1"
+                                   Margin="16,18,0,0"
+                                   Text="Shown in the SMTP greeting (EHLO). Does not affect mail delivery."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

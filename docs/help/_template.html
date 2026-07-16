@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{TITLE}} · GraphMailer Help</title>
+<link rel="stylesheet" href="{{ROOT}}assets/help.css">
+</head>
+<body>
+
+<header class="site-header">
+  <img src="{{ROOT}}assets/graphmailer-base.png" alt="GraphMailer">
+  <span class="wordmark">Graph<span>Mailer</span></span>
+  <span class="subtitle">SMTP Relay · Microsoft 365 Graph — Help</span>
+</header>
+
+<div class="layout">
+  <nav class="sidebar">
+    {{SIDEBAR}}
+  </nav>
+
+  <main class="content">
+    <div class="breadcrumb">{{BREADCRUMB}}</div>
+    <article>
+{{CONTENT}}
+    </article>
+    {{PREVNEXT}}
+  </main>
+</div>
+
+<footer class="site-footer">
+  GraphMailer user documentation · generated {{GENERATED}} ·
+  <span class="mono">v{{VERSION}}</span>.
+  Settings described here are edited in the GraphMailer ConfigTool.
+</footer>
+
+</body>
+</html>

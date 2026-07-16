@@ -1,0 +1,416 @@
+<UserControl x:Class="GraphMailer.ConfigTool.Views.GraphApiPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource BackgroundBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,24,24">
+
+            <!-- Automatic Setup card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Automatic Entra ID Setup"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <StackPanel Margin="16,12,16,16">
+                        <Border Style="{StaticResource InfoBox}"
+                                Margin="0,0,0,14">
+                            <TextBlock Style="{StaticResource HintText}"
+                                       Text="Sign in with an account that holds Application Administrator or Global Administrator role. GraphMailer automatically generates a dedicated certificate, registers a new app in Entra ID, assigns the required application permissions — Mail.Send (delivery), Mail.ReadWrite (attachments ≥ 3 MB via upload session), User.Read.All (optional sender validation) — and writes all required settings to config. Recommended: restrict the app to the allowed sender mailboxes with an Exchange Online Application Access Policy (New-ApplicationAccessPolicy); otherwise the mail permissions apply tenant-wide."/>
+                        </Border>
+
+                        <!-- Single-click setup button -->
+                        <Button x:Name="RunSetupButton"
+                                Content="Sign in &amp; set up automatically"
+                                Style="{StaticResource PrimaryButton}"
+                                HorizontalAlignment="Left"
+                                Click="RunSetup_Click"/>
+
+                        <!-- Status / progress -->
+                        <Border x:Name="SetupStatusBox"
+                                Style="{StaticResource InfoBox}"
+                                Margin="0,12,0,0"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="SetupStatusText"
+                                       Style="{StaticResource HintText}"/>
+                        </Border>
+
+                        <!-- Post-setup info panel -->
+                        <StackPanel x:Name="SetupInfoPanel"
+                                    Visibility="Collapsed"
+                                    Margin="0,14,0,0">
+                            <Border Style="{StaticResource OkBox}"
+                                    Margin="0,0,0,8">
+                                <TextBlock Style="{StaticResource HintText}"
+                                           FontWeight="SemiBold"
+                                           Text="✔  Entra ID app registration is active."/>
+                            </Border>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="130"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="17"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0"
+                                           Grid.Column="0"
+                                           Text="App name"
+                                           Style="{StaticResource LabelText}"/>
+                                <TextBlock Grid.Row="0"
+                                           Grid.Column="1"
+                                           x:Name="InfoAppName"
+                                           FontSize="13"
+                                           Foreground="{StaticResource TextBrush}"/>
+                                <TextBlock Grid.Row="2"
+                                           Grid.Column="0"
+                                           Text="Tenant ID"
+                                           Style="{StaticResource LabelText}"/>
+                                <TextBlock Grid.Row="2"
+                                           Grid.Column="1"
+                                           x:Name="InfoTenantId"
+                                           FontFamily="Consolas"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Grid.Row="4"
+                                           Grid.Column="0"
+                                           Text="Client ID"
+                                           Style="{StaticResource LabelText}"/>
+                                <TextBlock Grid.Row="4"
+                                           Grid.Column="1"
+                                           x:Name="InfoClientId"
+                                           FontFamily="Consolas"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <Border Grid.Row="5"
+                                        Grid.ColumnSpan="2"
+                                        Height="1"
+                                        VerticalAlignment="Center"
+                                        Background="{StaticResource BorderBrush}"
+                                        Opacity="0.4"/>
+                                <TextBlock Grid.Row="6"
+                                           Grid.Column="0"
+                                           Text="Certificate"
+                                           Style="{StaticResource LabelText}"/>
+                                <TextBlock Grid.Row="6"
+                                           Grid.Column="1"
+                                           x:Name="InfoCertSubject"
+                                           FontSize="13"
+                                           Foreground="{StaticResource TextBrush}"/>
+                                <TextBlock Grid.Row="8"
+                                           Grid.Column="0"
+                                           Text="Thumbprint"
+                                           Style="{StaticResource LabelText}"/>
+                                <TextBlock Grid.Row="8"
+                                           Grid.Column="1"
+                                           x:Name="InfoThumbprint"
+                                           FontFamily="Consolas"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Grid.Row="10"
+                                           Grid.Column="0"
+                                           Text="Valid until"
+                                           Style="{StaticResource LabelText}"/>
+                                <TextBlock Grid.Row="10"
+                                           Grid.Column="1"
+                                           x:Name="InfoValidUntil"
+                                           FontSize="13"
+                                           Foreground="{StaticResource TextBrush}"/>
+                            </Grid>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Test email card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Test Email Delivery"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <StackPanel Margin="16,12,16,16">
+                        <Border Style="{StaticResource InfoBox}"
+                                Margin="0,0,0,14">
+                            <TextBlock Style="{StaticResource HintText}"
+                                       Text="Sends a test email using the current settings (unsaved changes are included). Tenant ID, Client ID, and authentication must be configured in the Manual Configuration section or filled in above."/>
+                        </Border>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="0"
+                                       Text="From"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox Grid.Row="0"
+                                     Grid.Column="2"
+                                     x:Name="TestFrom"
+                                     ToolTip="Sender address — must be a licensed mailbox in your tenant (e.g. graphmailer@contoso.com)."
+                                     TextChanged="TestField_Changed"/>
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="2"
+                                       x:Name="TestFromHint"
+                                       Text="Not a valid email address"
+                                       FontSize="11"
+                                       Foreground="{StaticResource DangerBrush}"
+                                       Margin="2,2,0,0"
+                                       Visibility="Collapsed"/>
+
+                            <TextBlock Grid.Row="3"
+                                       Grid.Column="0"
+                                       Text="To"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox Grid.Row="3"
+                                     Grid.Column="2"
+                                     x:Name="TestTo"
+                                     ToolTip="Recipient email address."
+                                     TextChanged="TestField_Changed"/>
+                            <TextBlock Grid.Row="4"
+                                       Grid.Column="2"
+                                       x:Name="TestToHint"
+                                       Text="Not a valid email address"
+                                       FontSize="11"
+                                       Foreground="{StaticResource DangerBrush}"
+                                       Margin="2,2,0,0"
+                                       Visibility="Collapsed"/>
+                        </Grid>
+
+                        <Button x:Name="TestSendButton"
+                                Content="▶  Send test email"
+                                Style="{StaticResource SmallButton}"
+                                Margin="0,14,0,0"
+                                HorizontalAlignment="Left"
+                                IsEnabled="False"
+                                Click="TestSend_Click"/>
+
+                        <!-- Status boxes — only one is visible at a time -->
+                        <Border x:Name="TestInfoBox"
+                                Style="{StaticResource InfoBox}"
+                                Margin="0,12,0,0"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="TestInfoText"
+                                       Style="{StaticResource HintText}"
+                                       TextWrapping="Wrap"/>
+                        </Border>
+                        <Border x:Name="TestOkBox"
+                                Style="{StaticResource OkBox}"
+                                Margin="0,12,0,0"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="TestOkText"
+                                       Style="{StaticResource HintText}"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"/>
+                        </Border>
+                        <Border x:Name="TestWarnBox"
+                                Style="{StaticResource WarnBox}"
+                                Margin="0,12,0,0"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="TestWarnText"
+                                       Style="{StaticResource HintText}"
+                                       TextWrapping="Wrap"/>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Manual configuration card -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}"
+                            Cursor="Hand"
+                            MouseLeftButtonUp="ToggleManual_Click">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="Manual Configuration"
+                                       Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Grid.Column="1"
+                                       x:Name="ManualToggleIcon"
+                                       Text="▶"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel x:Name="ManualPanel"
+                                Visibility="Collapsed"
+                                Margin="16,12,16,16">
+
+                        <!-- Tenant + Client ID -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="12"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="0"
+                                       Text="Tenant ID"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox Grid.Row="0"
+                                     Grid.Column="2"
+                                     x:Name="TenantId"
+                                     ToolTip="Your Azure AD / Entra ID Tenant ID (GUID).&#x0a;Found in Azure Portal → Entra ID → Overview → Tenant ID.&#x0a;Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                     TextChanged="AnyField_Changed"/>
+
+                            <TextBlock Grid.Row="2"
+                                       Grid.Column="0"
+                                       Text="Client ID (App ID)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox Grid.Row="2"
+                                     Grid.Column="2"
+                                     x:Name="ClientId"
+                                     ToolTip="Application (client) ID of the registered app in Entra ID (GUID).&#x0a;Found in Azure Portal → App registrations → your app → Overview.&#x0a;Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                     TextChanged="AnyField_Changed"/>
+                        </Grid>
+
+                        <!-- Authentication method -->
+                        <TextBlock Text="Authentication"
+                                   Style="{StaticResource LabelText}"
+                                   Margin="0,16,0,8"/>
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,0,0,10">
+                            <RadioButton x:Name="AuthSecret"
+                                         Content="Client Secret"
+                                         IsChecked="True"
+                                         GroupName="AuthMethod"
+                                         VerticalContentAlignment="Center"
+                                         Margin="0,0,20,0"
+                                         Checked="AuthMethod_Changed"/>
+                            <RadioButton x:Name="AuthCert"
+                                         Content="Certificate (Windows Certificate Store)"
+                                         GroupName="AuthMethod"
+                                         VerticalContentAlignment="Center"
+                                         Checked="AuthMethod_Changed"/>
+                        </StackPanel>
+
+                        <!-- Secret panel -->
+                        <StackPanel x:Name="SecretPanel">
+                            <TextBlock Text="Client Secret"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <Grid>
+                                <PasswordBox x:Name="ClientSecretBox"
+                                             Padding="6,4,30,4"
+                                             ToolTip="Client secret created in Azure Portal → App registrations → your app → Certificates &amp; secrets.&#x0a;Stored encrypted (ENC[...]) in graphmailer.json."
+                                             PasswordChanged="ClientSecret_Changed"/>
+                                <TextBox x:Name="ClientSecretReveal"
+                                         Padding="6,4,30,4"
+                                         Visibility="Collapsed"
+                                         TextChanged="ClientSecretReveal_Changed"/>
+                                <Button HorizontalAlignment="Right"
+                                        VerticalAlignment="Center"
+                                        Width="26"
+                                        Margin="0,0,3,0"
+                                        Content="&#x1F441;"
+                                        FontSize="13"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Cursor="Hand"
+                                        Focusable="False"
+                                        ToolTip="Show / hide secret"
+                                        Click="SecretReveal_Click"/>
+                            </Grid>
+                            <TextBlock x:Name="SecretWarning"
+                                       Visibility="Collapsed"
+                                       Margin="0,6,0,0"
+                                       Foreground="#FFC42B1C"
+                                       TextWrapping="Wrap"><Run FontFamily="Segoe MDL2 Assets" Text="&#xE7BA;"/><Run Text="  This secret could not be decrypted with the current key and is shown blank. Re-enter it and save to fix."/></TextBlock>
+                        </StackPanel>
+
+                        <!-- Certificate panel -->
+                        <StackPanel x:Name="CertPanel"
+                                    Visibility="Collapsed">
+                            <Border Style="{StaticResource InfoBox}"
+                                    Margin="0,0,0,10">
+                                <TextBlock Style="{StaticResource HintText}"
+                                           Text="The certificate must be uploaded to your Entra app registration (Certificates &amp; secrets). Select the exact registered certificate — the thumbprint is stored in config and used to locate it in the Windows Certificate Store (LocalMachine\My)."/>
+                            </Border>
+                            <TextBlock Text="Select certificate (LocalMachine\My, Client Authentication)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <ListBox x:Name="ManualCertList"
+                                     Style="{StaticResource CertList}"
+                                     Height="150"
+                                     SelectionChanged="ManualCertList_SelectionChanged">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem"
+                                           BasedOn="{StaticResource CertListItem}"/>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Subject}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="13"
+                                                       Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock Text="{Binding ExpiryText}"
+                                                       FontSize="11"
+                                                       Foreground="{Binding ExpiryFg}"/>
+                                            <TextBlock Text="{Binding Issuer, StringFormat='Issuer: {0}'}"
+                                                       FontSize="11"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="0,6,0,0">
+                                <Button Content="↺ Refresh list"
+                                        Style="{StaticResource SmallButton}"
+                                        Click="RefreshManualCerts_Click"/>
+                                <TextBlock x:Name="SelectedThumbprintText"
+                                           Margin="12,0,0,0"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Consolas"
+                                           FontSize="11"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           ToolTip="SHA-1 thumbprint of the selected certificate. This value is written to graphmailer.json."/>
+                            </StackPanel>
+                        </StackPanel>
+
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

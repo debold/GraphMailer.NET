@@ -1,0 +1,48 @@
+<Project>
+
+  <PropertyGroup>
+    <Version>1.2.0</Version>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <!-- Build number: days elapsed since project epoch; always fits in a Win32 WORD (0–65535) -->
+    <_BuildNumber>$([System.DateTime]::UtcNow.Subtract($([System.DateTime]::Parse("2026-01-01"))).Days)</_BuildNumber>
+    <FileVersion>$(Version).$(_BuildNumber)</FileVersion>
+    <InformationalVersion>$(Version)+$([System.DateTime]::UtcNow.ToString("yyyyMMdd"))</InformationalVersion>
+    <Product>GraphMailer</Product>
+    <Company>marc.debold</Company>
+    <Copyright>© 2026 marc.debold</Copyright>
+    <NeutralLanguage>de-DE</NeutralLanguage>
+    <!-- The app is English-only: skip the 13 localized .NET/WPF resource folders
+         (~16 MB, 220+ files) that a self-contained publish would otherwise include -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- Shared Debug build: both projects land in the same flat folder -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <OutputPath>C:\Build\GraphMailer.NET\Debug\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <!--
+    Shared Release publish: framework-dependent win-x64, ReadyToRun, no single-file
+    bundle. The target machine needs the .NET Desktop Runtime 8 (x64) — it covers
+    both apps (WPF ConfigTool needs Desktop; the service only the base runtime
+    included in it). Pass /p:SelfContained=true (build-release.ps1 -SelfContained)
+    for the old fully bundled package that needs no .NET on the target.
+    Both projects publish to the same folder so the two EXEs share all DLLs.
+    Use build-release.ps1 at the project root for releases — it publishes both
+    projects into a versioned folder (C:\Build\GraphMailer.NET\Releases\<version>\)
+    and overrides PublishDir below via /p:PublishDir.
+    The PublishDir here only applies to a manual "dotnet publish -c Release".
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <SelfContained>false</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishDir>C:\Build\GraphMailer.NET\Release\</PublishDir>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+</Project>

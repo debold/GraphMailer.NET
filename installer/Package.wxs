@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GraphMailer MSI package.
+
+  Installs the Service + ConfigTool into Program Files (plus the bundled HTML help under
+  INSTALLFOLDER\help), registers the Windows service "GraphMailer" (auto-start, LocalSystem),
+  registers an inbound firewall exception for the service exe, and adds Start-menu shortcuts
+  for the (elevated) ConfigTool and the help start page. Per-machine, x64.
+  Supports major upgrades.
+
+  Requires the WixToolset.Firewall.wixext extension at build time (added by build-installer.ps1).
+
+  Built by build-installer.ps1, which passes:
+    -d PublishDir=<framework-dependent publish folder>   (flat output of build-release.ps1)
+    -d ProductVersion=<x.y.z.build>
+
+  Silent install/uninstall (the bundle forwards these, or use msiexec directly):
+    msiexec /i GraphMailer-<ver>.msi /qn /norestart
+    msiexec /x GraphMailer-<ver>.msi /qn /norestart
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="GraphMailer"
+           Manufacturer="marc.debold"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="6E2D5F1A-9C3B-4E7A-8D2F-1B4C5A6E7F80"
+           Scope="perMachine"
+           Compressed="yes"
+           InstallerVersion="500">
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of [ProductName] is already installed. Setup will now exit." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Branding: icon shown in Add/Remove Programs -->
+    <Icon Id="GraphMailerIcon" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="GraphMailerIcon" />
+
+    <Feature Id="Main" Title="GraphMailer" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="ServiceExe" />
+      <ComponentRef Id="ConfigToolShortcut" />
+    </Feature>
+
+    <!-- On install/upgrade the ConfigTool (a GUI exe sharing the service's DLLs) locks files
+         that need replacing. Close it up front via the WixCloseApplications custom action so the
+         user does not get the slow, manual "Files In Use" prompt. The service itself is released
+         by the ServiceControl Stop below; only the ConfigTool needs explicit closing.
+         CloseMessage sends WM_CLOSE (the ConfigTool still honours its unsaved-changes prompt). -->
+    <util:CloseApplication Id="CloseConfigTool"
+                           Target="GraphMailer.ConfigTool.exe"
+                           Description="Please close the GraphMailer Configuration Tool so setup can update its files."
+                           CloseMessage="yes"
+                           RebootPrompt="no" />
+
+    <!-- By default WixCloseApplications is sequenced just before InstallFiles (≈3999) — that frees
+         the files in time to avoid a reboot, but it runs AFTER InstallValidate (1400), where the
+         file-in-use check raises the "Files In Use" prompt. Pull the close in front of
+         InstallValidate so the ConfigTool is already gone when the check runs: in the common case
+         (no unsaved changes) the prompt is suppressed entirely. (If the tool has unsaved changes it
+         shows its own save prompt and may still be detected — by design, to protect data.) -->
+    <InstallExecuteSequence>
+      <Custom Action="override Wix4CloseApplications_X64" Before="InstallValidate" />
+    </InstallExecuteSequence>
+  </Package>
+
+  <!-- Install locations -->
+  <Fragment>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="GraphMailer" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppShortcutFolder" Name="GraphMailer" />
+    </StandardDirectory>
+  </Fragment>
+
+  <!-- All published files EXCEPT the service exe (which is defined separately so it can
+       carry the ServiceInstall/ServiceControl elements). Subdirectories (runtimes\...)
+       are preserved automatically. -->
+  <Fragment>
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)\**">
+        <Exclude Files="$(var.PublishDir)\GraphMailer.exe" />
+      </Files>
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- Service executable + Windows service registration -->
+  <Fragment>
+    <Component Id="ServiceExe" Directory="INSTALLFOLDER">
+      <File Id="GraphMailerExe" Source="$(var.PublishDir)\GraphMailer.exe" KeyPath="yes" />
+
+      <ServiceInstall Id="GraphMailerServiceInstall"
+                      Name="GraphMailer"
+                      DisplayName="GraphMailer SMTP Relay"
+                      Description="SMTP relay service that delivers emails via Microsoft 365 Graph API"
+                      Type="ownProcess"
+                      Start="auto"
+                      ErrorControl="normal"
+                      Account="LocalSystem"
+                      Vital="yes" />
+
+      <!-- Recovery actions: restart the service 60 s after a crash (up to three
+           times; the failure counter resets daily) so a crashed service comes back
+           without operator intervention. Mirrors the sc.exe failure actions set by
+           the CLI install command of GraphMailer.exe. -->
+      <util:ServiceConfig ServiceName="GraphMailer"
+                          FirstFailureActionType="restart"
+                          SecondFailureActionType="restart"
+                          ThirdFailureActionType="restart"
+                          RestartServiceDelayInSeconds="60"
+                          ResetPeriodInDays="1" />
+
+      <!-- Start on install, stop on install+uninstall, remove on uninstall. -->
+      <ServiceControl Id="GraphMailerServiceControl"
+                      Name="GraphMailer"
+                      Start="install"
+                      Stop="both"
+                      Remove="uninstall"
+                      Wait="yes" />
+
+      <!-- Inbound firewall exception bound to the service executable (program-based, no
+           Port/Protocol) so any configured SMTP listener port is allowed without further
+           rules. Tied to this component → removed automatically on uninstall. -->
+      <fw:FirewallException Id="GraphMailerInbound"
+                            Name="GraphMailer SMTP Relay"
+                            Description="Allow inbound SMTP connections to the GraphMailer service on any configured port"
+                            Program="[#GraphMailerExe]"
+                            Scope="any"
+                            Profile="all"
+                            IgnoreFailure="no" />
+    </Component>
+  </Fragment>
+
+  <!-- Start-menu shortcut for the ConfigTool -->
+  <Fragment>
+    <Component Id="ConfigToolShortcut" Directory="AppShortcutFolder">
+      <Shortcut Id="ConfigToolShortcutFile"
+                Name="GraphMailer Configuration"
+                Description="Configure and monitor the GraphMailer SMTP relay"
+                Target="[INSTALLFOLDER]GraphMailer.ConfigTool.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <!-- Help: opens the bundled HTML documentation (start page) in the default browser.
+           The help tree is published under INSTALLFOLDER\help by build-installer.ps1 and
+           harvested with the rest of the payload. -->
+      <Shortcut Id="HelpShortcutFile"
+                Name="GraphMailer Help"
+                Description="GraphMailer user documentation"
+                Target="[INSTALLFOLDER]help\index.html"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveAppShortcutFolder" Directory="AppShortcutFolder" On="uninstall" />
+      <RegistryValue Root="HKLM" Key="Software\GraphMailer\Install" Name="Shortcut"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+</Wix>

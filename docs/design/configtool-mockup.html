@@ -1,0 +1,2217 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>GraphMailer – Configuration Tool (Mockup)</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --accent: #0078D4;
+      --accent-h: #106EBE;
+      --danger: #C42B1C;
+      --warn: #9D5D00;
+      --ok: #0F7B0F;
+      --bg: #F3F3F3;
+      --surface: #FFFFFF;
+      --nav-bg: #1C1C1C;
+      --nav-hover: #2D2D2D;
+      --nav-active: #0078D4;
+      --border: #E0E0E0;
+      --text: #1A1A1A;
+      --text-2: #616161;
+      --text-inv: #FFFFFF;
+      --shadow: 0 2px 8px rgba(0, 0, 0, .08);
+      --radius: 8px;
+      --radius-sm: 4px;
+      --transition: .15s ease;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ─── Sidebar ─── */
+    nav {
+      width: 224px;
+      flex-shrink: 0;
+      background: var(--nav-bg);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      color: var(--text-inv);
+    }
+
+    .nav-header {
+      padding: 20px 16px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #333;
+    }
+
+    .nav-logo {
+      width: 32px;
+      height: 32px;
+      background: var(--accent);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .nav-title {
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .nav-sub {
+      font-size: 11px;
+      color: #999;
+    }
+
+    .nav-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #777;
+      padding: 16px 16px 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 16px;
+      cursor: pointer;
+      color: #CCC;
+      transition: background var(--transition);
+      user-select: none;
+    }
+
+    .nav-item:hover {
+      background: var(--nav-hover);
+      color: #fff;
+    }
+
+    .nav-item.active {
+      background: var(--nav-active);
+      color: #fff;
+    }
+
+    .nav-item .icon {
+      font-size: 16px;
+      width: 20px;
+      text-align: center;
+    }
+
+    .nav-item .label {
+      font-size: 13px;
+    }
+
+    .nav-service-status {
+      margin-top: auto;
+      padding: 12px 16px;
+      border-top: 1px solid #333;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-dot.running {
+      background: #6CCB5F;
+      box-shadow: 0 0 6px #6CCB5F;
+    }
+
+    .status-dot.stopped {
+      background: #C42B1C;
+    }
+
+    .status-info {
+      flex: 1;
+    }
+
+    .status-info small {
+      display: block;
+      font-size: 11px;
+      color: #888;
+    }
+
+    /* ─── Main area ─── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .toolbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toolbar h1 {
+      font-size: 17px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .unsaved-badge {
+      font-size: 11px;
+      background: #FFF4CE;
+      color: #7A5700;
+      border: 1px solid #EDBE00;
+      border-radius: 12px;
+      padding: 2px 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-h);
+    }
+
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: #EEE;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .btn-danger:hover {
+      background: #A12316;
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .btn-icon {
+      padding: 6px 8px;
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ─── Cards ─── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .card-header {
+      padding: 14px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-header h2 {
+      font-size: 14px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .card-body {
+      padding: 20px;
+    }
+
+    /* ─── Form ─── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .form-grid.cols-3 {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    .form-grid.cols-1 {
+      grid-template-columns: 1fr;
+    }
+
+    .span-2 {
+      grid-column: span 2;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .field label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-2);
+    }
+
+    .field label span.req {
+      color: var(--danger);
+      margin-left: 2px;
+    }
+
+    input[type=text],
+    input[type=number],
+    input[type=password],
+    select,
+    textarea {
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--surface);
+      color: var(--text);
+      width: 100%;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(0, 120, 212, .2);
+    }
+
+    input[readonly] {
+      background: #FAFAFA;
+      color: var(--text-2);
+      cursor: default;
+    }
+
+    input.error,
+    select.error {
+      border-color: var(--danger);
+    }
+
+    .field-hint {
+      font-size: 11px;
+      color: var(--text-2);
+    }
+
+    .field-error {
+      font-size: 11px;
+      color: var(--danger);
+      display: none;
+    }
+
+    .field-error.visible {
+      display: block;
+    }
+
+    /* Toggle */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .toggle-row:last-child {
+      border-bottom: none;
+    }
+
+    .toggle-info .toggle-label {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .toggle-info .toggle-desc {
+      font-size: 11px;
+      color: var(--text-2);
+      margin-top: 2px;
+    }
+
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: #CCC;
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+
+    .toggle-thumb {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      top: 3px;
+      left: 3px;
+      transition: transform var(--transition);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+    }
+
+    .toggle input:checked+.toggle-track {
+      background: var(--accent);
+    }
+
+    .toggle input:checked+.toggle-track+.toggle-thumb {
+      transform: translateX(18px);
+    }
+
+    /* Tables */
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--text-2);
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      background: #FAFAFA;
+    }
+
+    td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      vertical-align: middle;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: #F8F8F8;
+    }
+
+    .table-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 500;
+    }
+
+    .badge-ok {
+      background: #DFF6DD;
+      color: var(--ok);
+    }
+
+    .badge-warn {
+      background: #FFF4CE;
+      color: var(--warn);
+    }
+
+    .badge-err {
+      background: #FDE7E9;
+      color: var(--danger);
+    }
+
+    .badge-info {
+      background: #EAF3FB;
+      color: var(--accent);
+    }
+
+    .badge-plain {
+      background: #F0F0F0;
+      color: var(--text-2);
+    }
+
+    /* ─── Certificate Picker ─── */
+    .cert-picker-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .cert-store-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-2);
+      background: #F0F0F0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 4px 10px;
+    }
+
+    .cert-store-label .lock {
+      color: var(--ok);
+    }
+
+    .cert-list {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .cert-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+
+    .cert-item:last-child {
+      border-bottom: none;
+    }
+
+    .cert-item:hover {
+      background: #F5F9FF;
+    }
+
+    .cert-item.selected {
+      background: #EAF3FB;
+      border-left: 3px solid var(--accent);
+      padding-left: 11px;
+    }
+
+    .cert-item.expired {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    .cert-radio {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .cert-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .cert-cn {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .cert-issuer {
+      font-size: 11px;
+      color: var(--text-2);
+      margin-top: 2px;
+    }
+
+    .cert-san {
+      font-size: 11px;
+      color: var(--text-2);
+      margin-top: 1px;
+    }
+
+    .cert-eku {
+      margin-top: 4px;
+    }
+
+    .cert-expiry {
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .cert-expiry-date {
+      font-size: 11px;
+      color: var(--text-2);
+      margin-top: 3px;
+      white-space: nowrap;
+    }
+
+    .cert-selected-summary {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: #EAF3FB;
+      border: 1px solid #BDD9EF;
+      border-radius: var(--radius-sm);
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .cert-selected-summary .pair {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .cert-selected-summary .pair .k {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--accent);
+    }
+
+    .cert-selected-summary .pair .v {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    /* Tags */
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #EAF3FB;
+      color: var(--accent);
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+
+    .tag.danger {
+      background: #FDE7E9;
+      color: var(--danger);
+    }
+
+    .tag-remove {
+      cursor: pointer;
+      color: #AAA;
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .tag-remove:hover {
+      color: var(--danger);
+    }
+
+    /* Pages */
+    .page {
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .page.active {
+      display: flex;
+    }
+
+    /* Status KPIs */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .kpi-card .kpi-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--text-2);
+    }
+
+    .kpi-card .kpi-value {
+      font-size: 26px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    .kpi-card .kpi-sub {
+      font-size: 11px;
+      color: var(--text-2);
+      margin-top: 2px;
+    }
+
+    .kpi-card.ok .kpi-value {
+      color: var(--ok);
+    }
+
+    .kpi-card.warn .kpi-value {
+      color: var(--warn);
+    }
+
+    .kpi-card.err .kpi-value {
+      color: var(--danger);
+    }
+
+    .kpi-card.info .kpi-value {
+      color: var(--accent);
+    }
+
+    /* Section divider */
+    .section-div {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-2);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      padding: 4px 0 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
+    }
+
+    /* Info / Warn boxes */
+    .infobox {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+    }
+
+    .infobox.info {
+      background: #EAF3FB;
+      color: #004E8C;
+      border: 1px solid #BDD9EF;
+    }
+
+    .infobox.warn {
+      background: #FFF4CE;
+      color: #7A5700;
+      border: 1px solid #F2C12E;
+    }
+
+    .infobox.ok {
+      background: #DFF6DD;
+      color: #0C5E0C;
+      border: 1px solid #7DC97D;
+    }
+
+    /* Two-panel auth method selector */
+    .auth-methods {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .auth-card {
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color var(--transition), background var(--transition);
+    }
+
+    .auth-card.selected {
+      border-color: var(--accent);
+      background: #F5F9FF;
+    }
+
+    .auth-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    /* Modal overlay */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .45);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 40px rgba(0, 0, 0, .25);
+      width: 560px;
+      max-width: 95vw;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      padding: 16px 20px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .modal-header h3 {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .modal-footer {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    /* Server mode selector */
+    .mode-selector {
+      display: flex;
+      gap: 0;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+      transition: all var(--transition);
+      text-align: center;
+    }
+
+    .mode-btn:first-child {
+      border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    }
+
+    .mode-btn:last-child {
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    }
+
+    .mode-btn+.mode-btn {
+      border-left: none;
+    }
+
+    .mode-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    /* Wizard steps */
+    .wizard-steps {
+      display: flex;
+      gap: 0;
+      margin: 20px 0 24px;
+    }
+
+    .wizard-step {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      text-align: center;
+    }
+
+    .wizard-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      width: 100%;
+      height: 2px;
+      background: var(--border);
+      z-index: 0;
+    }
+
+    .wizard-step.done:not(:last-child)::after {
+      background: var(--ok);
+    }
+
+    .wizard-step.active:not(:last-child)::after {
+      background: var(--border);
+    }
+
+    .step-dot {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      background: var(--border);
+      color: var(--text-2);
+      border: 2px solid var(--border);
+    }
+
+    .wizard-step.done .step-dot {
+      background: var(--ok);
+      color: #fff;
+      border-color: var(--ok);
+    }
+
+    .wizard-step.active .step-dot {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .step-label {
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 6px;
+      color: var(--text-2);
+    }
+
+    .wizard-step.done .step-label {
+      color: var(--ok);
+    }
+
+    .wizard-step.active .step-label {
+      color: var(--accent);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #CCC;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ══════════════════════ SIDEBAR ══════════════════════ -->
+  <nav>
+    <div class="nav-header">
+      <div class="nav-logo">G</div>
+      <div>
+        <div class="nav-title">GraphMailer</div>
+        <div class="nav-sub">Configuration Tool</div>
+      </div>
+    </div>
+
+    <div class="nav-section-label">Overview</div>
+    <div class="nav-item active" onclick="show('status',this)">
+      <span class="icon">📊</span><span class="label">Status</span>
+    </div>
+
+    <div class="nav-section-label">SMTP</div>
+    <div class="nav-item" onclick="show('smtp',this)">
+      <span class="icon">📨</span><span class="label">Servers &amp; TLS</span>
+    </div>
+    <div class="nav-item" onclick="show('access',this)">
+      <span class="icon">🔐</span><span class="label">Access Control</span>
+    </div>
+    <div class="nav-item" onclick="show('ipblocking',this)">
+      <span class="icon">🛡️</span><span class="label">IP Filtering</span>
+    </div>
+
+    <div class="nav-section-label">Delivery</div>
+    <div class="nav-item" onclick="show('graphapi',this)">
+      <span class="icon">☁️</span><span class="label">Graph API</span>
+    </div>
+    <div class="nav-item" onclick="show('queue',this)">
+      <span class="icon">📥</span><span class="label">Mail Queue</span>
+    </div>
+
+    <div class="nav-section-label">Operations</div>
+    <div class="nav-item" onclick="show('monitoring',this)">
+      <span class="icon">🔍</span><span class="label">Monitoring</span>
+    </div>
+    <div class="nav-item" onclick="show('notify',this)">
+      <span class="icon">🔔</span><span class="label">Notifications</span>
+    </div>
+    <div class="nav-item" onclick="show('metrics',this)">
+      <span class="icon">📈</span><span class="label">Metrics</span>
+    </div>
+
+    <div class="nav-service-status">
+      <span class="status-dot running"></span>
+      <div class="status-info">
+        <strong style="font-size:12px;color:#fff;">Service running</strong>
+        <small>Since 2026-05-31, 07:14</small>
+      </div>
+      <button class="btn btn-sm btn-secondary" style="font-size:11px;padding:3px 8px;"
+        onclick="alert('Stop service?')">⏹</button>
+    </div>
+  </nav>
+
+  <!-- ══════════════════════ MAIN ══════════════════════ -->
+  <div class="main">
+
+    <div class="toolbar">
+      <h1 id="page-title">Status</h1>
+      <span class="unsaved-badge" id="unsaved-badge" style="display:none">● Unsaved changes</span>
+      <button class="btn btn-secondary" onclick="discardChanges()">Discard</button>
+      <button class="btn btn-primary" onclick="saveChanges()">💾 Save</button>
+    </div>
+
+    <!-- ══════════ STATUS ══════════ -->
+    <div class="content page active" id="page-status">
+      <div class="kpi-grid">
+        <div class="kpi-card ok">
+          <div class="kpi-label">Delivered today</div>
+          <div class="kpi-value">247</div>
+          <div class="kpi-sub">+12% vs. yesterday</div>
+        </div>
+        <div class="kpi-card err">
+          <div class="kpi-label">Failed</div>
+          <div class="kpi-value">3</div>
+          <div class="kpi-sub">Last 24 h</div>
+        </div>
+        <div class="kpi-card info">
+          <div class="kpi-label">In queue</div>
+          <div class="kpi-value">0</div>
+          <div class="kpi-sub">Immediate delivery</div>
+        </div>
+        <div class="kpi-card warn">
+          <div class="kpi-label">TLS certificate</div>
+          <div class="kpi-value">12 d</div>
+          <div class="kpi-sub">Until expiry</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span>🔎</span>
+          <h2>System health</h2>
+          <button class="btn btn-sm btn-secondary" onclick="alert('Refreshing…')">↺ Refresh</button>
+        </div>
+        <div class="card-body" style="padding:0">
+          <table>
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Status</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>SMTP Port 25</strong> (STARTTLS, optional auth)</td>
+                <td><span class="badge badge-ok">✔ Reachable</span></td>
+                <td style="color:var(--text-2)">Last connection 2 min ago</td>
+              </tr>
+              <tr>
+                <td><strong>SMTP Port 465</strong> (Implicit TLS)</td>
+                <td><span class="badge badge-ok">✔ Reachable</span></td>
+                <td style="color:var(--text-2)">Last connection 5 min ago</td>
+              </tr>
+              <tr>
+                <td><strong>SMTP Port 587</strong> (STARTTLS submission)</td>
+                <td><span class="badge badge-ok">✔ Reachable</span></td>
+                <td style="color:var(--text-2)">Last connection 1 min ago</td>
+              </tr>
+              <tr>
+                <td><strong>Graph API</strong></td>
+                <td><span class="badge badge-ok">✔ Connected</span></td>
+                <td style="color:var(--text-2)">Tenant: contoso.onmicrosoft.com · Token valid</td>
+              </tr>
+              <tr>
+                <td><strong>TLS Certificate</strong></td>
+                <td><span class="badge badge-warn">⚠ Expiring soon</span></td>
+                <td style="color:var(--text-2)">CN=smtp.contoso.com · Expires 2026-06-12</td>
+              </tr>
+              <tr>
+                <td><strong>Disk space</strong></td>
+                <td><span class="badge badge-ok">✔ OK</span></td>
+                <td style="color:var(--text-2)">C:\ · 43 GB free (28%)</td>
+              </tr>
+              <tr>
+                <td><strong>mail/failed/</strong></td>
+                <td><span class="badge badge-err">✖ 3 failures</span></td>
+                <td style="color:var(--text-2)">3 permanently failed messages · requires manual review</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ SMTP SERVERS & TLS ══════════ -->
+    <div class="content page" id="page-smtp">
+
+      <!-- Server list -->
+      <div class="card">
+        <div class="card-header">
+          <span>📨</span>
+          <h2>SMTP Listeners</h2>
+          <span style="font-size:11px;color:var(--text-2);margin-right:auto">Standard port defaults</span>
+          <button class="btn btn-sm btn-primary" onclick="openServerModal()">+ Add server</button>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Port</th>
+                  <th>Mode</th>
+                  <th>Auth required</th>
+                  <th>TLS certificate</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div style="font-weight:600">Inbound relay <span class="badge badge-plain"
+                        style="font-size:10px;margin-left:4px">Optional / outbound relay</span></div>
+                    <div style="font-size:11px;color:var(--text-2)">Server-to-server · legacy clients</div>
+                  </td>
+                  <td><strong>25</strong></td>
+                  <td><span class="badge badge-info">STARTTLS</span></td>
+                  <td><span class="badge badge-plain">Optional</span></td>
+                  <td><span class="badge badge-warn">⚠ Expiring (12 d)</span></td>
+                  <td class="table-actions">
+                    <button class="btn btn-sm btn-secondary" onclick="openServerModal('25')">✏ Edit</button>
+                    <button class="btn btn-sm btn-danger btn-icon">🗑</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style="font-weight:600">Implicit TLS</div>
+                    <div style="font-size:11px;color:var(--text-2)">SMTPS · clients requiring implicit TLS</div>
+                  </td>
+                  <td><strong>465</strong></td>
+                  <td><span class="badge badge-ok">Implicit TLS (SSL)</span></td>
+                  <td><span class="badge badge-info">Required</span></td>
+                  <td><span class="badge badge-warn">⚠ Expiring (12 d)</span></td>
+                  <td class="table-actions">
+                    <button class="btn btn-sm btn-secondary" onclick="openServerModal('465')">✏ Edit</button>
+                    <button class="btn btn-sm btn-danger btn-icon">🗑</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style="font-weight:600">Submission</div>
+                    <div style="font-size:11px;color:var(--text-2)">Recommended for authenticated clients (RFC 6409)
+                    </div>
+                  </td>
+                  <td><strong>587</strong></td>
+                  <td><span class="badge badge-info">STARTTLS</span></td>
+                  <td><span class="badge badge-info">Required</span></td>
+                  <td><span class="badge badge-warn">⚠ Expiring (12 d)</span></td>
+                  <td class="table-actions">
+                    <button class="btn btn-sm btn-secondary" onclick="openServerModal('587')">✏ Edit</button>
+                    <button class="btn btn-sm btn-danger btn-icon">🗑</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TLS Certificate picker -->
+      <div class="card">
+        <div class="card-header"><span>🔒</span>
+          <h2>TLS Certificate</h2>
+        </div>
+        <div class="card-body">
+
+          <div class="cert-picker-header">
+            <div class="cert-store-label">
+              <span class="lock">🔒</span> LocalMachine\My &nbsp;·&nbsp; Server Authentication EKU only
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="alert('Refreshing certificate list…')">↺ Refresh</button>
+          </div>
+          <div style="margin-bottom:10px">
+            <input type="text" placeholder="🔍  Filter by CN or SAN …" oninput="filterCerts(this.value)">
+          </div>
+
+          <div class="cert-list" id="cert-list-tls">
+            <!-- Cert 1 – expiring, currently selected -->
+            <div class="cert-item selected" data-cn="smtp.contoso.com" data-issuer="DigiCert CA"
+              onclick="selectCert(this,'tls')">
+              <input type="radio" class="cert-radio" name="tls-cert" checked>
+              <div class="cert-details">
+                <div class="cert-cn">CN=smtp.contoso.com</div>
+                <div class="cert-issuer">Subject: CN=smtp.contoso.com, O=Contoso Ltd, C=DE</div>
+                <div class="cert-san">SAN: smtp.contoso.com, mail.contoso.com</div>
+                <div class="cert-issuer" style="margin-top:3px">Issuer: DigiCert CA · Serial: 0A:1B:2C:…</div>
+                <div class="cert-eku" style="margin-top:4px"><span class="badge badge-plain"
+                    style="font-size:10px">Server Authentication</span></div>
+              </div>
+              <div class="cert-expiry">
+                <span class="badge badge-warn">⚠ 12 days</span>
+                <div class="cert-expiry-date">Expires 2026-06-12</div>
+              </div>
+            </div>
+            <!-- Cert 2 – valid -->
+            <div class="cert-item" data-cn="smtp-new.contoso.com" data-issuer="Contoso Internal CA"
+              onclick="selectCert(this,'tls')">
+              <input type="radio" class="cert-radio" name="tls-cert">
+              <div class="cert-details">
+                <div class="cert-cn">CN=smtp-new.contoso.com</div>
+                <div class="cert-issuer">Subject: CN=smtp-new.contoso.com, O=Contoso Ltd, C=DE</div>
+                <div class="cert-san">SAN: smtp-new.contoso.com</div>
+                <div class="cert-issuer" style="margin-top:3px">Issuer: Contoso Internal CA · Serial: 3D:4E:5F:…</div>
+                <div class="cert-eku" style="margin-top:4px"><span class="badge badge-plain"
+                    style="font-size:10px">Server Authentication</span></div>
+              </div>
+              <div class="cert-expiry">
+                <span class="badge badge-ok">✔ 341 days</span>
+                <div class="cert-expiry-date">Expires 2027-05-06</div>
+              </div>
+            </div>
+            <!-- Cert 3 – expired, disabled -->
+            <div class="cert-item expired" data-cn="old.contoso.com" data-issuer="Let's Encrypt" onclick="return false">
+              <input type="radio" class="cert-radio" name="tls-cert" disabled>
+              <div class="cert-details">
+                <div class="cert-cn">CN=old.contoso.com</div>
+                <div class="cert-issuer">Subject: CN=old.contoso.com</div>
+                <div class="cert-san">SAN: old.contoso.com</div>
+                <div class="cert-issuer" style="margin-top:3px">Issuer: Let's Encrypt · Serial: 7G:8H:…</div>
+                <div class="cert-eku" style="margin-top:4px"><span class="badge badge-plain"
+                    style="font-size:10px">Server Authentication</span></div>
+              </div>
+              <div class="cert-expiry">
+                <span class="badge badge-err">✖ Expired</span>
+                <div class="cert-expiry-date">Expired 2026-01-01</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Values saved to config — set automatically from selection -->
+          <div class="cert-selected-summary" id="cert-summary-tls" style="margin-top:14px">
+            <div class="pair"><span class="k">Subject Name (CN)</span><span class="v"
+                id="cert-cn-tls">smtp.contoso.com</span></div>
+            <div class="pair"><span class="k">Issuer</span><span class="v" id="cert-issuer-summary-tls">DigiCert
+                CA</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- General settings -->
+      <div class="card">
+        <div class="card-header"><span>⚙️</span>
+          <h2>General</h2>
+        </div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="field">
+              <label>Max. message size<span class="req">*</span></label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="number" value="25" style="width:90px">
+                <select style="width:80px">
+                  <option>MB</option>
+                  <option>KB</option>
+                </select>
+              </div>
+              <span class="field-hint">Graph API limit: 150 MB. Recommended: 25–35 MB.</span>
+            </div>
+            <div class="field">
+              <label>SMTP banner</label>
+              <input type="text" value="GraphMailer">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ ACCESS CONTROL ══════════ -->
+    <div class="content page" id="page-access">
+      <div class="card">
+        <div class="card-header">
+          <span>👤</span>
+          <h2>Users</h2>
+          <button class="btn btn-sm btn-primary" onclick="openUserModal()">+ Add user</button>
+        </div>
+        <div class="card-body" style="padding:0">
+          <table>
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Password</th>
+                <th>Allowed senders</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>relay-user</strong></td>
+                <td><span style="color:var(--text-2)">•••••••••</span></td>
+                <td><span class="badge badge-plain">All allowed</span></td>
+                <td class="table-actions">
+                  <button class="btn btn-sm btn-secondary">✏ Edit</button>
+                  <button class="btn btn-sm btn-danger btn-icon">🗑</button>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>erp-system</strong></td>
+                <td><span style="color:var(--text-2)">•••••••••</span></td>
+                <td><span class="badge badge-info">erp@contoso.com</span></td>
+                <td class="table-actions">
+                  <button class="btn btn-sm btn-secondary">✏ Edit</button>
+                  <button class="btn btn-sm btn-danger btn-icon">🗑</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div class="card">
+          <div class="card-header"><span>📧</span>
+            <h2>Allowed Senders</h2>
+          </div>
+          <div class="card-body">
+            <div class="tag-list">
+              <span class="tag">@contoso.com <span class="tag-remove">×</span></span>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <input type="text" placeholder="address@domain or @domain.com">
+              <button class="btn btn-primary btn-sm">Add</button>
+            </div>
+            <div class="field-hint" style="margin-top:6px">Empty = all senders allowed</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span>📬</span>
+            <h2>Allowed Recipients</h2>
+          </div>
+          <div class="card-body">
+            <div class="tag-list" style="color:var(--text-2);font-style:italic;font-size:12px">No restrictions</div>
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <input type="text" placeholder="address@domain or @domain.com">
+              <button class="btn btn-primary btn-sm">Add</button>
+            </div>
+            <div class="field-hint" style="margin-top:6px">Empty = all recipients allowed</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ IP FILTERING ══════════ -->
+    <div class="content page" id="page-ipblocking">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div class="card">
+          <div class="card-header"><span>🌐</span>
+            <h2>IP Whitelist</h2>
+          </div>
+          <div class="card-body">
+            <div class="tag-list">
+              <span class="tag">192.168.1.0/24 <span class="tag-remove">×</span></span>
+              <span class="tag">10.0.0.50 <span class="tag-remove">×</span></span>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <input type="text" placeholder="IP or CIDR, e.g. 192.168.1.0/24">
+              <button class="btn btn-primary btn-sm">Add</button>
+            </div>
+            <div class="field-hint" style="margin-top:6px">IPs on the whitelist are never blocked automatically. Empty =
+              no restriction.</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span>⛔</span>
+            <h2>IP Blacklist</h2>
+          </div>
+          <div class="card-body">
+            <div class="tag-list">
+              <span class="tag danger">203.0.113.99 <span class="tag-remove">×</span></span>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <input type="text" placeholder="IP or CIDR">
+              <button class="btn btn-primary btn-sm">Add</button>
+            </div>
+            <div class="field-hint" style="margin-top:6px">Always rejected, regardless of auth. Empty = none.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span>🛡️</span>
+          <h2>Automatic IP Blocking</h2>
+        </div>
+        <div class="card-body">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Enable IP blocking</div>
+              <div class="toggle-desc">Automatically blocks IPs after too many authentication failures</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" checked onchange="toggleSection('ipblock-settings',this.checked)">
+              <span class="toggle-track"></span><span class="toggle-thumb"></span>
+            </label>
+          </div>
+          <div id="ipblock-settings" style="margin-top:20px">
+            <div class="form-grid cols-3">
+              <div class="field">
+                <label>Max. failures<span class="req">*</span></label>
+                <input type="number" value="10" min="1" max="100">
+                <span class="field-hint">Failures before blocking</span>
+              </div>
+              <div class="field">
+                <label>Time window (sec)<span class="req">*</span></label>
+                <input type="number" value="600" min="60">
+                <span class="field-hint">Observation window</span>
+              </div>
+              <div class="field">
+                <label>Block duration (sec)<span class="req">*</span></label>
+                <input type="number" value="600" min="60">
+                <span class="field-hint">How long the IP stays blocked</span>
+              </div>
+            </div>
+            <div class="infobox info" style="margin-top:16px">
+              <span>ℹ️</span>
+              <div>IPs on the <strong>whitelist</strong> are exempt from blocking. Blocked IPs are held in memory — they
+                reset on service restart.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span>🚫</span>
+          <h2>Currently blocked IPs</h2>
+          <span class="badge badge-err" style="margin-right:auto">2 active blocks</span>
+          <button class="btn btn-sm btn-secondary" onclick="alert('Refreshing…')">↺ Refresh</button>
+          <button class="btn btn-sm btn-danger" onclick="alert('Unblock all?')">Unblock all</button>
+        </div>
+        <div class="card-body" style="padding:0">
+          <table>
+            <thead>
+              <tr>
+                <th>IP address</th>
+                <th>Failures</th>
+                <th>Blocked since</th>
+                <th>Blocked until</th>
+                <th>Last failure</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>203.0.113.47</strong></td>
+                <td><span class="badge badge-err">12</span></td>
+                <td style="color:var(--text-2)">2026-05-31 08:14:03</td>
+                <td style="color:var(--text-2)">2026-05-31 08:24:03 <span style="font-size:11px">(6 min
+                    remaining)</span></td>
+                <td style="color:var(--text-2)">AUTH failure · PLAIN</td>
+                <td><button class="btn btn-sm btn-secondary" onclick="alert('Unblock 203.0.113.47?')">Unblock</button>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>198.51.100.22</strong></td>
+                <td><span class="badge badge-err">10</span></td>
+                <td style="color:var(--text-2)">2026-05-31 08:19:51</td>
+                <td style="color:var(--text-2)">2026-05-31 08:29:51 <span style="font-size:11px">(12 min
+                    remaining)</span></td>
+                <td style="color:var(--text-2)">AUTH failure · LOGIN</td>
+                <td><button class="btn btn-sm btn-secondary" onclick="alert('Unblock 198.51.100.22?')">Unblock</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ GRAPH API ══════════ -->
+    <div class="content page" id="page-graphapi">
+
+      <!-- ── Auto-setup wizard ── -->
+      <div class="card">
+        <div class="card-header">
+          <span>✨</span>
+          <h2>Automatic setup</h2>
+          <span class="badge badge-ok" id="autosetup-badge">✔ Configured</span>
+        </div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--text-2);margin-bottom:20px">
+            GraphMailer can create the Entra ID app registration automatically.
+            Sign in once with a user who has <strong>Application Administrator</strong> or
+            <strong>Global Administrator</strong> privileges — the tool handles everything else.
+          </p>
+
+          <!-- Step progress -->
+          <div class="wizard-steps" id="wizard-steps">
+            <div class="wizard-step done">
+              <div class="step-dot">✔</div>
+              <div class="step-label">Sign in</div>
+            </div>
+            <div class="wizard-step done">
+              <div class="step-dot">✔</div>
+              <div class="step-label">Create app</div>
+            </div>
+            <div class="wizard-step done">
+              <div class="step-dot">✔</div>
+              <div class="step-label">Grant permissions</div>
+            </div>
+            <div class="wizard-step done">
+              <div class="step-dot">✔</div>
+              <div class="step-label">Upload certificate</div>
+            </div>
+            <div class="wizard-step done">
+              <div class="step-dot">✔</div>
+              <div class="step-label">Save config</div>
+            </div>
+          </div>
+
+          <!-- Result summary -->
+          <div class="cert-selected-summary" id="autosetup-result">
+            <div class="pair"><span class="k">App name</span><span class="v">GraphMailer</span></div>
+            <div class="pair"><span class="k">Tenant ID</span><span
+                class="v">xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</span></div>
+            <div class="pair"><span class="k">Client ID</span><span
+                class="v">yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</span></div>
+            <div class="pair"><span class="k">Auth method</span><span class="v">Certificate · CN=graphmailer-app</span>
+            </div>
+            <div class="pair"><span class="k">Permission</span><span class="v">Mail.Send (Application) · Admin consent
+                granted</span></div>
+          </div>
+
+          <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="runAutoSetup()">🔄 Re-run setup</button>
+            <button class="btn btn-secondary" onclick="alert('Testing connection…')">🔌 Test connection</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Manual / advanced config ── -->
+      <div class="card">
+        <div class="card-header" style="cursor:pointer"
+          onclick="toggleSection('manual-config', document.getElementById('manual-config').style.display==='none'?true:false); this.querySelector('.toggle-icon').textContent = document.getElementById('manual-config').style.display==='' ? '▲' : '▼'">
+          <span>⚙️</span>
+          <h2>Manual configuration</h2>
+          <span style="font-size:11px;color:var(--text-2);margin-right:auto">Override auto-setup values</span>
+          <span class="toggle-icon" style="font-size:12px;color:var(--text-2)">▼</span>
+        </div>
+        <div id="manual-config" style="display:none">
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="field">
+                <label>Tenant ID<span class="req">*</span></label>
+                <input type="text" value="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" placeholder="GUID from Entra ID">
+              </div>
+              <div class="field">
+                <label>Client ID<span class="req">*</span></label>
+                <input type="text" value="yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy" placeholder="App registration GUID">
+              </div>
+            </div>
+
+            <div class="section-div" style="margin-top:24px">Authentication method</div>
+
+            <div class="auth-methods">
+              <!-- Client Secret -->
+              <div class="auth-card" id="auth-secret-card" onclick="selectAuthMethod('secret')">
+                <div class="auth-card-header">
+                  <input type="radio" name="authmethod" id="auth-secret" style="accent-color:var(--accent)">
+                  <label for="auth-secret" style="cursor:pointer">Client Secret</label>
+                </div>
+                <div class="field">
+                  <label>Secret<span class="req">*</span></label>
+                  <input type="password" placeholder="Enter client secret">
+
+                </div>
+              </div>
+              <!-- Client Certificate -->
+              <div class="auth-card selected" id="auth-cert-card" onclick="selectAuthMethod('cert')">
+                <div class="auth-card-header">
+                  <input type="radio" name="authmethod" id="auth-cert" checked style="accent-color:var(--accent)">
+                  <label for="auth-cert" style="cursor:pointer">Client Certificate</label>
+                  <span class="badge badge-ok" style="font-size:10px">Recommended</span>
+                </div>
+                <div class="infobox info" style="margin-bottom:10px;font-size:11px;padding:8px 10px">
+                  <span>ℹ️</span>
+                  <div>Loaded from <strong>LocalMachine\My</strong> · Client Authentication EKU only</div>
+                </div>
+                <div class="cert-list" id="cert-list-api" style="max-height:180px">
+                  <div class="cert-item selected" data-cn="graphmailer-app" data-issuer="Contoso Internal CA"
+                    onclick="selectCert(this,'api')">
+                    <input type="radio" class="cert-radio" name="api-cert" checked>
+                    <div class="cert-details">
+                      <div class="cert-cn">CN=graphmailer-app</div>
+                      <div class="cert-issuer">Issuer: Contoso Internal CA</div>
+                      <div class="cert-eku"><span class="badge badge-plain" style="font-size:10px">Client
+                          Authentication</span></div>
+                    </div>
+                    <div class="cert-expiry">
+                      <span class="badge badge-ok">✔ 199 d</span>
+                      <div class="cert-expiry-date">Expires 2026-12-15</div>
+                    </div>
+                  </div>
+                  <div class="cert-item" data-cn="graphmailer-staging" data-issuer="Contoso Internal CA"
+                    onclick="selectCert(this,'api')">
+                    <input type="radio" class="cert-radio" name="api-cert">
+                    <div class="cert-details">
+                      <div class="cert-cn">CN=graphmailer-staging</div>
+                      <div class="cert-issuer">Issuer: Contoso Internal CA</div>
+                      <div class="cert-eku"><span class="badge badge-plain" style="font-size:10px">Client
+                          Authentication</span></div>
+                    </div>
+                    <div class="cert-expiry">
+                      <span class="badge badge-ok">✔ 93 d</span>
+                      <div class="cert-expiry-date">Expires 2026-09-01</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="cert-selected-summary" style="margin-top:10px" id="cert-summary-api">
+                  <div class="pair"><span class="k">Subject Name (CN)</span><span class="v"
+                      id="cert-cn-api">graphmailer-app</span></div>
+                  <div class="pair"><span class="k">Issuer</span><span class="v" id="cert-issuer-api">Contoso Internal
+                      CA</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ MAIL QUEUE ══════════ -->
+    <div class="content page" id="page-queue">
+      <div class="card">
+        <div class="card-header"><span>📥</span>
+          <h2>Queue processing</h2>
+        </div>
+        <div class="card-body">
+          <div class="form-grid cols-3">
+            <div class="field">
+              <label>Polling interval (sec)<span class="req">*</span></label>
+              <input type="number" value="5" min="1" max="3600">
+            </div>
+            <div class="field">
+              <label>Max. retries<span class="req">*</span></label>
+              <input type="number" value="3" min="1" max="20">
+            </div>
+            <div class="field">
+              <label>Retry base delay (sec)<span class="req">*</span></label>
+              <input type="number" value="60" min="10">
+              <span class="field-hint">Exponential back-off: base × 2^(n−1)</span>
+            </div>
+            <div class="field">
+              <label>Batch size<span class="req">*</span></label>
+              <input type="number" value="10" min="1" max="100">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span>🗄️</span>
+          <h2>Archiving</h2>
+        </div>
+        <div class="card-body">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Archive delivered mail</div>
+              <div class="toggle-desc">Keep copies in mail/sent/ instead of deleting immediately</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" onchange="toggleSection('archive-settings',this.checked)">
+              <span class="toggle-track"></span><span class="toggle-thumb"></span>
+            </label>
+          </div>
+          <div id="archive-settings" style="margin-top:16px;display:none">
+            <div class="field" style="max-width:200px">
+              <label>Retention (days)</label>
+              <input type="number" value="7" min="1">
+            </div>
+          </div>
+          <div class="infobox warn" style="margin-top:16px">
+            <span>⚠️</span>
+            <div><strong>mail/failed/</strong> is never auto-purged — permanently failed messages require manual review.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ MONITORING ══════════ -->
+    <div class="content page" id="page-monitoring">
+      <div class="card">
+        <div class="card-header"><span>🔒</span>
+          <h2>Certificate monitoring</h2>
+        </div>
+        <div class="card-body">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Enable</div>
+              <div class="toggle-desc">Checks TLS certificate expiry and sends admin alerts</div>
+            </div>
+            <label class="toggle"><input type="checkbox" checked><span class="toggle-track"></span><span
+                class="toggle-thumb"></span></label>
+          </div>
+          <div class="form-grid cols-3" style="margin-top:16px">
+            <div class="field">
+              <label>Warning threshold (days)</label>
+              <input type="number" value="14" min="1">
+            </div>
+            <div class="field">
+              <label>Check interval (hours)</label>
+              <input type="number" value="24" min="1">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div class="card">
+          <div class="card-header"><span>💾</span>
+            <h2>Disk space monitoring</h2>
+          </div>
+          <div class="card-body">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-label">Enable</div>
+              </div>
+              <label class="toggle"><input type="checkbox" checked><span class="toggle-track"></span><span
+                  class="toggle-thumb"></span></label>
+            </div>
+            <div class="form-grid" style="margin-top:16px">
+              <div class="field">
+                <label>Alert threshold (% free)</label>
+                <input type="number" value="10" min="1" max="99">
+              </div>
+              <div class="field">
+                <label>Check interval (min)</label>
+                <input type="number" value="60" min="1">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span>🔌</span>
+            <h2>Port monitoring</h2>
+          </div>
+          <div class="card-body">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-label">Enable</div>
+              </div>
+              <label class="toggle"><input type="checkbox" checked><span class="toggle-track"></span><span
+                  class="toggle-thumb"></span></label>
+            </div>
+            <div class="form-grid" style="margin-top:16px">
+              <div class="field">
+                <label>Check interval (min)</label>
+                <input type="number" value="5" min="1">
+              </div>
+              <div class="field">
+                <label>Alert threshold (min)</label>
+                <input type="number" value="10" min="1">
+                <span class="field-hint">Notify only after this outage duration</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span>☁️</span>
+          <h2>Graph API connectivity</h2>
+        </div>
+        <div class="card-body">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Enable</div>
+            </div>
+            <label class="toggle"><input type="checkbox" checked><span class="toggle-track"></span><span
+                class="toggle-thumb"></span></label>
+          </div>
+          <div class="form-grid" style="margin-top:16px;max-width:220px">
+            <div class="field">
+              <label>Check interval (min)</label>
+              <input type="number" value="15" min="1">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ NOTIFICATIONS ══════════ -->
+    <div class="content page" id="page-notify">
+      <div class="card">
+        <div class="card-header"><span>🔔</span>
+          <h2>Admin notifications</h2>
+        </div>
+        <div class="card-body">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Enable admin notifications</div>
+              <div class="toggle-desc">Sends alert e-mails via the Graph API</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" checked onchange="toggleSection('notify-settings',this.checked)">
+              <span class="toggle-track"></span><span class="toggle-thumb"></span>
+            </label>
+          </div>
+          <div id="notify-settings" style="margin-top:20px">
+            <div class="form-grid">
+              <div class="field">
+                <label>Sender address<span class="req">*</span></label>
+                <input type="text" value="alerts@contoso.com">
+                <span class="field-hint">Must be a valid mailbox in your tenant</span>
+              </div>
+              <div class="field">
+                <label>Subject prefix</label>
+                <input type="text" value="[SMTP Alert]">
+              </div>
+              <div class="field span-2">
+                <label>Recipient addresses<span class="req">*</span></label>
+                <div class="tag-list" style="margin-bottom:8px">
+                  <span class="tag">ops@contoso.com <span class="tag-remove">×</span></span>
+                  <span class="tag">it-admin@contoso.com <span class="tag-remove">×</span></span>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <input type="text" placeholder="Add recipient …">
+                  <button class="btn btn-primary btn-sm">Add</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-div" style="margin-top:24px">Notification types</div>
+            <table style="margin-top:12px">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th style="width:80px">Enabled</th>
+                  <th>Parameters</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Delivery failure</strong><br><small style="color:var(--text-2)">Permanent failures —
+                      batched</small></td>
+                  <td><label class="toggle" style="margin:0 auto;display:block"><input type="checkbox" checked><span
+                        class="toggle-track"></span><span class="toggle-thumb"></span></label></td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="font-size:12px;color:var(--text-2)">Batch window:</span>
+                      <input type="number" value="300" style="width:70px"> <span style="font-size:12px">sec</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Certificate expiring</strong></td>
+                  <td><label class="toggle" style="margin:0 auto;display:block"><input type="checkbox" checked><span
+                        class="toggle-track"></span><span class="toggle-thumb"></span></label></td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <td><strong>Certificate expired</strong></td>
+                  <td><label class="toggle" style="margin:0 auto;display:block"><input type="checkbox" checked><span
+                        class="toggle-track"></span><span class="toggle-thumb"></span></label></td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <td><strong>Authentication failure threshold</strong><br><small style="color:var(--text-2)">Suspicious
+                      login attempts</small></td>
+                  <td><label class="toggle" style="margin:0 auto;display:block"><input type="checkbox" checked><span
+                        class="toggle-track"></span><span class="toggle-thumb"></span></label></td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <input type="number" value="5" style="width:55px"><span style="font-size:12px">failures in</span>
+                      <input type="number" value="300" style="width:70px"><span style="font-size:12px">sec</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>IP blocked</strong></td>
+                  <td><label class="toggle" style="margin:0 auto;display:block"><input type="checkbox" checked><span
+                        class="toggle-track"></span><span class="toggle-thumb"></span></label></td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <input type="number" value="10" style="width:55px"><span style="font-size:12px">events in</span>
+                      <input type="number" value="300" style="width:70px"><span style="font-size:12px">sec</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Low disk space</strong></td>
+                  <td><label class="toggle" style="margin:0 auto;display:block"><input type="checkbox" checked><span
+                        class="toggle-track"></span><span class="toggle-thumb"></span></label></td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <td><strong>Graph API error / recovery</strong></td>
+                  <td><label class="toggle" style="margin:0 auto;display:block"><input type="checkbox" checked><span
+                        class="toggle-track"></span><span class="toggle-thumb"></span></label></td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <td><strong>Port outage / recovery</strong></td>
+                  <td><label class="toggle" style="margin:0 auto;display:block"><input type="checkbox" checked><span
+                        class="toggle-track"></span><span class="toggle-thumb"></span></label></td>
+                  <td>—</td>
+                </tr>
+              </tbody>
+            </table>
+            <div style="margin-top:16px">
+              <button class="btn btn-secondary" onclick="alert('Test notification sent')">📤 Send test
+                notification</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ METRICS ══════════ -->
+    <div class="content page" id="page-metrics">
+      <div class="card">
+        <div class="card-header"><span>📈</span>
+          <h2>SQLite metrics</h2>
+        </div>
+        <div class="card-body">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <div class="toggle-label">Enable metrics</div>
+              <div class="toggle-desc">Records e-mail events and system performance in data/metrics.db</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" checked onchange="toggleSection('metrics-settings',this.checked)">
+              <span class="toggle-track"></span><span class="toggle-thumb"></span>
+            </label>
+          </div>
+          <div id="metrics-settings" style="margin-top:20px">
+            <div class="form-grid">
+              <div class="field">
+                <label>Retention (days)</label>
+                <input type="number" value="90" min="1">
+              </div>
+              <div class="field">
+                <label>Cleanup interval (hours)</label>
+                <input type="number" value="24" min="1">
+              </div>
+            </div>
+            <div class="section-div" style="margin-top:20px">Performance sampling</div>
+            <div class="toggle-row" style="margin-top:8px">
+              <div class="toggle-info">
+                <div class="toggle-label">Enable performance sampling</div>
+                <div class="toggle-desc">Periodically records memory and disk utilization</div>
+              </div>
+              <label class="toggle"><input type="checkbox" checked><span class="toggle-track"></span><span
+                  class="toggle-thumb"></span></label>
+            </div>
+            <div class="form-grid cols-3" style="margin-top:16px">
+              <div class="field">
+                <label>Memory sampling (sec)</label>
+                <input type="number" value="60" min="10">
+              </div>
+              <div class="field">
+                <label>Disk sampling (sec)</label>
+                <input type="number" value="300" min="30">
+              </div>
+            </div>
+            <div class="infobox info" style="margin-top:16px">
+              <span>ℹ️</span>
+              <div>Database path: <code>data/metrics.db</code> (relative to service working directory)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+
+  <!-- ══════════ ADD/EDIT SERVER MODAL ══════════ -->
+  <div class="modal-overlay" id="server-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <span>📨</span>
+        <h3 id="server-modal-title">Add SMTP server</h3>
+        <button class="btn btn-icon btn-secondary" onclick="closeModal('server-modal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="field">
+            <label>Name<span class="req">*</span></label>
+            <input type="text" id="srv-name" placeholder="e.g. Submission">
+          </div>
+          <div class="field">
+            <label>Port<span class="req">*</span></label>
+            <input type="number" id="srv-port" value="587" min="1" max="65535">
+          </div>
+        </div>
+        <div class="field" style="margin-top:4px">
+          <label>Mode<span class="req">*</span></label>
+          <div class="mode-selector">
+            <div class="mode-btn" onclick="setMode('plain',this)">Plain</div>
+            <div class="mode-btn active" onclick="setMode('starttls',this)">STARTTLS</div>
+            <div class="mode-btn" onclick="setMode('ssl',this)">Implicit TLS (SSL)</div>
+          </div>
+          <div id="mode-hint-plain" class="field-hint" style="display:none">No encryption. Suitable for internal relay
+            on trusted networks only.</div>
+          <div id="mode-hint-starttls" class="field-hint">Upgrades to TLS when both sides support it. Requires a TLS
+            certificate.</div>
+          <div id="mode-hint-ssl" class="field-hint" style="display:none">TLS from the first byte. Standard for port
+            465. Requires a TLS certificate.</div>
+        </div>
+        <div class="toggle-row" style="padding:12px 0">
+          <div class="toggle-info">
+            <div class="toggle-label">Require authentication</div>
+            <div class="toggle-desc">Clients must provide a valid username / password (PLAIN or LOGIN)</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" checked>
+            <span class="toggle-track"></span><span class="toggle-thumb"></span>
+          </label>
+        </div>
+        <div class="infobox info">
+          <span>ℹ️</span>
+          <div>Standard ports: <strong>25</strong> STARTTLS (optional auth, server-to-server), <strong>465</strong>
+            Implicit TLS, <strong>587</strong> STARTTLS submission (recommended).</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('server-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="closeModal('server-modal')">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Navigation ──
+    function show(key, navEl) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('page-' + key).classList.add('active');
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      navEl.classList.add('active');
+      document.getElementById('page-title').textContent = navEl.querySelector('.label').textContent.trim();
+    }
+
+    // ── Dirty tracking ──
+    let dirty = false;
+    document.addEventListener('input', () => {
+      dirty = true;
+      document.getElementById('unsaved-badge').style.display = '';
+    });
+
+    function saveChanges() {
+      dirty = false;
+      document.getElementById('unsaved-badge').style.display = 'none';
+      const b = event.currentTarget;
+      b.textContent = '✔ Saved';
+      b.style.background = 'var(--ok)';
+      setTimeout(() => { b.textContent = '💾 Save'; b.style.background = ''; }, 1800);
+    }
+    function discardChanges() {
+      if (!dirty || confirm('Discard all unsaved changes?')) {
+        dirty = false;
+        document.getElementById('unsaved-badge').style.display = 'none';
+      }
+    }
+
+    // ── Toggle sections ──
+    function toggleSection(id, on) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = on ? '' : 'none';
+    }
+
+    // ── Certificate selection ──
+    function selectCert(item, scope) {
+      if (item.classList.contains('expired')) return;
+      const list = item.closest('.cert-list');
+      list.querySelectorAll('.cert-item').forEach(i => i.classList.remove('selected'));
+      item.classList.add('selected');
+      item.querySelector('.cert-radio').checked = true;
+
+      const cn = item.dataset.cn || '';
+      const issuer = item.dataset.issuer || '';
+
+      if (scope === 'tls') {
+        document.getElementById('cert-cn-tls').textContent = cn;
+        document.getElementById('cert-issuer-summary-tls').textContent = issuer;
+      } else {
+        document.getElementById('cert-cn-api').textContent = cn;
+        document.getElementById('cert-issuer-api').textContent = issuer;
+      }
+      dirty = true;
+      document.getElementById('unsaved-badge').style.display = '';
+    }
+
+    // ── Auth method selection ──
+    // ── Auto-setup wizard (mockup simulation) ──
+    function runAutoSetup() {
+      const labels = ['Sign in', 'Create app', 'Grant permissions', 'Upload certificate', 'Save config'];
+      const steps = document.querySelectorAll('#wizard-steps .wizard-step');
+      steps.forEach(s => { s.classList.remove('done', 'active'); s.querySelector('.step-dot').textContent = steps.length > 0 ? (Array.from(steps).indexOf(s) + 1) : ''; });
+      // Reset dot numbers
+      steps.forEach((s, i) => s.querySelector('.step-dot').textContent = i + 1);
+      document.getElementById('autosetup-badge').textContent = '⏳ Running…';
+      document.getElementById('autosetup-badge').className = 'badge badge-warn';
+      document.getElementById('autosetup-result').style.display = 'none';
+
+      let i = 0;
+      function advance() {
+        if (i > 0) { steps[i - 1].classList.remove('active'); steps[i - 1].classList.add('done'); steps[i - 1].querySelector('.step-dot').textContent = '✔'; }
+        if (i < steps.length) { steps[i].classList.add('active'); i++; setTimeout(advance, 900); }
+        else {
+          document.getElementById('autosetup-badge').textContent = '✔ Configured';
+          document.getElementById('autosetup-badge').className = 'badge badge-ok';
+          document.getElementById('autosetup-result').style.display = '';
+          dirty = true; document.getElementById('unsaved-badge').style.display = '';
+        }
+      }
+      advance();
+    }
+
+    function selectAuthMethod(m) {
+      document.getElementById('auth-secret-card').classList.toggle('selected', m === 'secret');
+      document.getElementById('auth-cert-card').classList.toggle('selected', m === 'cert');
+      document.getElementById('auth-secret').checked = (m === 'secret');
+      document.getElementById('auth-cert').checked = (m === 'cert');
+    }
+
+    // ── Certificate filter ──
+    function filterCerts(q) {
+      const lower = q.toLowerCase();
+      document.querySelectorAll('#cert-list-tls .cert-item').forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.style.display = text.includes(lower) ? '' : 'none';
+      });
+    }
+
+    // ── Server modal ──
+    function openServerModal(port) {
+      const modal = document.getElementById('server-modal');
+      document.getElementById('server-modal-title').textContent = port ? 'Edit SMTP server' : 'Add SMTP server';
+      if (port) document.getElementById('srv-port').value = port;
+      modal.classList.add('open');
+    }
+    function openUserModal() { alert('User dialog (not yet rendered in mockup)'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+    // ── Server mode selector ──
+    function setMode(mode, btn) {
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      ['plain', 'starttls', 'ssl'].forEach(m => {
+        const el = document.getElementById('mode-hint-' + m);
+        if (el) el.style.display = (m === mode) ? '' : 'none';
+      });
+    }
+
+    // Close modal on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', e => {
+        if (e.target === overlay) overlay.classList.remove('open');
+      });
+    });
+  </script>
+</body>
+
+</html>

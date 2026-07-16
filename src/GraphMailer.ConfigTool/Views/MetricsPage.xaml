@@ -1,0 +1,274 @@
+<UserControl x:Class="GraphMailer.ConfigTool.Views.MetricsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource BackgroundBrush}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="24,20,24,24">
+
+                        <!-- Summary KPIs row -->
+                        <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0"
+                                        Style="{StaticResource Card}"
+                                        Padding="16,14">
+                                        <StackPanel>
+                                                <TextBlock Text="Total Sent (30 days)"
+                                                           Style="{StaticResource LabelText}"/>
+                                                <TextBlock x:Name="M30Sent"
+                                                           Text="—"
+                                                           FontSize="26"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource OkBrush}"
+                                                           Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2"
+                                        Style="{StaticResource Card}"
+                                        Padding="16,14">
+                                        <StackPanel>
+                                                <TextBlock Text="Total Failed (30 days)"
+                                                           Style="{StaticResource LabelText}"/>
+                                                <TextBlock x:Name="M30Failed"
+                                                           Text="—"
+                                                           FontSize="26"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource DangerBrush}"
+                                                           Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                </Border>
+                                <Border Grid.Column="4"
+                                        Style="{StaticResource Card}"
+                                        Padding="16,14">
+                                        <StackPanel>
+                                                <TextBlock Text="Avg. Delivery (ms)"
+                                                           Style="{StaticResource LabelText}"/>
+                                                <TextBlock x:Name="M30Avg"
+                                                           Text="—"
+                                                           FontSize="26"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource AccentBrush}"
+                                                           Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                </Border>
+                                <Border Grid.Column="6"
+                                        Style="{StaticResource Card}"
+                                        Padding="16,14">
+                                        <StackPanel>
+                                                <TextBlock Text="Unique Senders"
+                                                           Style="{StaticResource LabelText}"/>
+                                                <TextBlock x:Name="M30Senders"
+                                                           Text="—"
+                                                           FontSize="26"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource TextBrush}"
+                                                           Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                </Border>
+                        </Grid>
+
+                        <!-- Performance KPIs row -->
+                        <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0"
+                                        Style="{StaticResource Card}"
+                                        Padding="16,14">
+                                        <StackPanel>
+                                                <TextBlock Text="Memory (latest)"
+                                                           Style="{StaticResource LabelText}"/>
+                                                <TextBlock x:Name="PerfMemory"
+                                                           Text="—"
+                                                           FontSize="26"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource AccentBrush}"
+                                                           Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2"
+                                        Style="{StaticResource Card}"
+                                        Padding="16,14">
+                                        <StackPanel>
+                                                <TextBlock Text="CPU (latest)"
+                                                           Style="{StaticResource LabelText}"/>
+                                                <TextBlock x:Name="PerfCpu"
+                                                           Text="—"
+                                                           FontSize="26"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource TextBrush}"
+                                                           Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                </Border>
+                                <Border Grid.Column="4"
+                                        Style="{StaticResource Card}"
+                                        Padding="16,14">
+                                        <StackPanel>
+                                                <TextBlock Text="Disk Free (latest)"
+                                                           Style="{StaticResource LabelText}"/>
+                                                <TextBlock x:Name="PerfDisk"
+                                                           Text="—"
+                                                           FontSize="26"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource OkBrush}"
+                                                           Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                </Border>
+                        </Grid>
+
+                        <!-- Performance chart card -->
+                        <Border Style="{StaticResource Card}"
+                                Margin="0,0,0,20">
+                                <StackPanel>
+                                        <Border Style="{StaticResource CardHeader}">
+                                                <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0"
+                                                                   Text="Performance"
+                                                                   Style="{StaticResource SectionHeader}"/>
+                                                        <StackPanel Grid.Column="1"
+                                                                    Orientation="Horizontal"
+                                                                    VerticalAlignment="Center">
+                                                                <Button x:Name="PerfRange24h"
+                                                                        Content="24h"
+                                                                        Style="{StaticResource SmallPrimaryButton}"
+                                                                        Margin="0,0,4,0"
+                                                                        Tag="1"
+                                                                        Click="PerfRange_Click"/>
+                                                                <Button x:Name="PerfRange7d"
+                                                                        Content="7d"
+                                                                        Style="{StaticResource SmallButton}"
+                                                                        Margin="0,0,4,0"
+                                                                        Tag="7"
+                                                                        Click="PerfRange_Click"/>
+                                                                <Button x:Name="PerfRange30d"
+                                                                        Content="30d"
+                                                                        Style="{StaticResource SmallButton}"
+                                                                        Tag="30"
+                                                                        Click="PerfRange_Click"/>
+                                                        </StackPanel>
+                                                </Grid>
+                                        </Border>
+                                        <Grid Margin="12,8,12,4">
+                                                <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="12"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="12"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="Memory (MB)"
+                                                                   Style="{StaticResource LabelText}"
+                                                                   Margin="0,0,0,4"/>
+                                                        <Canvas x:Name="MemoryCanvas"
+                                                                Height="100"
+                                                                HorizontalAlignment="Stretch"
+                                                                ClipToBounds="True"
+                                                                SizeChanged="PerfCanvas_SizeChanged"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2">
+                                                        <TextBlock Text="CPU (%)"
+                                                                   Style="{StaticResource LabelText}"
+                                                                   Margin="0,0,0,4"/>
+                                                        <Canvas x:Name="CpuCanvas"
+                                                                Height="100"
+                                                                HorizontalAlignment="Stretch"
+                                                                ClipToBounds="True"
+                                                                SizeChanged="PerfCanvas_SizeChanged"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="4">
+                                                        <TextBlock Text="Disk Free (%)"
+                                                                   Style="{StaticResource LabelText}"
+                                                                   Margin="0,0,0,4"/>
+                                                        <Canvas x:Name="DiskCanvas"
+                                                                Height="100"
+                                                                HorizontalAlignment="Stretch"
+                                                                ClipToBounds="True"
+                                                                SizeChanged="PerfCanvas_SizeChanged"/>
+                                                </StackPanel>
+                                        </Grid>
+                                        <TextBlock x:Name="NoPerfText"
+                                                   Text="No performance data yet. Enable Performance Metrics in the Health Checks settings."
+                                                   Style="{StaticResource HintText}"
+                                                   Margin="16,4,16,12"/>
+                                </StackPanel>
+                        </Border>
+
+                        <!-- Recent activity card -->
+                        <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                        <Border Style="{StaticResource CardHeader}">
+                                                <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0"
+                                                                   Text="Recent Activity"
+                                                                   Style="{StaticResource SectionHeader}"/>
+                                                        <Button Grid.Column="1"
+                                                                Content="↺ Refresh"
+                                                                Style="{StaticResource SmallButton}"
+                                                                Click="Refresh_Click"/>
+                                                </Grid>
+                                        </Border>
+                                        <DataGrid x:Name="ActivityGrid"
+                                                  Margin="0"
+                                                  MinHeight="120"
+                                                  CanUserAddRows="False"
+                                                  CanUserDeleteRows="False"
+                                                  AutoGenerateColumns="False"
+                                                  IsReadOnly="True">
+                                                <DataGrid.Columns>
+                                                        <DataGridTextColumn Header="Timestamp"
+                                                                            Binding="{Binding Timestamp}"
+                                                                            Width="160"/>
+                                                        <DataGridTextColumn Header="Event"
+                                                                            Binding="{Binding Event}"
+                                                                            Width="80"/>
+                                                        <DataGridTextColumn Header="From"
+                                                                            Binding="{Binding From}"
+                                                                            Width="180"/>
+                                                        <DataGridTextColumn Header="To"
+                                                                            Binding="{Binding To}"
+                                                                            Width="180"/>
+                                                        <DataGridTextColumn Header="Subject"
+                                                                            Binding="{Binding Subject}"
+                                                                            Width="*"/>
+                                                        <DataGridTextColumn Header="Size"
+                                                                            Binding="{Binding Size}"
+                                                                            Width="75"/>
+                                                        <DataGridTextColumn Header="Duration"
+                                                                            Binding="{Binding Duration}"
+                                                                            Width="85"/>
+                                                        <DataGridTextColumn Header="Detail"
+                                                                            Binding="{Binding Detail}"
+                                                                            Width="200"/>
+                                                </DataGrid.Columns>
+                                        </DataGrid>
+                                        <TextBlock x:Name="NoDataText"
+                                                   Text="No metrics data available. The service must have processed at least one message."
+                                                   Style="{StaticResource HintText}"
+                                                   Margin="16,10,16,12"/>
+                                </StackPanel>
+                        </Border>
+
+                </StackPanel>
+        </ScrollViewer>
+</UserControl>

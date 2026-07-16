@@ -1,0 +1,60 @@
+# ── Build output ──────────────────────────────────────────────────────────────
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+TestResults/
+*.binlog
+
+# ── Generated user-help HTML (build-help.ps1; Markdig is cached in %TEMP%) ────
+docs/help/_site/
+
+# ── IDE / tooling ─────────────────────────────────────────────────────────────
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+# Personal VS Code workspace (references sibling folders + private auto-approve rules)
+*.code-workspace
+
+# ── AI-assistant local state (machine-specific permissions, never shared) ─────
+.claude/settings.local.json
+CLAUDE.local.md
+
+# ── Internal working documents (local only, not published) ────────────────────
+# CLAUDE.md must stay at the repo root (agent tooling loads it from there),
+# so it is ignored in place instead of moved into internal/.
+internal/
+CLAUDE.md
+
+# ── Local-only configuration (never commit credentials or machine state) ─────
+*.local.json
+appsettings.*.local.json
+livesettings.local.json
+
+# ── Runtime artifacts (the service writes these under ProgramData, but guard
+#    against accidental dev runs with a project working directory) ────────────
+src/**/config/
+src/**/data/
+src/**/logs/
+src/**/mail/
+*.log
+*.db
+*.db-shm
+*.db-wal
+*.eml
+
+# ── Installer / release artifacts (published via GitHub Releases, not git) ────
+*.msi
+*.exe
+*.wixpdb
+GraphMailerSetup-*
+
+# ── NuGet ─────────────────────────────────────────────────────────────────────
+*.nupkg
+packages/
+
+# ── OS noise ──────────────────────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini

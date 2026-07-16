@@ -1,0 +1,433 @@
+<UserControl x:Class="GraphMailer.ConfigTool.Views.AccessControlPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:h="clr-namespace:GraphMailer.ConfigTool.Helpers"
+             Background="{StaticResource BackgroundBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,24,24">
+
+            <!-- SMTP Users card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="SMTP Users"
+                                       Style="{StaticResource SectionHeader}"/>
+                            <Button Grid.Column="1"
+                                    Content="+ Add User"
+                                    Style="{StaticResource SmallPrimaryButton}"
+                                    Click="AddUser_Click"/>
+                        </Grid>
+                    </Border>
+                    <DataGrid x:Name="UsersGrid"
+                              Margin="0"
+                              MinHeight="80"
+                              MaxHeight="240"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Enabled"
+                                                    Width="70">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
+                                                  IsChecked="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  Checked="UserEnabled_Changed"
+                                                  Unchecked="UserEnabled_Changed"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header=""
+                                                    Width="28">
+                                <DataGridTemplateColumn.CellStyle>
+                                    <Style TargetType="DataGridCell"
+                                           BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                        <Setter Property="Padding" Value="0,4"/>
+                                    </Style>
+                                </DataGridTemplateColumn.CellStyle>
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="&#xE7BA;"
+                                                   FontFamily="Segoe MDL2 Assets"
+                                                   FontSize="13"
+                                                   Foreground="#FFC42B1C"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Visibility="{Binding PasswordWarningVisibility}"
+                                                   ToolTip="This user's password could not be decrypted with the current key and is shown blank. Edit the user to re-enter it, then save."/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Username"
+                                                Binding="{Binding Username}"
+                                                Width="180"/>
+                            <DataGridTextColumn Header="Display Name"
+                                                Binding="{Binding DisplayName}"
+                                                Width="*"/>
+                            <DataGridTemplateColumn Header=""
+                                                    Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center">
+                                            <Button Content="✎"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Margin="0,0,4,0"
+                                                    Click="EditUser_Click"/>
+                                            <Button Content="✕"
+                                                    Style="{StaticResource SmallDangerButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Click="RemoveUser_Click"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Allowed Senders card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Allowed Senders"
+                                           Style="{StaticResource SectionHeader}"/>
+                                <TextBlock Text="Leave empty to allow all authenticated users."
+                                           Style="{StaticResource HintText}"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="+ Add"
+                                    Style="{StaticResource SmallPrimaryButton}"
+                                    Click="AddSender_Click"/>
+                        </Grid>
+                    </Border>
+                    <DataGrid x:Name="SendersGrid"
+                              Margin="0"
+                              MinHeight="40"
+                              MaxHeight="240"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Address / Pattern"
+                                                Binding="{Binding Pattern}"
+                                                Width="*"/>
+                            <DataGridTemplateColumn Header=""
+                                                    Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center">
+                                            <Button Content="✎"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Margin="0,0,4,0"
+                                                    Click="EditSender_Click"/>
+                                            <Button Content="✕"
+                                                    Style="{StaticResource SmallDangerButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Click="RemoveSender_Click"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Blocked Senders card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Blocked Senders"
+                                           Style="{StaticResource SectionHeader}"/>
+                                <TextBlock Text="MAIL FROM addresses or patterns that are always rejected. Evaluated after the allow list."
+                                           Style="{StaticResource HintText}"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="+ Add"
+                                    Style="{StaticResource SmallPrimaryButton}"
+                                    Click="AddBlockedSender_Click"/>
+                        </Grid>
+                    </Border>
+                    <DataGrid x:Name="BlockedSendersGrid"
+                              Margin="0"
+                              MinHeight="40"
+                              MaxHeight="240"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Address / Pattern"
+                                                Binding="{Binding Pattern}"
+                                                Width="*"/>
+                            <DataGridTemplateColumn Header=""
+                                                    Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center">
+                                            <Button Content="✎"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Margin="0,0,4,0"
+                                                    Click="EditBlockedSender_Click"/>
+                                            <Button Content="✕"
+                                                    Style="{StaticResource SmallDangerButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Click="RemoveBlockedSender_Click"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Microsoft 365 Sender Validation card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Microsoft 365 Sender Validation"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <StackPanel Margin="16,12,16,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                            </Grid.RowDefinitions>
+
+                            <CheckBox Grid.Row="0"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="SvEnabled"
+                                      Checked="SvField_Changed"
+                                      Unchecked="SvField_Changed"/>
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="1"
+                                       Text="Validate senders against the Microsoft 365 tenant"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="1"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="SvFailClosed"
+                                      IsEnabled="{Binding IsChecked, ElementName=SvEnabled}"
+                                      Checked="SvField_Changed"
+                                      Unchecked="SvField_Changed"/>
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="1"
+                                       Text="Reject senders when validation is unavailable (fail-closed)"
+                                       Style="{StaticResource BodyText}"
+                                       ToolTip="Default off (fail-open): when Graph is unreachable or the permission is missing, senders are accepted unvalidated and an admin notification is sent.&#x0a;Enable to reject with 550 instead — note that an Entra outage then stops mail acceptance."
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <TextBlock Text="Rejects MAIL FROM addresses that are not known in the tenant (users, shared mailboxes, aliases) with an immediate 550 instead of failing later at Graph delivery. Aliases are resolved to the mailbox owner for sending. Requires the User.Read.All application permission on the Entra app registration."
+                                   Style="{StaticResource HintText}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,12"/>
+
+                        <StackPanel HorizontalAlignment="Left"
+                                    IsEnabled="{Binding IsChecked, ElementName=SvEnabled}">
+                            <TextBlock Text="Refresh interval (minutes)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="SvRefreshInterval"
+                                     Width="200"
+                                     Text="60"
+                                     h:NumericField.Min="1"
+                                     h:NumericField.Max="1440"
+                                     ToolTip="How often the full tenant directory is re-synced (minutes).&#x0a;New mailboxes are also found on demand between syncs.&#x0a;Range: 1 – 1440 min (24 h)."
+                                     TextChanged="SvText_Changed"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,12,0,0">
+                            <Button x:Name="SvSyncNow"
+                                    Content="&#x27F2; Sync now"
+                                    Style="{StaticResource SmallButton}"
+                                    IsEnabled="False"
+                                    ToolTip="Asks the running service to re-sync the tenant directory immediately&#x0a;(picked up within a few seconds).&#x0a;Available while validation is enabled and the service is running."
+                                    Margin="0,0,12,0"
+                                    Click="SvSyncNow_Click"/>
+                            <TextBlock x:Name="SvSyncStatus"
+                                       Style="{StaticResource HintText}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Allowed Recipients card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Allowed Recipients"
+                                           Style="{StaticResource SectionHeader}"/>
+                                <TextBlock Text="Leave empty to allow any recipient domain."
+                                           Style="{StaticResource HintText}"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="+ Add"
+                                    Style="{StaticResource SmallPrimaryButton}"
+                                    Click="AddRecipient_Click"/>
+                        </Grid>
+                    </Border>
+                    <DataGrid x:Name="RecipientsGrid"
+                              Margin="0"
+                              MinHeight="40"
+                              MaxHeight="240"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Address / Pattern"
+                                                Binding="{Binding Pattern}"
+                                                Width="*"/>
+                            <DataGridTemplateColumn Header=""
+                                                    Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center">
+                                            <Button Content="✎"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Margin="0,0,4,0"
+                                                    Click="EditRecipient_Click"/>
+                                            <Button Content="✕"
+                                                    Style="{StaticResource SmallDangerButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Click="RemoveRecipient_Click"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Blocked Recipients card -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Blocked Recipients"
+                                           Style="{StaticResource SectionHeader}"/>
+                                <TextBlock Text="RCPT TO addresses or patterns that are always rejected. Evaluated after the allow list."
+                                           Style="{StaticResource HintText}"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="+ Add"
+                                    Style="{StaticResource SmallPrimaryButton}"
+                                    Click="AddBlockedRecipient_Click"/>
+                        </Grid>
+                    </Border>
+                    <DataGrid x:Name="BlockedRecipientsGrid"
+                              Margin="0"
+                              MinHeight="40"
+                              MaxHeight="240"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Address / Pattern"
+                                                Binding="{Binding Pattern}"
+                                                Width="*"/>
+                            <DataGridTemplateColumn Header=""
+                                                    Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center">
+                                            <Button Content="✎"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Margin="0,0,4,0"
+                                                    Click="EditBlockedRecipient_Click"/>
+                                            <Button Content="✕"
+                                                    Style="{StaticResource SmallDangerButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Click="RemoveBlockedRecipient_Click"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

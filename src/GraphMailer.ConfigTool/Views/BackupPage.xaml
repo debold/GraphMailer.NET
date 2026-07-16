@@ -1,0 +1,253 @@
+<UserControl x:Class="GraphMailer.ConfigTool.Views.BackupPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:h="clr-namespace:GraphMailer.ConfigTool.Helpers"
+             Background="{StaticResource BackgroundBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,24,24">
+
+            <!-- Automatic backups -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <StackPanel>
+                            <TextBlock Text="Automatic Backups" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text="The service writes an encrypted, portable backup of the configuration (including secrets) on a schedule. Backups are protected by a separate password and can be restored on any machine."
+                                       Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Margin="16,12,16,16">
+
+                        <!-- Enable toggle (always active) -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="200"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Enable scheduled backups"
+                                       Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <CheckBox  Grid.Column="2" x:Name="EnabledToggle"
+                                       Style="{StaticResource ToggleSwitch}"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center"
+                                       Checked="Enabled_Changed" Unchecked="Enabled_Changed"/>
+                        </Grid>
+
+                        <!-- Schedule fields (greyed + disabled when not enabled) -->
+                        <Grid x:Name="ScheduleFields">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="200"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Frequency"
+                                       Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <ComboBox  Grid.Row="0" Grid.Column="2" x:Name="FrequencyBox"
+                                       Width="160" HorizontalAlignment="Left"
+                                       SelectionChanged="Frequency_Changed">
+                                <ComboBoxItem Content="Daily"/>
+                                <ComboBoxItem Content="Weekly"/>
+                            </ComboBox>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" x:Name="DayOfWeekLabel" Text="Day of week"
+                                       Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <ComboBox  Grid.Row="2" Grid.Column="2" x:Name="DayOfWeekBox"
+                                       Width="160" HorizontalAlignment="Left"
+                                       SelectionChanged="AnyCombo_Changed">
+                                <ComboBoxItem Content="Sunday"/>
+                                <ComboBoxItem Content="Monday"/>
+                                <ComboBoxItem Content="Tuesday"/>
+                                <ComboBoxItem Content="Wednesday"/>
+                                <ComboBoxItem Content="Thursday"/>
+                                <ComboBoxItem Content="Friday"/>
+                                <ComboBoxItem Content="Saturday"/>
+                            </ComboBox>
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Time of day"
+                                       Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Row="4" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBox x:Name="HourBox" Width="48" MaxLength="2"
+                                         h:NumericField.Min="0" h:NumericField.Max="23"
+                                         ToolTip="Hour (0–23)" TextChanged="AnyField_Changed"/>
+                                <TextBlock Text=":" FontSize="16" Margin="6,0,6,0" VerticalAlignment="Center"/>
+                                <TextBox x:Name="MinuteBox" Width="48" MaxLength="2"
+                                         h:NumericField.Min="0" h:NumericField.Max="59"
+                                         ToolTip="Minute (0–59)" TextChanged="AnyField_Changed"/>
+                                <TextBlock Text="(24-hour, HH:mm)" Style="{StaticResource HintText}"
+                                           VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="6" Grid.Column="0" Text="Keep last N backups"
+                                       Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Row="6" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBox x:Name="MaxBackupsBox" Width="64" VerticalAlignment="Center"
+                                         h:NumericField.Min="1" h:NumericField.Max="365"
+                                         ToolTip="Older backups beyond this count are deleted (rotation). Range 1–365."
+                                         TextChanged="AnyField_Changed"/>
+                                <StackPanel Margin="4,0,0,0" VerticalAlignment="Center">
+                                    <Button x:Name="MaxUpButton" Content="&#x25B2;" FontSize="8"
+                                            Width="20" Height="13" Padding="0" Click="MaxUp_Click"/>
+                                    <Button x:Name="MaxDownButton" Content="&#x25BC;" FontSize="8"
+                                            Width="20" Height="13" Padding="0" Click="MaxDown_Click"/>
+                                </StackPanel>
+                                <TextBlock Text="(1–365)" Style="{StaticResource HintText}"
+                                           VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="8" Grid.Column="0" Text="Backup directory"
+                                       Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <Grid Grid.Row="8" Grid.Column="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" x:Name="DirectoryBox" IsReadOnly="True"
+                                         VerticalAlignment="Center"
+                                         ToolTip="Where backups are written. Defaults to %ProgramData%\GraphMailer\backups."/>
+                                <Button Grid.Column="1" Content="Browse…"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Margin="8,0,0,0" Click="BrowseDir_Click"/>
+                            </Grid>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Backup password -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <StackPanel>
+                            <TextBlock Text="Backup Password" Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text="A SEPARATE password that encrypts the backup file (not your Microsoft 365 secret). Required for scheduled and manual backups — store it safely; it is needed to restore."
+                                       Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Backup password"
+                                   Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                        <PasswordBox Grid.Row="0" Grid.Column="2" x:Name="PasswordBoxCtl"
+                                     PasswordChanged="Password_Changed"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Confirm password"
+                                   Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                        <PasswordBox Grid.Row="2" Grid.Column="2" x:Name="PasswordConfirmCtl"
+                                     PasswordChanged="Password_Changed"/>
+                        <TextBlock Grid.Row="3" Grid.Column="2" x:Name="PasswordError"
+                                   Foreground="{StaticResource DangerBrush}" FontSize="12"
+                                   Margin="0,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Email backups -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Email Backups" Style="{StaticResource SectionHeader}"/>
+                                <TextBlock Text="Email each scheduled backup to the recipients below. Uses the sender address from the Notifications page."
+                                           Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="+ Add"
+                                    Style="{StaticResource SmallPrimaryButton}"
+                                    Click="AddRecipient_Click"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel Margin="16,12,16,12">
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="200"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Email backups"
+                                       Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <CheckBox  Grid.Column="2" x:Name="EmailEnabledToggle"
+                                       Style="{StaticResource ToggleSwitch}"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center"
+                                       Checked="EmailEnabled_Changed" Unchecked="EmailEnabled_Changed"/>
+                        </Grid>
+                        <TextBlock x:Name="EmailError"
+                                   Foreground="{StaticResource DangerBrush}" FontSize="12"
+                                   Margin="0,0,0,8" TextWrapping="Wrap" Visibility="Collapsed"/>
+                        <DataGrid x:Name="RecipientsGrid"
+                                  MinHeight="40" MaxHeight="200"
+                                  CanUserAddRows="False" CanUserDeleteRows="False"
+                                  AutoGenerateColumns="False" IsReadOnly="True">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Email Address" Binding="{Binding Pattern}" Width="*"/>
+                                <DataGridTemplateColumn Header="" Width="90">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                <Button Content="&#x270E;" Style="{StaticResource SmallButton}"
+                                                        Padding="6,2" Height="22" Margin="0,0,4,0"
+                                                        Click="EditRecipient_Click"/>
+                                                <Button Content="&#x2715;" Style="{StaticResource SmallDangerButton}"
+                                                        Padding="6,2" Height="22"
+                                                        Click="RemoveRecipient_Click"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Manual backup & restore -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Manual Backup &amp; Restore" Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <StackPanel Margin="16,14,16,16">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="CreateNowButton" Content="Create backup now"
+                                    Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"
+                                    Click="CreateNow_Click"/>
+                            <Button x:Name="RestoreButton" Content="Restore from file…"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Click="Restore_Click"/>
+                        </StackPanel>
+                        <TextBlock x:Name="ActionFeedback"
+                                   Style="{StaticResource HintText}"
+                                   TextWrapping="Wrap" Margin="0,10,0,0"
+                                   Visibility="Collapsed"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
