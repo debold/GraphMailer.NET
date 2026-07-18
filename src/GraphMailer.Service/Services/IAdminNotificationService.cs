@@ -38,6 +38,13 @@ internal interface IAdminNotificationService
     /// </summary>
     Task NotifyBackupResultAsync(bool succeeded, string detail, CancellationToken ct = default);
     Task NotifyGraphApiRestoredAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Informs the admin that the weekly update check found a newer GraphMailer release.
+    /// The caller (<see cref="UpdateCheck.UpdateCheckService"/>) deduplicates to one mail
+    /// per new version.
+    /// </summary>
+    Task NotifyUpdateAvailableAsync(string currentVersion, string latestVersion, string? releaseUrl, CancellationToken ct = default);
     Task NotifyPortOutageAsync(int port, string reason, CancellationToken ct = default);
     Task NotifyPortRestoredAsync(int port, CancellationToken ct = default);
     Task NotifyServiceStartedAsync(CancellationToken ct = default);

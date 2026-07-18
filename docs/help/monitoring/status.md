@@ -37,6 +37,28 @@ to manage it:
 > **all** mail relaying — connecting applications will be unable to send until it is running again
 > (their mail is typically retried on their side, not queued by GraphMailer while it is down).
 
+## Software Update
+
+Shows the installed GraphMailer version and — when the weekly update check on the
+[Health Checks](../configuration/health-checks.html) page is enabled — the latest release published
+on GitHub, with a badge (*Up to date* / *Update available*), the time of the last and next check,
+and a **Release notes** link.
+
+| Element | Meaning |
+|---|---|
+| Installed version | The version of this installation. |
+| Latest release | The newest release found on GitHub by the last check. |
+| Check now | Asks the running service to query GitHub immediately (works even while the weekly check is disabled). |
+
+> [!NOTE]
+> Updates are never installed automatically — download the new release from GitHub and install it
+> yourself. An optional email alert for new releases can be enabled on the
+> [Notifications](../configuration/notifications.html) page.
+
+While an update is available, a small green badge with the new version number also appears next to
+the GraphMailer name at the top of the sidebar — visible on every page. Clicking it opens this
+Status page.
+
 ## System Health
 
 A table of the same self-checks configured on the [Health Checks](../configuration/health-checks.html)

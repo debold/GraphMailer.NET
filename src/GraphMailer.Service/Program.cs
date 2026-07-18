@@ -142,6 +142,7 @@ try
     builder.Services.Configure<DiskSpaceMonitoringOptions>(builder.Configuration.GetSection(DiskSpaceMonitoringOptions.SectionName));
     builder.Services.Configure<PortMonitoringOptions>(builder.Configuration.GetSection(PortMonitoringOptions.SectionName));
     builder.Services.Configure<GraphApiMonitoringOptions>(builder.Configuration.GetSection(GraphApiMonitoringOptions.SectionName));
+    builder.Services.Configure<UpdateCheckOptions>(builder.Configuration.GetSection(UpdateCheckOptions.SectionName));
     builder.Services.Configure<MetricsOptions>(builder.Configuration.GetSection(MetricsOptions.SectionName));
     builder.Services.Configure<AdminNotificationsOptions>(builder.Configuration.GetSection(AdminNotificationsOptions.SectionName));
     builder.Services.Configure<NdrOptions>(builder.Configuration.GetSection(NdrOptions.SectionName));
@@ -221,6 +222,11 @@ try
     builder.Services.AddHostedService<DiskSpaceMonitoringService>();
     builder.Services.AddHostedService<PortMonitoringService>();
     builder.Services.AddHostedService<GraphApiMonitoringService>();
+
+    // Opt-in weekly GitHub release check (status file for the ConfigTool + optional admin mail)
+    builder.Services.AddSingleton<GraphMailer.Service.Services.UpdateCheck.IUpdateChecker,
+        GraphMailer.Service.Services.UpdateCheck.GitHubUpdateChecker>();
+    builder.Services.AddHostedService<GraphMailer.Service.Services.UpdateCheck.UpdateCheckService>();
 
     builder.Services.AddHostedService<Worker>();
 

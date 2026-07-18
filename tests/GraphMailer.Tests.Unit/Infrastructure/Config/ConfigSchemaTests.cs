@@ -30,7 +30,7 @@ public sealed class ConfigSchemaTests
     }
 
     [Fact]
-    public void Migrate_V1_ToV2_IsAdditiveOnly_ContentUnchangedExceptVersion()
+    public void Migrate_V1_ToCurrent_IsAdditiveOnly_ContentUnchangedExceptVersion()
     {
         // v2 only introduced Certificate.FailClosed (default false) — the migration is a
         // pure version stamp; existing content must survive byte-identical.
@@ -39,10 +39,27 @@ public sealed class ConfigSchemaTests
         var changed = ConfigSchema.Migrate(root);
 
         changed.Should().BeTrue();
-        ConfigSchema.ReadVersion(root).Should().Be(2);
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
         root["Certificate"]!.AsObject()["SubjectName"]!.GetValue<string>().Should().Be("smtp.local");
         root["Certificate"]!.AsObject().ContainsKey("FailClosed").Should().BeFalse(
             "the absent key is valid — the options binder falls back to the default (false)");
+    }
+
+    [Fact]
+    public void Migrate_V2_ToV3_IsAdditiveOnly_ContentUnchangedExceptVersion()
+    {
+        // v3 only introduced UpdateCheck.Enabled and the UpdateAvailable notification type
+        // (both default false) — the migration is a pure version stamp; existing content
+        // must survive byte-identical.
+        var root = JsonNode.Parse("""{ "SchemaVersion": 2, "Certificate": { "SubjectName": "smtp.local" } }""")!.AsObject();
+
+        var changed = ConfigSchema.Migrate(root);
+
+        changed.Should().BeTrue();
+        ConfigSchema.ReadVersion(root).Should().Be(3);
+        root["Certificate"]!.AsObject()["SubjectName"]!.GetValue<string>().Should().Be("smtp.local");
+        root.ContainsKey("UpdateCheck").Should().BeFalse(
+            "the absent key is valid — the options binder falls back to the default (disabled)");
     }
 
     [Fact]

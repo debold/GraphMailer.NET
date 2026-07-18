@@ -61,6 +61,9 @@ public sealed class AdminNotificationTypesOptions
     public NotificationTypeOptions ConfigDecryptionError { get; init; } = new();
     public NotificationTypeOptions BackupResult { get; init; } = new();
     public NotificationTypeOptions ServiceStartStopAlert { get; init; } = new() { Enabled = false };
+
+    /// <summary>E-mail when the weekly update check finds a newer release (opt-in, one mail per new version).</summary>
+    public NotificationTypeOptions UpdateAvailable { get; init; } = new() { Enabled = false };
 }
 
 public sealed class AdminNotificationsOptions

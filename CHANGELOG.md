@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+#### Weekly update check with admin notification (opt-in)
+- The service can check the GraphMailer releases on GitHub once a week and report a newer
+  version. Fully opt-in: **Health Checks → Update Check** in the ConfigTool (config key
+  `UpdateCheck.Enabled`, default off) — while disabled, no request leaves the machine. The
+  check downloads only the public release info from `api.github.com`; nothing about the
+  installation is sent, and nothing is installed automatically. A failed check (no internet,
+  proxy) is retried the next day instead of waiting a week.
+- **Status page: new "Software Update" card** showing the installed version, the latest
+  release (with *Up to date* / *Update available* badge and release-notes link), last/next
+  check time, and a **Check now** button that asks the running service for an immediate
+  check (file-based IPC: `data\update-status.json` + `data\update-check.request`).
+- **New admin notification type "New GraphMailer version available"** (Notifications page,
+  default off): one email per new release — not a weekly reminder — with both versions and
+  the release link.
+- **Sidebar update badge**: while an update is available, a small green pill with the new
+  version number appears next to the GraphMailer name at the top of the sidebar — visible
+  on every page; clicking it opens the Status page.
+- Config schema bumped to **v3** (purely additive: `UpdateCheck.Enabled`,
+  `AdminNotifications.NotificationTypes.UpdateAvailable.Enabled`).
+
 ## 1.2.0.198 — 2026-07-18
 
 ### Fixed

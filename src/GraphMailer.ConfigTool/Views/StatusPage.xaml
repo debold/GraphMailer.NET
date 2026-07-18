@@ -199,6 +199,76 @@
                 </StackPanel>
             </Border>
 
+            <!-- Software Update card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,20">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Software Update"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,14,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="0,0,0,6">
+                                <TextBlock Text="Installed version:"
+                                           Style="{StaticResource LabelText}"
+                                           Width="120"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock x:Name="UpdInstalledVersion"
+                                           Text="—"
+                                           Style="{StaticResource BodyText}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="0,0,0,6">
+                                <TextBlock Text="Latest release:"
+                                           Style="{StaticResource LabelText}"
+                                           Width="120"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock x:Name="UpdLatestVersion"
+                                           Text="—"
+                                           Style="{StaticResource BodyText}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,10,0"/>
+                                <Border x:Name="UpdStatusBadge"
+                                        CornerRadius="10"
+                                        Padding="10,3"
+                                        Background="#FFF0F0F0"
+                                        Visibility="Collapsed"
+                                        VerticalAlignment="Center">
+                                    <TextBlock x:Name="UpdStatusText"
+                                               Text=""
+                                               FontSize="12"
+                                               Foreground="#FF616161"/>
+                                </Border>
+                                <TextBlock x:Name="UpdReleaseLink"
+                                           Visibility="Collapsed"
+                                           VerticalAlignment="Center"
+                                           Margin="10,0,0,0">
+                                    <Hyperlink Click="UpdReleaseLink_Click">Release notes</Hyperlink>
+                                </TextBlock>
+                            </StackPanel>
+                            <TextBlock x:Name="UpdDetail"
+                                       Style="{StaticResource HintText}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1"
+                                    VerticalAlignment="Top">
+                            <Button x:Name="BtnUpdateCheck"
+                                    Content="Check now"
+                                    Style="{StaticResource SecondaryButton}"
+                                    ToolTip="Asks the running service to query the GitHub releases immediately."
+                                    Click="BtnUpdateCheck_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- System Health card -->
             <Border Style="{StaticResource Card}">
                 <StackPanel>

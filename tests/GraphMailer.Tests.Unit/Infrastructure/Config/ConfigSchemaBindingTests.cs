@@ -544,6 +544,30 @@ public sealed class ConfigSchemaBindingTests : IDisposable
     }
 
     // =========================================================================
+    // UpdateCheck
+    // =========================================================================
+
+    [Fact]
+    public void Save_UpdateCheckEnabled_BindsToUpdateCheckEnabled()
+    {
+        _sut.Save(new ConfigDocument { Monitoring = new() { UpdateCheckEnabled = true } });
+
+        var opts = Bind<UpdateCheckOptions>(LoadServiceConfig(), UpdateCheckOptions.SectionName);
+
+        opts.Enabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Save_NotifUpdateAvailable_True_BindsToUpdateAvailableEnabled_True()
+    {
+        _sut.Save(new ConfigDocument { Notification = new() { NotifUpdateAvailable = true } });
+
+        var notif = Bind<AdminNotificationsOptions>(LoadServiceConfig(), AdminNotificationsOptions.SectionName);
+
+        notif.NotificationTypes.UpdateAvailable.Enabled.Should().BeTrue();
+    }
+
+    // =========================================================================
     // Backup
     // =========================================================================
 

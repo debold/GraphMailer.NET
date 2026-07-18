@@ -136,6 +136,49 @@ public sealed class AdminNotificationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task NotifyUpdateAvailable_DefaultOptions_DoesNotSend()
+    {
+        // The UpdateAvailable type is opt-in: even with admin notifications enabled the
+        // default must stay silent.
+        var svc = CreateService();
+        await svc.NotifyUpdateAvailableAsync("1.2.0.196", "1.3.0.210", "https://github.com/x/releases/tag/v1.3.0.210");
+        await _graph.DidNotReceive().SendNotificationAsync(
+            Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task NotifyUpdateAvailable_TypeEnabled_Sends_WithVersionsAndUrl()
+    {
+        var svc = CreateService(new AdminNotificationsOptions
+        {
+            Enabled = true,
+            SenderAddress = "admin@contoso.com",
+            RecipientAddresses = ["ops@contoso.com"],
+            NotificationTypes = new AdminNotificationTypesOptions { UpdateAvailable = new() { Enabled = true } },
+        });
+        await svc.NotifyUpdateAvailableAsync("1.2.0.196", "1.3.0.210", "https://github.com/x/releases/tag/v1.3.0.210");
+        await _graph.Received(1).SendNotificationAsync(
+            "admin@contoso.com", Arg.Any<IEnumerable<string>>(),
+            Arg.Is<string>(s => s.Contains("Update available") && s.Contains("1.3.0.210")),
+            Arg.Is<string>(b => b.Contains("1.2.0.196") && b.Contains("1.3.0.210") && b.Contains("https://github.com/x/releases/tag/v1.3.0.210")));
+    }
+
+    [Fact]
+    public async Task NotifyUpdateAvailable_MasterDisabled_DoesNotSend()
+    {
+        var svc = CreateService(new AdminNotificationsOptions
+        {
+            Enabled = false,
+            SenderAddress = "admin@contoso.com",
+            RecipientAddresses = ["ops@contoso.com"],
+            NotificationTypes = new AdminNotificationTypesOptions { UpdateAvailable = new() { Enabled = true } },
+        });
+        await svc.NotifyUpdateAvailableAsync("1.2.0.196", "1.3.0.210", null);
+        await _graph.DidNotReceive().SendNotificationAsync(
+            Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    [Fact]
     public async Task NotifyGraphApiRestored_Enabled_Sends()
     {
         var svc = CreateService();

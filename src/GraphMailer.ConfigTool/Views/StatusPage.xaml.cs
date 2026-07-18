@@ -14,6 +14,7 @@ using Microsoft.Data.Sqlite;
 using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Infrastructure;
 using GraphMailer.Service.Infrastructure.Encryption;
+using GraphMailer.Service.Services.UpdateCheck;
 using static GraphMailer.ConfigTool.Helpers.ServiceControl;
 
 namespace GraphMailer.ConfigTool.Views;
@@ -110,6 +111,88 @@ public partial class StatusPage : UserControl
 
         UpdateSecretsBanner(healthRows.FirstOrDefault(r => r.Component == SecretsComponent));
         UpdateServiceStatus();
+        UpdateSoftwareUpdateCard();
+    }
+
+    // ── Software Update card ─────────────────────────────────────────────
+
+    private string? _releaseUrl;
+
+    private void UpdateSoftwareUpdateCard()
+    {
+        UpdInstalledVersion.Text = BuildInfo.FileVersion;
+
+        var status = UpdateCheckStatus.TryLoad(UpdateCheckStatus.StatusFilePath);
+        var pending = File.Exists(UpdateCheckStatus.CheckRequestFilePath);
+        _releaseUrl = status?.ReleaseUrl;
+        UpdReleaseLink.Visibility = string.IsNullOrEmpty(_releaseUrl) ? Visibility.Collapsed : Visibility.Visible;
+
+        if (status?.LatestVersion is null)
+        {
+            UpdLatestVersion.Text = "—";
+            UpdStatusBadge.Visibility = Visibility.Collapsed;
+            UpdDetail.Text = pending
+                ? "Check requested — waiting for the service to pick it up…"
+                : status?.LastError is { } err
+                    ? $"Last check failed: {err} (checked {LocalTime(status.LastCheckUtc)})"
+                    : "No check has run yet. Enable the weekly update check on the Health Checks page or press \"Check now\".";
+            return;
+        }
+
+        UpdLatestVersion.Text = status.LatestVersion;
+        UpdStatusBadge.Visibility = Visibility.Visible;
+        UpdStatusText.Text = status.UpdateAvailable ? "Update available" : "Up to date";
+        (UpdStatusBadge.Background, UpdStatusText.Foreground) = status.UpdateAvailable
+            ? ((Brush)new SolidColorBrush(Color.FromRgb(0xFF, 0xF4, 0xCE)), new SolidColorBrush(Color.FromRgb(0x7A, 0x57, 0x00)))
+            : (new SolidColorBrush(Color.FromRgb(0xDF, 0xF6, 0xDD)), new SolidColorBrush(Color.FromRgb(0x0F, 0x7B, 0x0F)));
+
+        string detail;
+        if (status.LastError is { } error)
+        {
+            detail = $"Last check failed: {error} ({LocalTime(status.LastCheckUtc)}) — showing the previous result.";
+        }
+        else
+        {
+            detail = $"Last check: {LocalTime(status.LastCheckUtc)}";
+            if (status.NextCheckUtc is { } next)
+                detail += $" — next scheduled check: {LocalTime(next)}";
+        }
+        if (pending)
+            detail += " — check requested…";
+        UpdDetail.Text = detail;
+    }
+
+    private static string LocalTime(DateTime? utc)
+        => utc is { } u ? DateTime.SpecifyKind(u, DateTimeKind.Utc).ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "—";
+
+    private void BtnUpdateCheck_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(UpdateCheckStatus.CheckRequestFilePath)!);
+            File.WriteAllText(UpdateCheckStatus.CheckRequestFilePath, DateTime.UtcNow.ToString("O"));
+            var (state, _) = QueryServiceState();
+            UpdDetail.Text = state == "RUNNING"
+                ? "Check requested — the result appears here within a few seconds."
+                : "Check requested — the service is not running; the check will run once it starts.";
+        }
+        catch (Exception ex)
+        {
+            UpdDetail.Text = $"Could not request a check: {ex.Message}";
+        }
+    }
+
+    private void UpdReleaseLink_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_releaseUrl)) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo(_releaseUrl) { UseShellExecute = true });
+        }
+        catch
+        {
+            // browser launch failure is not actionable here
+        }
     }
 
     private static long QueryScalar(SqliteConnection conn, string sql, string param)

@@ -52,6 +52,7 @@ public partial class NotificationsPage : UserControl
         NotifPortDown.IsChecked = doc.Notification.NotifPortDown;
         NotifServiceStartStop.IsChecked = doc.Notification.NotifServiceStartStop;
         NotifBackup.IsChecked = doc.Notification.NotifBackup;
+        NotifUpdateAvailable.IsChecked = doc.Notification.NotifUpdateAvailable;
         NdrEnabled.IsChecked = doc.Ndr.NdrEnabled;
         NdrNotifySender.IsChecked = doc.Ndr.NdrNotifySender;
         NdrNotifyAdmin.IsChecked = doc.Ndr.NdrNotifyAdmin;
@@ -101,6 +102,7 @@ public partial class NotificationsPage : UserControl
         doc.Notification.NotifPortDown = NotifPortDown.IsChecked == true;
         doc.Notification.NotifServiceStartStop = NotifServiceStartStop.IsChecked == true;
         doc.Notification.NotifBackup = NotifBackup.IsChecked == true;
+        doc.Notification.NotifUpdateAvailable = NotifUpdateAvailable.IsChecked == true;
         doc.Ndr.NdrEnabled = NdrEnabled.IsChecked == true;
         doc.Ndr.NdrNotifySender = NdrNotifySender.IsChecked == true;
         doc.Ndr.NdrNotifyAdmin = NdrNotifyAdmin.IsChecked == true;

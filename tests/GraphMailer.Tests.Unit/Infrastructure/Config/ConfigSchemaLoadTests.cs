@@ -126,6 +126,26 @@ public sealed class ConfigSchemaLoadTests : IDisposable
     }
 
     // =========================================================================
+    // UpdateCheck  (SectionName = "UpdateCheck")
+    // =========================================================================
+
+    [Fact]
+    public void Load_UpdateCheck_Enabled_AppearsInDocMonitoringUpdateCheckEnabled()
+    {
+        WriteJson("""{ "UpdateCheck": { "Enabled": true } }""");
+
+        _sut.Load().Monitoring.UpdateCheckEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Load_UpdateCheck_Absent_DefaultsToDisabled()
+    {
+        WriteJson("""{ "Smtp": { "Banner": "test" } }""");
+
+        _sut.Load().Monitoring.UpdateCheckEnabled.Should().BeFalse();
+    }
+
+    // =========================================================================
     // AdminNotifications  (SectionName = "AdminNotifications")
     // Maps to ConfigDocument.NotificationSection
     // =========================================================================
@@ -466,6 +486,22 @@ public sealed class ConfigSchemaLoadTests : IDisposable
         WriteJson("""{ "AdminNotifications": { "NotificationTypes": { "BackupResult": { "Enabled": false } } } }""");
 
         _sut.Load().Notification.NotifBackup.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Load_AdminNotifications_UpdateAvailable_Enabled_AppearsInDocNotifUpdateAvailable_True()
+    {
+        WriteJson("""{ "AdminNotifications": { "NotificationTypes": { "UpdateAvailable": { "Enabled": true } } } }""");
+
+        _sut.Load().Notification.NotifUpdateAvailable.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Load_AdminNotifications_UpdateAvailable_Absent_DefaultsToDisabled()
+    {
+        WriteJson("""{ "AdminNotifications": { "NotificationTypes": { } } }""");
+
+        _sut.Load().Notification.NotifUpdateAvailable.Should().BeFalse();
     }
 
     [Fact]

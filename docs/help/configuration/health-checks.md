@@ -53,6 +53,23 @@ required permissions are present.
 > This check is what warns you when admin consent was revoked, a client secret expired, or a
 > permission is missing — long before users notice mail failing. Keep it enabled.
 
+## Update Check
+
+Once a week, queries the GraphMailer releases on GitHub (`api.github.com`) and reports whether a
+newer version is available. The result appears in the **Software Update** card on the
+[Status](../monitoring/status.html) page, which also offers a **Check now** button for an immediate
+check. An optional admin email for new releases can be enabled on the
+[Notifications](notifications.html) page (one email per new version).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Check for updates | Off | Master switch for the weekly release check. While disabled, no request leaves the machine. |
+
+> [!NOTE]
+> The check only downloads the public release information from GitHub — it sends no data about
+> your installation, and it never installs anything automatically. A failed check (e.g. no
+> internet access) is retried the next day.
+
 ## Metrics Storage
 
 Records email and performance statistics to the local SQLite database that feeds the

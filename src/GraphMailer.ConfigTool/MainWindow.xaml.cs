@@ -11,6 +11,7 @@ using GraphMailer.Service.Infrastructure;
 using GraphMailer.Service.Infrastructure.Backup;
 using GraphMailer.Service.Infrastructure.Config;
 using GraphMailer.Service.Infrastructure.Encryption;
+using GraphMailer.Service.Services.UpdateCheck;
 
 namespace GraphMailer.ConfigTool;
 
@@ -302,6 +303,30 @@ public partial class MainWindow : Window
         ServiceStatusText.Text = state.Label;
         ServiceSinceText.Text = state.Sub;
         ServiceStatusDot.Fill = new SolidColorBrush(state.Dot);
+
+        RefreshUpdateBadge();
+    }
+
+    /// <summary>
+    /// Shows the green update pill in the sidebar header while data\update-status.json
+    /// reports a newer release (written by the service's weekly update check).
+    /// Piggybacks on the 5s status poller — the read is a tiny local file.
+    /// </summary>
+    private void RefreshUpdateBadge()
+    {
+        var status = UpdateCheckStatus.TryLoad(UpdateCheckStatus.StatusFilePath);
+        if (status is { UpdateAvailable: true, LatestVersion: not null })
+        {
+            UpdateBadgeText.Text = $"↑ {status.LatestVersion}";
+            UpdateBadge.ToolTip =
+                $"Update available: {status.LatestVersion} (installed: {BuildInfo.FileVersion}).\n" +
+                "Click for details on the Status page.";
+            UpdateBadge.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            UpdateBadge.Visibility = Visibility.Collapsed;
+        }
     }
 
     // ── Navigation handlers ──────────────────────────────────────────────────

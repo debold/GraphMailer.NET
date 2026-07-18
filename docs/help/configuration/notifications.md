@@ -60,9 +60,15 @@ Toggle which conditions raise an alert email. Sensible defaults are pre-set:
 | SMTP port connectivity failure | On |
 | Service started / stopped | **Off** |
 | Configuration backup result (success / failure) | On |
+| New GraphMailer version available | **Off** |
 
 The thresholds behind several of these (certificate warning days, disk-space percentage, port and
 Graph check intervals) are set on the [Health Checks](health-checks.html) page.
+
+> [!NOTE]
+> The *New GraphMailer version available* alert additionally requires the weekly **update check**
+> to be enabled on the [Health Checks](health-checks.html) page. You receive **one email per new
+> release**, not a weekly reminder.
 
 ## Periodic Reports
 

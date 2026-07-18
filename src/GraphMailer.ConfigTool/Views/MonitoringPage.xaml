@@ -138,6 +138,38 @@
                 </StackPanel>
             </Border>
 
+            <!-- Update check -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,16,0,0">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Update Check"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Check for updates"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <CheckBox x:Name="UpdateCheckEnabled"
+                                      Content="Enabled"
+                                      ToolTip="Once a week the service queries the GraphMailer releases on github.com&#x0a;and reports a newer version on the Status page.&#x0a;Disabled by default — no request leaves the machine until you enable it."
+                                      Checked="AnyCheckBox_Changed"
+                                      Unchecked="AnyCheckBox_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,4,0,0"
+                                   Text="Check the GitHub releases weekly for a newer GraphMailer version (queries api.github.com). The result is shown on the Status page; an optional admin email can be enabled on the Notifications page."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- Metrics storage -->
             <Border Style="{StaticResource Card}"
                     Margin="0,16,0,16">

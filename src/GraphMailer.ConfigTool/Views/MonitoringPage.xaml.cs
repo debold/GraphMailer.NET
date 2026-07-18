@@ -24,6 +24,7 @@ public partial class MonitoringPage : UserControl
         DiskWarnPct.Text = doc.Monitoring.DiskWarnPct.ToString();
         PortCheckInterval.Text = doc.Monitoring.PortCheckIntervalMinutes.ToString();
         GraphCheckInterval.Text = doc.Monitoring.GraphCheckIntervalMinutes.ToString();
+        UpdateCheckEnabled.IsChecked = doc.Monitoring.UpdateCheckEnabled;
 
         MetricsEnabled.IsChecked = doc.Metrics.Enabled;
         MetricsRetentionDays.Text = doc.Metrics.RetentionDays.ToString();
@@ -44,6 +45,7 @@ public partial class MonitoringPage : UserControl
         doc.Monitoring.DiskWarnPct = int.TryParse(DiskWarnPct.Text, out var dw) ? dw : 10;
         doc.Monitoring.PortCheckIntervalMinutes = int.TryParse(PortCheckInterval.Text, out var pc) ? pc : 5;
         doc.Monitoring.GraphCheckIntervalMinutes = int.TryParse(GraphCheckInterval.Text, out var gc) ? gc : 15;
+        doc.Monitoring.UpdateCheckEnabled = UpdateCheckEnabled.IsChecked == true;
 
         doc.Metrics.Enabled = MetricsEnabled.IsChecked == true;
         doc.Metrics.RetentionDays = int.TryParse(MetricsRetentionDays.Text, out var rd) ? rd : 90;

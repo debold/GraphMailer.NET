@@ -43,10 +43,29 @@
                                                RenderOptions.BitmapScalingMode="HighQuality"/>
                                         <StackPanel Margin="10,0,0,0"
                                                     VerticalAlignment="Center">
-                                                <TextBlock Text="GraphMailer"
-                                                           FontSize="14"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="White"/>
+                                                <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="GraphMailer"
+                                                                   FontSize="14"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="White"/>
+                                                        <!-- Update-available badge: fed by data\update-status.json
+                                                             via the 5s status poller; click opens the Status page. -->
+                                                        <Border x:Name="UpdateBadge"
+                                                                Visibility="Collapsed"
+                                                                Background="#FF107C10"
+                                                                CornerRadius="8"
+                                                                Padding="7,1"
+                                                                Margin="8,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                Cursor="Hand"
+                                                                MouseLeftButtonUp="NavStatus_Click">
+                                                                <TextBlock x:Name="UpdateBadgeText"
+                                                                           Text="&#x2191;"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="White"/>
+                                                        </Border>
+                                                </StackPanel>
                                                 <TextBlock Text="Configuration Tool"
                                                            FontSize="11"
                                                            Foreground="#FF999999"/>

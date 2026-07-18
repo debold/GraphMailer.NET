@@ -182,6 +182,18 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         return SendAsync(opts, subject, intro + detail, "backup-result", ct);
     }
 
+    public Task NotifyUpdateAvailableAsync(string currentVersion, string latestVersion, string? releaseUrl, CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        if (!IsEnabled(opts, opts.NotificationTypes.UpdateAvailable, "update-available")) return Task.CompletedTask;
+
+        var body =
+            $"A newer GraphMailer version is available.\n\n" +
+            $"Installed: {currentVersion}\nLatest:    {latestVersion}\n" +
+            (string.IsNullOrEmpty(releaseUrl) ? "" : $"\nRelease notes and download:\n{releaseUrl}\n");
+        return SendAsync(opts, $"Update available: {latestVersion}", body, "update-available", ct);
+    }
+
     public Task NotifyPortOutageAsync(int port, string reason, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;

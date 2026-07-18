@@ -217,6 +217,7 @@
                                 <RowDefinition Height="34"/>
                                 <RowDefinition Height="34"/>
                                 <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
                             </Grid.RowDefinitions>
 
                             <CheckBox Grid.Row="0"
@@ -341,6 +342,20 @@
                             <TextBlock Grid.Row="8"
                                        Grid.Column="1"
                                        Text="Configuration backup result (success / failure)"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="9"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifUpdateAvailable"
+                                      IsChecked="False"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="9"
+                                       Grid.Column="1"
+                                       Text="New GraphMailer version available (requires the update check on the Health Checks page; one email per new version)"
                                        Style="{StaticResource BodyText}"
                                        Margin="10,0,0,0"
                                        VerticalAlignment="Center"/>

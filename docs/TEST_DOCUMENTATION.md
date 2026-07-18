@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 657 tests** (610 unit · 47 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-16
+**Total: 688 tests** (641 unit · 47 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-18
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -904,6 +904,9 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `NotifyBackupResult_Success_Sends_WithSucceededSubject` | Backup succeeded | `SendNotificationAsync` with subject containing `"backup succeeded"` and the file in the body |
 | `NotifyBackupResult_Failure_Sends_WithFailedSubject` | Backup failed | Subject contains `"FAILED"`, body contains the reason |
 | `NotifyBackupResult_TypeDisabled_DoesNotSend` | `BackupResult.Enabled = false` | `SendNotificationAsync` not called |
+| `NotifyUpdateAvailable_DefaultOptions_DoesNotSend` | Admin notifications enabled, `UpdateAvailable` at its default | `SendNotificationAsync` not called (the type is opt-in) |
+| `NotifyUpdateAvailable_TypeEnabled_Sends_WithVersionsAndUrl` | `UpdateAvailable.Enabled = true` | Subject contains `"Update available"` + latest version; body contains both versions and the release URL |
+| `NotifyUpdateAvailable_MasterDisabled_DoesNotSend` | `Enabled = false`, type enabled | `SendNotificationAsync` not called |
 
 ---
 
@@ -936,6 +939,45 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 
 ---
 
+### GitHubUpdateChecker (`Services/UpdateCheck/GitHubUpdateCheckerTests.cs`)
+
+Parses the GitHub `/releases/latest` response and compares the release tag (`v<FileVersion>`) against the running version.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Evaluate_NewerRelease_UpdateAvailable` | Latest tag `v1.3.0.210`, running `1.2.0.196` | `Success`, `UpdateAvailable == true`, `LatestVersion == "1.3.0.210"` |
+| `Evaluate_SameVersion_NoUpdate` | Latest tag equals the running version | `UpdateAvailable == false` |
+| `Evaluate_OlderRelease_NoUpdate` | Running build newer than the latest release (dev build) | `UpdateAvailable == false` |
+| `Evaluate_TagWithoutVPrefix_IsParsed` | Tag `2.0.0.300` without `v` prefix | Parsed and compared normally |
+| `Evaluate_NewerBuildOfSameSemVer_IsAnUpdate` | Hotfix tag `v1.2.0.200` vs running `1.2.0.196` | `UpdateAvailable == true` (full four-part compare) |
+| `Evaluate_ParsesUrlNameAndPublishedDate` | Full release JSON | `ReleaseUrl`, `ReleaseName`, `PublishedUtc` extracted |
+| `Evaluate_UnparseableTag_IsError` | Tag `latest-stable` | Error result naming the tag |
+| `Evaluate_MissingTagName_IsError` | Response without `tag_name` | Error result mentioning `tag_name` |
+| `Evaluate_InvalidJson_IsError` | Malformed JSON body | Error result (`Invalid release response`) |
+| `CheckAsync_SuccessResponse_ReturnsSuccess_AndSendsUserAgent` | Fake handler returns 200 + release JSON | Success result; request carries a `User-Agent` header and targets `api.github.com` |
+| `CheckAsync_HttpErrorStatus_IsErrorResult` | Fake handler returns 404 | Error result containing the status code; no exception |
+| `CheckAsync_NetworkFailure_IsErrorResult_NeverThrows` | Handler throws `HttpRequestException` | Error result with the exception message; never throws |
+
+---
+
+### UpdateCheckService (`Services/UpdateCheck/UpdateCheckServiceTests.cs`)
+
+Weekly opt-in check scheduler: persists the cadence in `data\update-status.json`, honours the ConfigTool "check now" request file, and mails the admin once per new version.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `IsCheckDue_NoStatusFile_IsDue` | No status file yet | Due — the first check runs right after enabling |
+| `IsCheckDue_NextCheckInFuture_IsNotDue` | Persisted `NextCheckUtc` 3 days ahead | Not due — a service restart within the weekly window does not re-check |
+| `IsCheckDue_NextCheckPassed_IsDue` | Persisted `NextCheckUtc` in the past | Due |
+| `RunCheck_Success_WritesStatus_WithWeeklyNextCheck` | Successful up-to-date check | Status file written (versions, no error); `NextCheckUtc ≈ now + 7 days` |
+| `RunCheck_UpToDate_DoesNotNotify` | Latest equals running version | `NotifyUpdateAvailableAsync` not called |
+| `RunCheck_UpdateAvailable_NotifiesOnce_AndPersistsNotifiedVersion` | Two weekly checks find the same new release | Exactly one notification; `LastNotifiedVersion` persisted |
+| `RunCheck_EvenNewerRelease_NotifiesAgain` | A second, even newer release appears | One notification per distinct version |
+| `ConsumeCheckRequest_FilePresent_ReturnsTrue_AndDeletesIt` | ConfigTool dropped `update-check.request` | Returns `true` once and removes the file (one-shot) |
+| `RunCheck_Failure_KeepsPreviousResult_SetsError_RetriesTomorrow_NoMail` | Check fails after an earlier success | `LastError` set; previous release info and `LastNotifiedVersion` preserved; `NextCheckUtc ≈ now + 1 day`; no mail |
+
+---
+
 ### Config schema versioning (`Infrastructure/Config/ConfigSchemaTests.cs`, `ConfigServiceTests.cs`)
 
 `ConfigSchema` / `ConfigMigrator` migrate `graphmailer.json` forward to the current schema version.
@@ -945,7 +987,8 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `ReadVersion_Absent_IsZero` | No `SchemaVersion` key | `0` (pre-versioning) |
 | `ReadVersion_Present_IsValue` | `SchemaVersion = 3` | `3` |
 | `Migrate_V0_RemovesObsoleteRetryKeys_AndStampsVersion` | v0 doc with `MailQueue.MaxRetries`/`RetryDelaySeconds` | Obsolete keys removed, unrelated keys kept, version stamped to current |
-| `Migrate_V1_ToV2_IsAdditiveOnly_ContentUnchangedExceptVersion` | v1 doc (v2 only added `Certificate.FailClosed`) | Version stamped to 2; existing content untouched; the absent key stays absent (binder default applies) |
+| `Migrate_V1_ToCurrent_IsAdditiveOnly_ContentUnchangedExceptVersion` | v1 doc (v2 only added `Certificate.FailClosed`) | Version stamped to current; existing content untouched; the absent key stays absent (binder default applies) |
+| `Migrate_V2_ToV3_IsAdditiveOnly_ContentUnchangedExceptVersion` | v2 doc (v3 only added `UpdateCheck.Enabled` + the `UpdateAvailable` notification type) | Version stamped to 3; existing content untouched; the absent keys stay absent (binder defaults apply) |
 | `Migrate_AlreadyCurrent_IsNoOp` | Doc already at current version | `false` (no change) |
 | `Migrate_Idempotent` | Migrate twice | First `true`, second `false` |
 | `Migrate_NewerThanBuild_LeavesFileAlone` | `SchemaVersion = Current + 1` | `false`; version left untouched |
@@ -1000,6 +1043,10 @@ Verifies that every JSON key written by the service (`graphmailer.json`) is corr
 | `Load_Backup_AllFields_AppearInDocBackup` | Full `Backup` section in JSON (freq, time, day, max, dir, email) | All map to `doc.Backup.*` |
 | `Load_AdminNotifications_BackupResult_Disabled_AppearsInDocNotifBackup_False` | `BackupResult.Enabled = false` | `doc.Notification.NotifBackup == false` |
 | `Load_AdminNotifications_ScheduledReport_AllFields_AppearInDocNotification` | Full `AdminNotifications.ScheduledReport` section (enabled, frequency, time, day-of-week, day-of-month) | All map to `doc.Notification.Report*` |
+| `Load_UpdateCheck_Enabled_AppearsInDocMonitoringUpdateCheckEnabled` | `UpdateCheck.Enabled = true` | `doc.Monitoring.UpdateCheckEnabled == true` |
+| `Load_UpdateCheck_Absent_DefaultsToDisabled` | No `UpdateCheck` section (pre-v3 config) | `doc.Monitoring.UpdateCheckEnabled == false` |
+| `Load_AdminNotifications_UpdateAvailable_Enabled_AppearsInDocNotifUpdateAvailable_True` | `UpdateAvailable.Enabled = true` | `doc.Notification.NotifUpdateAvailable == true` |
+| `Load_AdminNotifications_UpdateAvailable_Absent_DefaultsToDisabled` | `NotificationTypes` without `UpdateAvailable` | `doc.Notification.NotifUpdateAvailable == false` (opt-in) |
 
 ---
 
@@ -1042,3 +1089,5 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `Backup_AllFields_BindToBackupOptions` | Full `Backup` section saved | `BackupOptions` bound: frequency (enum), time, day (enum), max, dir, email + recipients |
 | `Backup_Password_IsWrittenEncrypted` | `Backup.Password` saved | JSON value is `ENC[...]` |
 | `Save_NotifBackup_False_BindsToBackupResultEnabled_False` | `Notification.NotifBackup = false` | `AdminNotifications:NotificationTypes:BackupResult:Enabled == false` |
+| `Save_UpdateCheckEnabled_BindsToUpdateCheckEnabled` | `doc.Monitoring.UpdateCheckEnabled = true` saved | Options bound: `UpdateCheck:Enabled == true` |
+| `Save_NotifUpdateAvailable_True_BindsToUpdateAvailableEnabled_True` | `Notification.NotifUpdateAvailable = true` | `AdminNotifications:NotificationTypes:UpdateAvailable:Enabled == true` |
