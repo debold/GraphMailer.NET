@@ -5,7 +5,8 @@
 
 .DESCRIPTION
     - Reads the semantic version from src/Directory.Build.props
-    - Derives the build number identically to MSBuild (days since 2026-01-01 UTC)
+    - Derives the build number identically to MSBuild (offset + git commit count,
+      via tools/Get-BuildFileVersion.ps1)
     - Publishes to C:\Build\GraphMailer.NET\Releases\<version>\
     - Cleans the target directory before building
     - Service is published first; ConfigTool second (it is a superset of dependencies)
@@ -30,22 +31,17 @@ $ErrorActionPreference = 'Stop'
 
 # ── Resolve paths ────────────────────────────────────────────────────────────
 $root   = $PSScriptRoot
-$props  = Join-Path $root 'src\Directory.Build.props'
 $svc    = Join-Path $root 'src\GraphMailer.Service\GraphMailer.Service.csproj'
 $gui    = Join-Path $root 'src\GraphMailer.ConfigTool\GraphMailer.ConfigTool.csproj'
 
-# ── Read semantic version from Directory.Build.props ─────────────────────────
-[xml]$xml    = Get-Content $props -Raw
-$versionNode = $xml.SelectSingleNode('/Project/PropertyGroup/Version')
-if (-not $versionNode) { throw "Could not read <Version> from $props" }
-$semVer      = $versionNode.InnerText
-
-# ── Compute build number once; passed to MSBuild via /p:_BuildNumber so the
-#    folder name and the FileVersion baked into both binaries always match,
-#    even when the build spans UTC midnight. ──────────────────────────────────
-$epoch       = [datetime]::new(2026, 1, 1, 0, 0, 0, [System.DateTimeKind]::Utc)
-$buildNumber = ([datetime]::UtcNow - $epoch).Days
-$fileVersion = "$semVer.$buildNumber"
+# ── Version — single source of truth (tools/Get-BuildFileVersion.ps1) ─────────
+#    Build number = offset + git commit count. Passed to MSBuild via
+#    /p:_BuildNumber so the folder name and the FileVersion baked into both
+#    binaries always match. ──────────────────────────────────────────────────
+$ver         = & (Join-Path $root 'tools\Get-BuildFileVersion.ps1') -RepoRoot $root
+$semVer      = $ver.SemVer
+$buildNumber = $ver.BuildNumber
+$fileVersion = $ver.FileVersion
 $infoVersion = "$semVer+$([datetime]::UtcNow.ToString('yyyyMMdd'))"
 $bundleFlag  = if ($SelfContained) { 'true' } else { 'false' }
 

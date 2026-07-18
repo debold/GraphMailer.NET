@@ -66,12 +66,8 @@ if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
     throw "WiX 5 tool not found. Install it with: dotnet tool install --global wix --version 5.*"
 }
 
-# ── Version (identical derivation to build-release.ps1) ───────────────────────
-[xml]$xml   = Get-Content (Join-Path $root 'src\Directory.Build.props') -Raw
-$semVer     = $xml.SelectSingleNode('/Project/PropertyGroup/Version').InnerText
-$epoch      = [datetime]::new(2026, 1, 1, 0, 0, 0, [System.DateTimeKind]::Utc)
-$build      = ([datetime]::UtcNow - $epoch).Days
-$fileVer    = "$semVer.$build"
+# ── Version — single source of truth (tools/Get-BuildFileVersion.ps1) ─────────
+$fileVer    = (& (Join-Path $root 'tools\Get-BuildFileVersion.ps1') -RepoRoot $root).FileVersion
 
 $releaseDir = Join-Path 'C:\Build\GraphMailer.NET\Releases' $fileVer
 $outDir     = Join-Path $OutputRoot $fileVer

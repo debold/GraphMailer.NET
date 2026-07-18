@@ -3,9 +3,19 @@
   <PropertyGroup>
     <Version>1.2.0</Version>
     <AssemblyVersion>1.2.0.0</AssemblyVersion>
-    <!-- Build number: days elapsed since project epoch; always fits in a Win32 WORD (0–65535) -->
-    <_BuildNumber>$([System.DateTime]::UtcNow.Subtract($([System.DateTime]::Parse("2026-01-01"))).Days)</_BuildNumber>
-    <FileVersion>$(Version).$(_BuildNumber)</FileVersion>
+    <!-- Build number = _BuildNumberOffset + git commit count: a running counter that
+         increments with every commit, identical on every machine and reproducible
+         from the git history. The offset keeps the field monotonically above the old
+         "days since 2026-01-01" scheme (~199 at the switch) so shipped FileVersions
+         never appear to go backwards; offset + commits stays under the Win32 WORD
+         limit (0–65535) for decades. The scripts in tools/ and build-*.ps1 override
+         _BuildNumber via /p:_BuildNumber (see tools/Get-BuildFileVersion.ps1); the
+         _ResolveBuildNumber target below computes the same value for plain
+         dotnet build / IDE builds that don't pass it. -->
+    <_BuildNumberOffset>1000</_BuildNumberOffset>
+    <!-- Finalized here when a build script passes /p:_BuildNumber; otherwise the
+         _ResolveBuildNumber target below fills it in from the git commit count. -->
+    <FileVersion Condition="'$(_BuildNumber)' != ''">$(Version).$(_BuildNumber)</FileVersion>
     <InformationalVersion>$(Version)+$([System.DateTime]::UtcNow.ToString("yyyyMMdd"))</InformationalVersion>
     <Product>GraphMailer</Product>
     <Company>marc.debold</Company>
@@ -15,6 +25,32 @@
          (~16 MB, 220+ files) that a self-contained publish would otherwise include -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
+
+  <!--
+    Plain "dotnet build" / IDE builds (that don't pass /p:_BuildNumber) derive the
+    running build number from the git commit count + offset, matching
+    tools/Get-BuildFileVersion.ps1. Runs before the assembly attributes are written.
+    git failures are non-fatal (ContinueOnError) → falls back to the bare offset, so
+    an exported tree without .git still gets a valid FileVersion.
+  -->
+  <Target Name="_ResolveBuildNumber"
+          BeforeTargets="GetAssemblyVersion;CoreGenerateAssemblyInfo"
+          Condition="'$(_BuildNumber)' == ''">
+    <Exec Command="git rev-list --count HEAD"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true"
+          EchoOff="true"
+          ContinueOnError="true"
+          StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommitCount" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <_GitCommitCount Condition="'$(_GitExitCode)' != '0' or '$(_GitCommitCount)' == ''">0</_GitCommitCount>
+      <_BuildNumber>$([MSBuild]::Add($(_BuildNumberOffset), $(_GitCommitCount.Trim())))</_BuildNumber>
+      <FileVersion>$(Version).$(_BuildNumber)</FileVersion>
+    </PropertyGroup>
+  </Target>
 
   <!-- Shared Debug build: both projects land in the same flat folder -->
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">

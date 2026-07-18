@@ -24,6 +24,19 @@
 - Config schema bumped to **v3** (purely additive: `UpdateCheck.Enabled`,
   `AdminNotifications.NotificationTypes.UpdateAvailable.Enabled`).
 
+### Changed
+
+#### Build number is now a running counter instead of the day-of-year
+- The 4th part of the version (e.g. `1.2.0.**1004**`) is now `offset + git commit count`
+  instead of "days since 2026-01-01". Every commit bumps it by one, so builds are distinct
+  and reproducible from the git history — no more identical numbers for several builds on the
+  same day. The derivation now lives once in `tools/Get-BuildFileVersion.ps1` (shared by all
+  `build-*.ps1` scripts) and in the `_ResolveBuildNumber` MSBuild target for plain
+  `dotnet build`/IDE builds, replacing the previously duplicated date arithmetic.
+- A fixed offset of **1000** keeps the counter above the old scheme's highest shipped value
+  (`.198`), so the version never appears to move backwards — important because the update
+  check compares `FileVersion` as a four-part number.
+
 ## 1.2.0.198 — 2026-07-18
 
 ### Fixed

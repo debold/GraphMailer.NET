@@ -15,7 +15,7 @@
     warning, so the build works while the documentation is still being written.
 
     The help does not carry its own version: the footer shows the same version as the EXEs
-    (FileVersion = SemVer from src/Directory.Build.props + days since 2026-01-01 UTC). Pass
+    (FileVersion via tools/Get-BuildFileVersion.ps1 = SemVer + offset + git commit count). Pass
     -Version to override (build-installer.ps1 passes the exact build version it stamps).
 
 .PARAMETER OutputDir
@@ -131,15 +131,9 @@ function Get-Markdig {
 # build-release.ps1 / build-installer.ps1 so the help matches the shipped EXEs.
 function Resolve-Version {
     if ($Version) { return $Version }
-    $props = Join-Path $repoRoot 'src\Directory.Build.props'
-    if (Test-Path $props) {
-        [xml]$xml = Get-Content $props -Raw
-        $semVer = $xml.SelectSingleNode('/Project/PropertyGroup/Version').InnerText
-        if ($semVer) {
-            $epoch = [datetime]::new(2026, 1, 1, 0, 0, 0, [System.DateTimeKind]::Utc)
-            $build = ([datetime]::UtcNow - $epoch).Days
-            return "$semVer.$build"
-        }
+    $helper = Join-Path $repoRoot 'tools\Get-BuildFileVersion.ps1'
+    if (Test-Path $helper) {
+        try { return (& $helper -RepoRoot $repoRoot).FileVersion } catch { return 'dev' }
     }
     return 'dev'
 }
