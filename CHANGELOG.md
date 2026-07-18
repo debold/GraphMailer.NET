@@ -1,6 +1,33 @@
 # Changelog
 
-## [Unreleased] — 2026-06-17
+## 1.2.0.198 — 2026-07-18
+
+### Fixed
+
+#### Release build could ship a stale DLL that crashes the apps (`FileNotFoundException: Microsoft.Data.Sqlite`)
+- Release 1.2.0.196 shipped a `Microsoft.Data.Sqlite.dll` with assembly version 8.0.28.0
+  while both `deps.json` files (and the compiled-in references) demanded 8.0.29.0 — on any
+  target machine the ConfigTool's Status page (and the service's metrics access) then died
+  with `FileNotFoundException: Could not load … Microsoft.Data.Sqlite, Version=8.0.29.0`.
+  Root cause was a build-pipeline gap, not the target system: the floating package version
+  (`8.*`) silently moved from 8.0.28 to 8.0.29 between builds, but the incremental
+  ReadyToRun step never invalidated its cached compiled image (`obj\Release\R2R\`), and
+  `build-release.ps1` publishes with `--no-build` from those intermediates — fresh
+  `deps.json`, stale DLL. Two fixes:
+  - `build-release.ps1` now deletes `bin\Release` + `obj\Release` of both projects before
+    building, so every release is produced from fresh intermediates.
+  - All floating NuGet versions (`8.*`, `5.*`, `1.*`, `4.*`, `2.88.*`) in the Service and
+    ConfigTool projects are pinned to exact versions; upgrades are now deliberate edits.
+
+#### ConfigTool: window opened partly off-screen on low resolutions
+- On screens smaller than the designed window size (1180×860 — e.g. low-resolution server
+  consoles or RDP sessions), the ConfigTool opened partly outside the visible area, and a
+  minimum size larger than the screen prevented shrinking it back into view. The window
+  now clamps its start and minimum size to the available work area (screen minus taskbar)
+  and opens centered, so it is always fully visible; the pages scroll when the window is
+  smaller than designed.
+
+## 1.2.0.196 — 2026-07-16
 
 ### Added
 

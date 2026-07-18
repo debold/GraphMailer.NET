@@ -58,6 +58,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ClampToWorkArea();
 
         // Initialise ConfigService using the same Data Protection key ring as the service
         var configPath = AppPaths.ConfigFilePath;
@@ -139,6 +140,21 @@ public partial class MainWindow : Window
 
         // Start on Status page
         NavigateTo(NavStatus, "Status", "monitoring/status.html", () => _statusPage ??= new StatusPage());
+    }
+
+    // On screens smaller than the designed window size (low-resolution consoles, RDP
+    // sessions) the fixed 1180x860 start size would extend past the screen edge, and a
+    // MinWidth/MinHeight larger than the screen would keep the user from ever shrinking
+    // it back into view. Clamp both to the work area (screen minus taskbar, in DIUs);
+    // combined with WindowStartupLocation=CenterScreen the window is always fully
+    // visible. All pages scroll, so a smaller-than-designed window stays usable.
+    private void ClampToWorkArea()
+    {
+        var workArea = SystemParameters.WorkArea;
+        MinWidth = Math.Min(MinWidth, workArea.Width);
+        MinHeight = Math.Min(MinHeight, workArea.Height);
+        Width = Math.Min(Width, workArea.Width);
+        Height = Math.Min(Height, workArea.Height);
     }
 
     private ConfigDocument LoadConfig()

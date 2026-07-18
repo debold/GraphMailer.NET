@@ -66,6 +66,20 @@ if (Test-Path $outDir) {
 }
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
+# Releases must build from fresh intermediates: the incremental ReadyToRun step
+# does not invalidate its cached images (obj\Release\R2R\) when a NuGet package
+# version changes, and the --no-build publishes below would then ship a stale
+# DLL that no longer matches the freshly generated deps.json (seen once with
+# Microsoft.Data.Sqlite 8.0.28 vs 8.0.29 → FileNotFoundException at runtime).
+Write-Host "Cleaning Release intermediates (bin\Release, obj\Release) ..." -ForegroundColor Yellow
+foreach ($proj in @($svc, $gui)) {
+    $projDir = Split-Path $proj -Parent
+    foreach ($sub in @('bin\Release', 'obj\Release')) {
+        $dir = Join-Path $projDir $sub
+        if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+    }
+}
+
 # ── Restore ──────────────────────────────────────────────────────────────────
 Write-Host "Restoring dependencies ..." -ForegroundColor DarkGray
 dotnet restore (Join-Path $root 'GraphMailer.sln') --runtime win-x64 /p:PublishReadyToRun=true --verbosity quiet
