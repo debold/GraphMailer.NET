@@ -32,6 +32,9 @@ internal sealed class SmtpTestHost : IAsyncDisposable
     public int Port { get; }
     public string QueueDirectory { get; }
 
+    /// <summary>The NSubstitute IMetricsService the host runs with — assert Received() calls on it.</summary>
+    public IMetricsService Metrics => _host.Services.GetRequiredService<IMetricsService>();
+
     private readonly IHost _host;
     private readonly string _workDir;
     private readonly string _originalDirectory;
@@ -73,7 +76,8 @@ internal sealed class SmtpTestHost : IAsyncDisposable
         long? maxSizeBytes = null,
         bool senderValidationEnabled = false,
         bool senderValidationFailClosed = false,
-        ITenantSenderDirectory? senderDirectory = null)
+        ITenantSenderDirectory? senderDirectory = null,
+        ILoggerProvider? loggerProvider = null)
     {
         var port = GetFreePort();
         var workDir = Path.Combine(Path.GetTempPath(), $"gm-test-{Guid.NewGuid():N}");
@@ -150,7 +154,12 @@ internal sealed class SmtpTestHost : IAsyncDisposable
                 c.Sources.Clear();
                 c.AddInMemoryCollection(config);
             })
-            .ConfigureLogging(l => l.ClearProviders())
+            .ConfigureLogging(l =>
+            {
+                l.ClearProviders();
+                if (loggerProvider is not null)
+                    l.AddProvider(loggerProvider);
+            })
             .ConfigureServices((ctx, services) =>
             {
                 services.Configure<List<SmtpServerEntry>>(ctx.Configuration.GetSection("Servers"));

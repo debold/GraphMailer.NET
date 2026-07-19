@@ -187,4 +187,96 @@ public sealed class MailQueueWriterTests : IDisposable
 
         meta.Subject.Should().BeEmpty();
     }
+
+    // =========================================================================
+    // Reception statistics (attachments, To/Cc/Bcc) — metrics.db schema v2
+    // =========================================================================
+
+    private static byte[] BuildMimeMessage(
+        string[] to, string[] cc, params (string Name, byte[] Content)[] attachments)
+    {
+        var message = new MimeKit.MimeMessage();
+        message.From.Add(MimeKit.MailboxAddress.Parse("sender@example.com"));
+        foreach (var addr in to) message.To.Add(MimeKit.MailboxAddress.Parse(addr));
+        foreach (var addr in cc) message.Cc.Add(MimeKit.MailboxAddress.Parse(addr));
+        message.Subject = "Attachment test";
+
+        var builder = new MimeKit.BodyBuilder { TextBody = "Body" };
+        foreach (var (name, content) in attachments)
+            builder.Attachments.Add(name, content);
+        message.Body = builder.ToMessageBody();
+
+        using var stream = new MemoryStream();
+        message.WriteTo(stream);
+        return stream.ToArray();
+    }
+
+    [Fact]
+    public async Task WriteAsync_CountsAttachmentsAndBytes()
+    {
+        var sut = CreateSut();
+        var body = BuildMimeMessage(
+            to: ["rcpt@example.com"], cc: [],
+            ("report.pdf", new byte[2048]), ("data.csv", new byte[512]));
+
+        var meta = await sut.WriteAsync("sender@example.com", ["rcpt@example.com"], "127.0.0.1", body);
+
+        meta.AttachmentCount.Should().Be(2);
+        meta.AttachmentBytes.Should().BeGreaterThan(0, "raw encoded attachment size is recorded for statistics");
+    }
+
+    [Fact]
+    public async Task WriteAsync_NoAttachments_CountsZero()
+    {
+        var sut = CreateSut();
+        var body = BuildMimeMessage(to: ["rcpt@example.com"], cc: []);
+
+        var meta = await sut.WriteAsync("sender@example.com", ["rcpt@example.com"], "127.0.0.1", body);
+
+        meta.AttachmentCount.Should().Be(0);
+        meta.AttachmentBytes.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task WriteAsync_DerivesCcAndBccFromHeadersAndEnvelope()
+    {
+        // BCC has no header by design: an envelope recipient that appears in neither
+        // the To nor the Cc header was blind-copied.
+        var sut = CreateSut();
+        var body = BuildMimeMessage(to: ["visible@example.com"], cc: ["copy@example.com"]);
+
+        var meta = await sut.WriteAsync(
+            "sender@example.com",
+            ["visible@example.com", "copy@example.com", "hidden@example.com"],
+            "127.0.0.1", body);
+
+        meta.CcCount.Should().Be(1);
+        meta.BccCount.Should().Be(1, "hidden@example.com is in the envelope but in no header");
+    }
+
+    [Fact]
+    public async Task WriteAsync_BccDerivation_IsCaseInsensitive()
+    {
+        var sut = CreateSut();
+        var body = BuildMimeMessage(to: ["visible@example.com"], cc: []);
+
+        var meta = await sut.WriteAsync(
+            "sender@example.com", ["VISIBLE@EXAMPLE.COM"], "127.0.0.1", body);
+
+        meta.BccCount.Should().Be(0, "address matching between envelope and headers ignores case");
+    }
+
+    [Fact]
+    public async Task WriteAsync_UnparsableMime_DegradesToZeroCountsAndStillQueues()
+    {
+        // The statistics parse is metadata only — a broken message must still be queued.
+        var sut = CreateSut();
+
+        var meta = await sut.WriteAsync("a@b.com", ["c@d.com"], "127.0.0.1", Array.Empty<byte>());
+
+        meta.AttachmentCount.Should().Be(0);
+        meta.CcCount.Should().Be(0);
+        meta.BccCount.Should().Be(0);
+        Directory.GetFiles(Path.Combine(_workDir, "queue"), "*.eml").Should().HaveCount(1);
+    }
 }

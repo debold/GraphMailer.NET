@@ -36,6 +36,19 @@ public sealed class QueueProcessorTests : IDisposable
         return monitor;
     }
 
+    private static readonly GraphDeliveryResult SendOk =
+        new(GraphDeliveryResult.VariantSendMail, AttachmentCount: 0, AttachmentBytes: 0);
+
+    /// <summary>IGraphApiClient substitute whose SendAsync succeeds with a real delivery result.</summary>
+    private static IGraphApiClient SucceedingClient()
+    {
+        var client = Substitute.For<IGraphApiClient>();
+        client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(SendOk);
+        return client;
+    }
+
     private QueueProcessor CreateProcessor(
         MailQueueOptions? queueOpts = null,
         GraphApiOptions? graphOpts = null,
@@ -69,7 +82,7 @@ public sealed class QueueProcessorTests : IDisposable
         return new QueueProcessor(
             Monitor(opts),
             Monitor(gOpts),
-            graphClient ?? Substitute.For<IGraphApiClient>(),
+            graphClient ?? SucceedingClient(),
             Substitute.For<ITenantSenderDirectory>(),
             metrics ?? Substitute.For<IMetricsService>(),
             notify ?? Substitute.For<IAdminNotificationService>(),
@@ -246,7 +259,7 @@ public sealed class QueueProcessorTests : IDisposable
             .Returns(_ =>
             {
                 cts.Cancel();   // shutdown begins while the send is in flight
-                return Task.CompletedTask;
+                return Task.FromResult(SendOk);
             });
         var sut = CreateProcessor(graphClient: client);
         await EnqueueMessageAsync("msg-shutdown");
@@ -263,10 +276,9 @@ public sealed class QueueProcessorTests : IDisposable
         // Metrics are telemetry: a failing metrics write after a successful send must
         // neither reschedule the message (duplicate) nor block the queue cleanup.
         var metrics = Substitute.For<IMetricsService>();
-        metrics.RecordEmailSentAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(),
-                Arg.Any<string>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        metrics.RecordEmailSentAsync(Arg.Any<SentEmailEvent>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("metrics db locked"));
-        var client = Substitute.For<IGraphApiClient>();
+        var client = SucceedingClient();
         var sut = CreateProcessor(graphClient: client, metrics: metrics);
         await EnqueueMessageAsync("msg-metrics-fail");
 
@@ -328,7 +340,7 @@ public sealed class QueueProcessorTests : IDisposable
     [Fact]
     public async Task ProcessMessage_DeliveredAfterRetry_SentMetaHasSentAtAndNoNextRetry()
     {
-        var client = Substitute.For<IGraphApiClient>();
+        var client = SucceedingClient();
         var sut = CreateProcessor(
             queueOpts: new MailQueueOptions { ArchiveSentEmails = true },
             graphClient: client);
@@ -731,7 +743,7 @@ public sealed class QueueProcessorTests : IDisposable
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(ci => { deliveredOrder.Add(ci.ArgAt<string>(3)); return Task.CompletedTask; });
+            .Returns(ci => { deliveredOrder.Add(ci.ArgAt<string>(3)); return Task.FromResult(SendOk); });
         var sut = CreateProcessor(graphClient: client);
 
         await EnqueueMessageAsync("zzz-first");

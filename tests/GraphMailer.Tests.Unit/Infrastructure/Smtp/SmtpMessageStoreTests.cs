@@ -106,9 +106,7 @@ public sealed class SmtpMessageStoreTests : IDisposable
         // A metrics failure must not produce an error reply — the client would
         // re-send the already-queued message and the recipient would get it twice.
         var metrics = Substitute.For<IMetricsService>();
-        metrics.RecordEmailReceivedAsync(
-                Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<string>(),
-                Arg.Any<long>(), Arg.Any<int>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        metrics.RecordEmailReceivedAsync(Arg.Any<ReceivedEmailEvent>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("metrics db locked"));
         var sut = CreateStore(metrics);
         var (context, transaction, buffer) = CreateSaveArgs();

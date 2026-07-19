@@ -61,7 +61,7 @@ internal sealed class GraphApiClient : IGraphApiClient
     // Public API
     // -------------------------------------------------------------------------
 
-    public async Task SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, CancellationToken ct = default)
+    public async Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
         if (!opts.IsConfigured)
@@ -98,12 +98,22 @@ internal sealed class GraphApiClient : IGraphApiClient
             "[GraphApi] {MessageId}: {Small} small attachment(s), {Large} large attachment(s)",
             messageId, smallAttachments.Count, largeAttachments.Count);
 
+        var attachmentBytes =
+            smallAttachments.Sum(a => (long)(a.ContentBytes?.Length ?? 0)) +
+            largeAttachments.Sum(a => (long)a.Content.Length);
+        var result = new GraphDeliveryResult(
+            largeAttachments.Count == 0 ? GraphDeliveryResult.VariantSendMail : GraphDeliveryResult.VariantDraftUpload,
+            smallAttachments.Count + largeAttachments.Count,
+            attachmentBytes);
+
         try
         {
             if (largeAttachments.Count == 0)
                 await SendDirectAsync(client, sendAs, mime, smallAttachments, envelopeRecipients, messageId, ct);
             else
                 await SendViaDraftAsync(client, sendAs, mime, smallAttachments, largeAttachments, envelopeRecipients, messageId, ct);
+
+            return result;
         }
         catch (ODataError ex)
         {

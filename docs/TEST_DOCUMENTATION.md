@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 728 tests** (681 unit · 47 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-19
+**Total: 748 tests** (692 unit · 56 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-19
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -373,6 +373,11 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `WriteAsync_DecodesEncodedWordSubject` | `Subject: =?utf-8?B?…?=` (RFC 2047) | `meta.Subject` is the decoded UTF-8 text (regression: was stored raw/unreadable) |
 | `WriteAsync_SubjectAfterLargeHeaderBlock_IsStillExtracted` | ~12 KB of Received headers before Subject | Subject extracted (regression: the old 8 KB scan cutoff lost it) |
 | `WriteAsync_SubjectLookalikeInBody_IsNotExtracted` | No Subject header; body contains `Subject: …` | `meta.Subject` empty — parsing stops at the blank line |
+| `WriteAsync_CountsAttachmentsAndBytes` | MIME message with two attachments | `meta.AttachmentCount` = 2, `meta.AttachmentBytes` > 0 (reception statistics) |
+| `WriteAsync_NoAttachments_CountsZero` | MIME message without attachments | `AttachmentCount` = 0, `AttachmentBytes` = 0 |
+| `WriteAsync_DerivesCcAndBccFromHeadersAndEnvelope` | To + Cc headers; envelope has one extra recipient | `CcCount` = 1; `BccCount` = 1 (envelope recipient in no header was blind-copied) |
+| `WriteAsync_BccDerivation_IsCaseInsensitive` | Envelope address differs from To header only by case | `BccCount` = 0 — matching ignores case |
+| `WriteAsync_UnparsableMime_DegradesToZeroCountsAndStillQueues` | Empty/broken message bytes | Counts degrade to 0; the message is still queued (statistics parse never fails the write) |
 
 ---
 
@@ -870,6 +875,22 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 
 ---
 
+### SMTP Relay — Session Tracking & Rejection Statistics (`Smtp/SmtpSessionTrackingTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Session_ClientQuits_RecordsCleanOutcomeWithQuitStage` | Client sends mail and disconnects with QUIT | `RecordSmtpSessionAsync` with `Outcome=Clean`, `LastStage=quit`, correct listener port and client IP |
+| `Session_ClientDropsAfterAuth_RecordsAbortedWithAuthStage` | Client authenticates, then drops without QUIT (monitoring-probe pattern) | Session recorded as `Aborted` with `LastStage=auth` and `Authenticated=true` |
+| `Session_OverStartTls_RecordsTlsFlag` | Clean session over STARTTLS | Session record has `Tls=true` |
+| `BlacklistedIp_RecordsIpBlacklistRejection` | Client IP on the blacklist sends MAIL FROM | `RecordRejectionAsync("ip_blacklist", ip, port)` exactly once |
+| `NotWhitelistedIp_RecordsIpNotWhitelistedRejection` | Whitelist configured that excludes the client | `RecordRejectionAsync("ip_not_whitelisted", …)` exactly once |
+| `FailedAuth_RecordsAuthFailedRejection` | AUTH with wrong password | `RecordRejectionAsync("auth_failed", …)` recorded |
+| `BlockedRecipient_RecordsBlockedRecipientRejection` | RCPT TO a blocked recipient | `RecordRejectionAsync("blocked_recipient", …)` exactly once |
+| `ReceivedMail_RecordsListenerAuthAndTlsContext` | Authenticated mail on a plain listener | `ReceivedEmailEvent` carries listener port, client IP, `Authenticated=true`, the auth user and `Tls=false` |
+| `AbortedSession_LogsSummaryWithOutcomeAndStage` | Authenticated client drops without QUIT | One Information log line `Session ended … outcome=aborted … last stage=auth` (the operator's in-log abort signal) |
+
+---
+
 ### MetricsService (`Infrastructure/Metrics/MetricsServiceTests.cs`)
 
 | Test | Scenario | Expected result |
@@ -881,14 +902,20 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `RecordEmailQueuedAsync_Enabled_InsertsRow` | Metrics enabled; record email queued | No exception |
 | `RecordPerfMetricAsync_Enabled_InsertsRow` | Metrics enabled; record perf metric | No exception |
 | `RecordEmailReceivedAsync_Disabled_DoesNotInsert` | `Enabled = false`; record email received | No exception (silently skipped) |
-| `CleanupOldRecordsAsync_RemovesExpiredRows` | `RetentionDays = 0`; cleanup called | Completes without exception |
+| `CleanupOldRecordsAsync_RemovesExpiredRows` | `RetentionDays = 0`; email/session/rejection rows recorded, then cleanup | All three tables are empty afterwards (bucket tables honour retention too) |
 | `RecordEmailReceivedAsync_Enabled_StoresRecipientsAndSubject` | Metrics enabled; record with two recipients and a subject | `to_addrs` column contains comma-separated addresses; `subject` column contains the subject |
-| `RecordEmailSentAsync_Enabled_StoresRecipientsAndSubject` | Metrics enabled; record sent with one recipient and subject | `to_addrs` and `subject` columns in DB match the supplied values |
-| `RecordEmailReceivedAsync_StoresClientIp_ForTopHostsReport` | Record received with `clientIp = 203.0.113.9` | `client_ip` column holds the IP (powers the report's top-sending-hosts table) |
-| `GetEventCountsAsync_CountsByType_IgnoringQueued` | 2 received, 1 queued, 1 sent, 1 failed recorded | `EmailEventCounts(2, 1, 1)` — queued events are not counted (telemetry heartbeat) |
-| `GetEventCountsAsync_ExcludesEventsBeforeSince` | Event recorded, then counted with a `since` in the future | `EmailEventCounts(0, 0, 0)` — the watermark window is respected |
+| `RecordEmailReceivedAsync_StoresReceptionContext` | Received event with IP, listener, TLS, auth user, CC/BCC and attachment data | All v2 reception columns (`client_ip`, `listener_port`, `tls`, `authenticated`, `auth_user`, `cc_count`, `bcc_count`, `attachment_count`, `attachment_bytes`) hold the values |
+| `RecordEmailSentAsync_StoresDeliveryContext` | Sent event with retries, variant `draftUpload`, queue latency, attachments | v2 delivery columns (`retry_count`, `delivery_variant`, `queue_latency_ms`, `attachment_count`, `attachment_bytes`) hold the values |
+| `RecordEmailFailedAsync_StoresRetryCountAndPermanentFlag` | Failed event with `retryCount = 2`, `permanent = true` | `retry_count` = 2 and `permanent` = 1 in the row |
+| `RecordSmtpSessionAsync_SameBucketKey_IncrementsCountAndDuration` | Two sessions with the identical bucket key (IP/port/outcome/stage/TLS/auth) | One aggregate row with `count` = 2 and summed `total_duration_ms` (UPSERT) |
+| `RecordSmtpSessionAsync_DifferentOutcome_CreatesSeparateBucketRow` | Same IP/port, one clean and one aborted session | Two separate aggregate rows |
+| `RecordRejectionAsync_SameBucketKey_IncrementsCount` | `auth_failed` twice + `ip_blacklist` once from the same IP/port | `auth_failed` row has `count` = 2; `ip_blacklist` row has `count` = 1 |
+| `GetAggregatesAsync_CountsByType_IgnoringQueued` | 2 received (1 with attachments), 1 queued, 2 sent (1 retried via upload), 1 failed | Received/Sent/Failed = 2/2/1; attachment, first-try/after-retry, upload and latency counters match; queued events not counted |
+| `GetAggregatesAsync_CountsSessionsAndRejections` | 2 sessions (1 aborted, TLS+auth) and 5 rejections across the reason groups | Session totals/aborted/TLS/auth and the grouped rejection counters (IP/auth/sender/recipient/size) match |
+| `GetAggregatesAsync_ExcludesEventsBeforeSince` | Event recorded, then aggregated with a `since` in the future | All counters zero — the watermark window is respected |
 | `Constructor_FreshDb_StampsCurrentSchemaVersion` | New database created | `PRAGMA user_version` == `MetricsService.SchemaVersion` |
-| `Constructor_OldDbWithoutClientIp_MigratesColumnAndStampsVersion` | Pre-versioning DB (no `client_ip`, `user_version` 0) | `client_ip` column added by the migration; `user_version` stamped to current |
+| `Constructor_OldDbWithoutClientIp_MigratesColumnAndStampsVersion` | Pre-versioning DB (no `client_ip`, `user_version` 0) | `client_ip` + v2 columns added by the migration; `user_version` stamped to current |
+| `Constructor_V1Db_MigratesToV2KeepingExistingRows` | Exact v1-shaped DB with one row, `user_version` 1 | All v2 columns added, existing row kept with default values, session/rejection tables created, version stamped |
 
 ---
 
@@ -1028,7 +1055,7 @@ Daily opt-in heartbeat scheduler: persists cadence + install id + counter waterm
 | `IsHeartbeatDue_NextPassed_IsDue` | Persisted `NextHeartbeatUtc` in the past | Due |
 | `RunHeartbeat_Success_WritesStatus_WithDailyNextAndAdvancedWatermark` | Successful send | Status file with GUID install id, no error, `NextHeartbeatUtc ≈ now + 24 h`, watermark advanced to now |
 | `RunHeartbeat_InstallId_IsStableAcrossHeartbeats` | Two heartbeats | Same install id — required for distinct-counting the install base |
-| `RunHeartbeat_SendsCountersAndConfigShape` | 3 listeners configured (1 disabled), counts 12/10/2 | Heartbeat carries `listenerCount = 2`, TLS/auth/archiving flags, env properties and the counter metrics; the hostname appears nowhere |
+| `RunHeartbeat_SendsCountersAndConfigShape` | 3 listeners configured (1 disabled), aggregates with mail/session/rejection/delivery counters | Heartbeat carries `listenerCount = 2`, TLS/auth/archiving flags, env properties and all counter metrics (received/sent/failed, sessions, rejections, first-try/retry/upload, avg queue latency rounded); the hostname appears nowhere |
 | `RunHeartbeat_SendsPendingErrorReports_AndDrainsCollector` | One pending error report | `TrackErrorReport` called with template + install id; collector empty afterwards |
 | `RunHeartbeat_FlushFails_SetsError_RetriesHourly_KeepsWatermarkAndReports` | `FlushAsync` returns false | `LastError` set; `NextHeartbeatUtc ≈ now + 1 h`; watermark unchanged; error report restored for the retry |
 | `RunHeartbeat_SenderThrows_IsHandled_AndRetriesHourly` | Sender throws | No exception escapes; `LastError` set; hourly retry scheduled |

@@ -3,6 +3,16 @@ namespace GraphMailer.Service.Services;
 /// <summary>An image embedded in an HTML email as a CID inline attachment (<c>&lt;img src="cid:…"&gt;</c>).</summary>
 internal sealed record GraphInlineImage(string ContentId, string ContentType, byte[] Bytes);
 
+/// <summary>How a message was delivered to Graph (metrics/statistics only).</summary>
+/// <param name="Variant">"sendMail" (single request) or "draftUpload" (draft + upload session).</param>
+/// <param name="AttachmentCount">Total attachments (small + large).</param>
+/// <param name="AttachmentBytes">Total attachment payload bytes (decoded).</param>
+internal sealed record GraphDeliveryResult(string Variant, int AttachmentCount, long AttachmentBytes)
+{
+    public const string VariantSendMail = "sendMail";
+    public const string VariantDraftUpload = "draftUpload";
+}
+
 /// <summary>
 /// Delivers a queued message to Microsoft 365 via the Graph API.
 /// </summary>
@@ -18,7 +28,8 @@ internal interface IGraphApiClient
     /// that are stripped from the EML headers by the sending client.</param>
     /// <param name="messageId">Queue message ID – used only for log correlation.</param>
     /// <param name="ct">Cancellation token.</param>
-    Task SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, CancellationToken ct = default);
+    /// <returns>Delivery statistics (variant, attachment counts) for the metrics store.</returns>
+    Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, CancellationToken ct = default);
 
     /// <summary>
     /// Sends a simple plain-text notification email directly via the Graph API.

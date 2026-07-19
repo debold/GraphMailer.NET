@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.3.0 — Unreleased
+
+### Added
+
+#### Deep mail-traffic statistics (metrics.db schema v2)
+- The **Metrics page** in the ConfigTool is now split into five tabs — **Overview, Reception,
+  Delivery, End-to-End, Server** — with a global time-range selector (24h/7d/30d/90d) and much
+  deeper insights into how the relay is used:
+  - **Reception**: SMTP session counts, TLS/auth share, sessions **aborted without QUIT broken
+    down by protocol stage** (before HELO / after EHLO / after AUTH / after MAIL…) — makes
+    monitoring probes that connect, authenticate and drop immediately visible and countable;
+    **rejection counters by reason** (IP blacklist, missing whitelist entry, dynamic IP block,
+    failed auth, blocked sender/recipient, size limit, …); top client hosts with an
+    aborted-share flag; per-listener breakdown; Ø recipients (To/CC/BCC) and attachment share.
+  - **Delivery**: first-try rate, retry histogram (attempts until success), delivery-variant
+    split (`sendMail` vs. draft + upload session for large attachments), top failure causes
+    grouped by Graph error.
+  - **End-to-End**: queue latency Ø/P95/Max (SMTP receipt → Graph delivery), message funnel,
+    permanent vs. expired failures.
+  - **Overview**: received/delivered/failed/success rate, per-day (or per-hour) mail-flow
+    chart, volume, unique senders, queued-now; the Recent Activity table gains attachment
+    count, receiving listener, TLS and auth-user columns.
+  - **Server**: the existing Memory/CPU/Disk charts (now following the global time range)
+    plus the metrics database size.
+- **New data recorded** (metrics.db migrated to **schema v2**, idempotent, existing data kept):
+  - per received mail: CC/BCC counts (BCC derived from envelope vs. headers), attachment
+    count/bytes, receiving listener port, TLS, authenticated user;
+  - per delivered mail: retry count, queue latency, delivery variant, attachment count/bytes;
+  - per failed mail: retry count and permanent-rejection flag;
+  - per SMTP session: hourly aggregate buckets (client IP, listener, outcome clean/aborted/
+    faulted/cancelled, last protocol stage, TLS, auth, duration) — no per-session rows;
+  - per rejection: hourly aggregate buckets by reason, client IP and listener.
+  The service's own health-probe connections are excluded. Retention follows the existing
+  `Metrics.RetentionDays`; no new configuration keys.
+- **Session summary log line**: when an SMTP session ends, the service now logs one
+  Information line with outcome, last protocol stage, TLS, authenticated user, the command
+  sequence and duration (replaces the bare "Session completed" line) — client aborts such as
+  monitoring probes are now directly readable in the log.
+- **Telemetry heartbeat** (opt-in, unchanged mechanism) now includes the new aggregates as
+  anonymous counters: sessions total/aborted/faulted/TLS/authenticated, rejection counts by
+  group, mails with attachments, delivered first-try/after-retry/via-upload and average queue
+  latency. Counters only — still no IPs, addresses or usernames.
+
 ## 1.2.1.1009 — 2026-07-19
 
 ### Added

@@ -23,8 +23,23 @@ public sealed class TelemetryServiceTests : IDisposable
         Directory.CreateDirectory(_dir);
         _statusPath = Path.Combine(_dir, "telemetry-status.json");
         _sender.FlushAsync(Arg.Any<CancellationToken>()).Returns(true);
-        _metrics.GetEventCountsAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
-            .Returns(new EmailEventCounts(Received: 12, Sent: 10, Failed: 2));
+        _metrics.GetAggregatesAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(new MetricsAggregates
+            {
+                Received = 12,
+                Sent = 10,
+                Failed = 2,
+                SessionsTotal = 30,
+                SessionsAborted = 5,
+                SessionsTls = 20,
+                SessionsAuthenticated = 18,
+                RejectionsTotal = 4,
+                RejectedAuth = 3,
+                DeliveredFirstTry = 9,
+                DeliveredAfterRetry = 1,
+                DeliveredViaUpload = 2,
+                AvgQueueLatencyMs = 812.34,
+            });
     }
 
     public void Dispose()
@@ -135,6 +150,16 @@ public sealed class TelemetryServiceTests : IDisposable
         metrics!["received"].Should().Be(12);
         metrics["sent"].Should().Be(10);
         metrics["failed"].Should().Be(2);
+        metrics["sessionsTotal"].Should().Be(30);
+        metrics["sessionsAborted"].Should().Be(5);
+        metrics["sessionsTls"].Should().Be(20);
+        metrics["sessionsAuthenticated"].Should().Be(18);
+        metrics["rejectionsTotal"].Should().Be(4);
+        metrics["rejectedAuth"].Should().Be(3);
+        metrics["deliveredFirstTry"].Should().Be(9);
+        metrics["deliveredAfterRetry"].Should().Be(1);
+        metrics["deliveredViaUpload"].Should().Be(2);
+        metrics["avgQueueLatencyMs"].Should().Be(812.3, "the latency average is rounded to one decimal");
     }
 
     [Fact]

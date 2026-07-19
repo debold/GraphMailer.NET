@@ -1,3 +1,4 @@
+using GraphMailer.Service.Infrastructure.Metrics;
 using GraphMailer.Service.Infrastructure.Security;
 using Microsoft.Extensions.Logging;
 using SmtpServer;
@@ -19,27 +20,31 @@ internal sealed class SmtpUserAuthenticator : IUserAuthenticator
     private readonly AuthHandler _authHandler;
     private readonly IpBlockingService _ipBlocking;
     private readonly IPasswordCaptureService _capture;
+    private readonly IMetricsService _metrics;
     private readonly ILogger<SmtpUserAuthenticator> _logger;
 
     public SmtpUserAuthenticator(
         AuthHandler authHandler,
         IpBlockingService ipBlocking,
         IPasswordCaptureService capture,
+        IMetricsService metrics,
         ILogger<SmtpUserAuthenticator> logger)
     {
         _authHandler = authHandler;
         _ipBlocking = ipBlocking;
         _capture = capture;
+        _metrics = metrics;
         _logger = logger;
     }
 
-    public Task<bool> AuthenticateAsync(
+    public async Task<bool> AuthenticateAsync(
         ISessionContext context,
         string login,
         string password,
         CancellationToken cancellationToken)
     {
         var remoteIp = IpFilterService.GetRemoteIp(context) ?? "unknown";
+        var listenerPort = SmtpMessageStore.GetListenerPort(context);
 
         _logger.LogDebug("[SmtpAuth] AUTH attempt for {Username} from {Ip}", login, remoteIp);
 
@@ -48,7 +53,8 @@ internal sealed class SmtpUserAuthenticator : IUserAuthenticator
             _logger.LogWarning(
                 "[SmtpAuth] Auth attempt rejected – IP {Ip} is blocked after repeated failures (until {Expires:HH:mm:ss} UTC)",
                 remoteIp, blockedUntil);
-            return Task.FromResult(false);
+            await RecordRejectionSafeAsync(RejectionReasons.IpBlocked, remoteIp, listenerPort);
+            return false;
         }
 
         var valid = _authHandler.ValidateUser(login, password, out bool captureRequired, out var failureReason);
@@ -61,6 +67,7 @@ internal sealed class SmtpUserAuthenticator : IUserAuthenticator
             _ipBlocking.RecordFailure(remoteIp, "authFailure");
             _logger.LogWarning("[SmtpAuth] Failed auth for {Username} from {Ip}: {Reason}",
                 login, remoteIp, failureReason);
+            await RecordRejectionSafeAsync(RejectionReasons.AuthFailed, remoteIp, listenerPort);
         }
         else
         {
@@ -79,6 +86,19 @@ internal sealed class SmtpUserAuthenticator : IUserAuthenticator
             }
         }
 
-        return Task.FromResult(valid);
+        return valid;
+    }
+
+    /// <summary>Rejection metrics must never influence the SMTP response — swallow all errors.</summary>
+    private async Task RecordRejectionSafeAsync(string reason, string clientIp, int listenerPort)
+    {
+        try
+        {
+            await _metrics.RecordRejectionAsync(reason, clientIp, listenerPort);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[SmtpAuth] Failed to record rejection metric {Reason}", reason);
+        }
     }
 }

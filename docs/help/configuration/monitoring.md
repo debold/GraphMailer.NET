@@ -87,7 +87,12 @@ in the field.
 - **Heartbeat (daily)** — a random installation id (a GUID, not derived from your hardware, user,
   or network), the GraphMailer version, Windows and .NET runtime version, service uptime, the
   *number* of received / sent / failed mails since the last report, and the configuration *shape*
-  (how many listeners, whether TLS/authentication/archiving are enabled).
+  (how many listeners, whether TLS/authentication/archiving are enabled). Also aggregated
+  mail-traffic *counters* from the statistics database: SMTP sessions
+  (total / aborted / faulted / TLS / authenticated), rejection counts grouped by cause (IP /
+  auth / sender / recipient / size), mails with attachments, deliveries on the first try /
+  after retries / via upload session, and the average queue latency — counts and averages
+  only, never IP addresses, mail addresses or usernames.
 - **Error reports** — for unexpected errors only (log level Error or Fatal): the exception type,
   the stack trace, the log message *template* (e.g. `Delivery failed for {MessageId}` — the
   placeholders, never the actual values), the affected component, the Microsoft Graph error code /

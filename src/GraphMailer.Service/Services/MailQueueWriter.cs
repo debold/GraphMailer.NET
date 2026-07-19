@@ -33,6 +33,16 @@ public sealed class MailMetadata
     /// it — prevents NDR-for-NDR loops. Absent in older meta files → false.
     /// </summary>
     public bool IsNotification { get; set; }
+
+    // Reception statistics (schema v2 metrics). Absent in older meta files → 0.
+
+    /// <summary>Recipients listed in the Cc header.</summary>
+    public int CcCount { get; set; }
+    /// <summary>Envelope recipients that appear in neither the To nor the Cc header.</summary>
+    public int BccCount { get; set; }
+    public int AttachmentCount { get; set; }
+    /// <summary>Approximate total size of all attachments (raw encoded bytes).</summary>
+    public long AttachmentBytes { get; set; }
 }
 
 [JsonSerializable(typeof(MailMetadata))]
@@ -78,7 +88,7 @@ internal sealed class MailQueueWriter
         bool isNotification = false)
     {
         var messageId = Guid.NewGuid().ToString("N");
-        var (subject, smtpMessageId) = ExtractHeaders(emlData);
+        var info = ExtractMessageInfo(emlData, recipients);
 
         var tmpEml = Path.Combine(_queuePath, $"{messageId}.eml.tmp");
         var tmpMeta = Path.Combine(_queuePath, $"{messageId}.meta.json.tmp");
@@ -94,12 +104,16 @@ internal sealed class MailQueueWriter
                 MessageId = messageId,
                 From = from,
                 To = [.. recipients],
-                Subject = subject,
-                SmtpMessageId = smtpMessageId,
+                Subject = info.Subject,
+                SmtpMessageId = info.SmtpMessageId,
                 ReceivedAt = DateTime.UtcNow,
                 ClientIp = clientIp,
                 Status = "queued",
-                IsNotification = isNotification
+                IsNotification = isNotification,
+                CcCount = info.CcCount,
+                BccCount = info.BccCount,
+                AttachmentCount = info.AttachmentCount,
+                AttachmentBytes = info.AttachmentBytes,
             };
 
             var json = JsonSerializer.Serialize(meta, MailMetadataJsonContext.Default.MailMetadata);
@@ -110,7 +124,7 @@ internal sealed class MailQueueWriter
 
             _logger.LogInformation(
                 "[MailQueue] Queued {MessageId} | From: {From} | To: {Recipients} | Subject: {Subject} (IP: {Ip})",
-                messageId, from, string.Join(", ", recipients), subject, clientIp);
+                messageId, from, string.Join(", ", recipients), info.Subject, clientIp);
 
             return meta;
         }
@@ -123,31 +137,57 @@ internal sealed class MailQueueWriter
         }
     }
 
+    /// <summary>Metadata extracted from the raw EML for logs, metrics and the ConfigTool.</summary>
+    internal readonly record struct MessageInfo(
+        string Subject, string SmtpMessageId, int CcCount, int BccCount,
+        int AttachmentCount, long AttachmentBytes);
+
     /// <summary>
-    /// Extracts Subject and Message-ID from the header section of an EML message using
-    /// MimeKit's header parser: no size cutoff (large Received/DKIM blocks no longer lose
-    /// the subject), proper unfolding, and RFC 2047 encoded-word decoding (UTF-8 subjects
-    /// become readable in logs, metrics and the ConfigTool). Metadata only — a parse
-    /// failure never fails the queue write.
+    /// Parses the EML once with MimeKit and extracts Subject, Message-ID, recipient header
+    /// counts and attachment statistics. BCC is derived, not read from a header: envelope
+    /// recipients that appear in neither the To nor the Cc header were blind-copied.
+    /// Metadata only — a parse failure degrades to header-less defaults and never fails
+    /// the queue write.
     /// </summary>
-    internal static (string Subject, string SmtpMessageId) ExtractHeaders(ReadOnlyMemory<byte> emlData)
+    internal static MessageInfo ExtractMessageInfo(ReadOnlyMemory<byte> emlData, IReadOnlyList<string> envelopeRecipients)
     {
         try
         {
-            // Avoid duplicating a potentially large message: wrap the backing array when
-            // possible (HeaderList.Load stops reading at the blank line anyway).
+            // Avoid duplicating a potentially large message: wrap the backing array when possible.
             using var stream = System.Runtime.InteropServices.MemoryMarshal.TryGetArray(emlData, out var segment)
                 ? new MemoryStream(segment.Array!, segment.Offset, segment.Count, writable: false)
                 : new MemoryStream(emlData.ToArray(), writable: false);
 
-            var headers = MimeKit.HeaderList.Load(stream);
-            var subject = headers[MimeKit.HeaderId.Subject] ?? string.Empty;
-            var smtpMessageId = (headers[MimeKit.HeaderId.MessageId] ?? string.Empty).Trim('<', '>');
-            return (subject, smtpMessageId);
+            var mime = MimeKit.MimeMessage.Load(stream);
+
+            var headerAddresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var mailbox in mime.To.Mailboxes) headerAddresses.Add(mailbox.Address);
+            var ccCount = 0;
+            foreach (var mailbox in mime.Cc.Mailboxes) { ccCount++; headerAddresses.Add(mailbox.Address); }
+            var bccCount = envelopeRecipients.Count(r => !headerAddresses.Contains(r));
+
+            var attachmentCount = 0;
+            long attachmentBytes = 0;
+            foreach (var attachment in mime.Attachments)
+            {
+                attachmentCount++;
+                // Raw (still-encoded) content size — close enough for statistics and
+                // avoids decoding every attachment just to measure it.
+                if (attachment is MimeKit.MimePart { Content.Stream.CanSeek: true } part)
+                    attachmentBytes += part.Content.Stream.Length;
+            }
+
+            return new MessageInfo(
+                Subject: mime.Subject ?? string.Empty,
+                SmtpMessageId: (mime.MessageId ?? string.Empty).Trim('<', '>'),
+                CcCount: ccCount,
+                BccCount: bccCount,
+                AttachmentCount: attachmentCount,
+                AttachmentBytes: attachmentBytes);
         }
         catch
         {
-            return (string.Empty, string.Empty);
+            return new MessageInfo(string.Empty, string.Empty, 0, 0, 0, 0);
         }
     }
 }

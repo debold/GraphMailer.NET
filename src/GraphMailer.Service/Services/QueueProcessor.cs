@@ -287,9 +287,10 @@ internal sealed class QueueProcessor : BackgroundService
             var sw = Stopwatch.StartNew();
             using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             sendCts.CancelAfter(SendTimeout);
+            GraphDeliveryResult delivery;
             try
             {
-                await _graphClient.SendAsync(emlBytes, sendAs, meta.To, meta.MessageId, sendCts.Token);
+                delivery = await _graphClient.SendAsync(emlBytes, sendAs, meta.To, meta.MessageId, sendCts.Token);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -319,8 +320,20 @@ internal sealed class QueueProcessor : BackgroundService
 
                 try
                 {
-                    await _metrics.RecordEmailSentAsync(meta.From, meta.To, meta.MessageId, meta.Subject,
-                        sizeBytes: emlBytes.Length, durationMs: (int)sw.ElapsedMilliseconds, ct: CancellationToken.None);
+                    await _metrics.RecordEmailSentAsync(new SentEmailEvent
+                    {
+                        From = meta.From,
+                        To = meta.To,
+                        MessageId = meta.MessageId,
+                        Subject = meta.Subject,
+                        SizeBytes = emlBytes.Length,
+                        DurationMs = (int)sw.ElapsedMilliseconds,
+                        RetryCount = meta.RetryCount,
+                        DeliveryVariant = delivery.Variant,
+                        QueueLatencyMs = (long)Math.Max(0, (meta.SentAt.Value - meta.ReceivedAt).TotalMilliseconds),
+                        AttachmentCount = delivery.AttachmentCount,
+                        AttachmentBytes = delivery.AttachmentBytes,
+                    }, CancellationToken.None);
                 }
                 catch (Exception mex)
                 {
@@ -368,7 +381,7 @@ internal sealed class QueueProcessor : BackgroundService
                     _logger.LogError(ex,
                         "[QueueProcessor] {MessageId} permanently failed after {Hours}h ({Attempts} attempt(s)), moving to failed",
                         meta.MessageId, opts.MessageExpirationHours, meta.RetryCount);
-                await QuarantineAsync(metaPath, emlPath, meta, ex.Message, ct);
+                await QuarantineAsync(metaPath, emlPath, meta, ex.Message, ct, permanentRejection);
             }
             else
             {
@@ -439,10 +452,12 @@ internal sealed class QueueProcessor : BackgroundService
     /// from the NDR (loop guard); the admin notification remains their operator signal.
     /// </summary>
     private async Task QuarantineAsync(
-        string metaPath, string? emlPath, MailMetadata meta, string reason, CancellationToken ct)
+        string metaPath, string? emlPath, MailMetadata meta, string reason, CancellationToken ct,
+        bool permanentRejection = false)
     {
         await MoveToFailedAsync(metaPath, emlPath, meta, ct);
-        await _metrics.RecordEmailFailedAsync(meta.MessageId, reason, meta.From, meta.Subject, ct);
+        await _metrics.RecordEmailFailedAsync(meta.MessageId, reason, meta.From, meta.Subject,
+            retryCount: meta.RetryCount, permanent: permanentRejection, ct: ct);
         await _notify.NotifyEmailDeliveryFailedAsync(meta.MessageId, reason, ct);
         if (!meta.IsNotification)
             await _notify.SendNdrAsync(meta, reason, ct);

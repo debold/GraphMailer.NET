@@ -46,6 +46,7 @@ internal sealed class SmtpMessageStore : MessageStore
         CancellationToken cancellationToken)
     {
         var remoteIp = IpFilterService.GetRemoteIp(context) ?? "unknown";
+        var listenerPort = GetListenerPort(context);
         var sizeBytes = buffer.Length;
 
         _logger.LogDebug("[SmtpRelay] DATA received from {Ip}: {Size} bytes", remoteIp, sizeBytes);
@@ -55,6 +56,7 @@ internal sealed class SmtpMessageStore : MessageStore
             _logger.LogWarning(
                 "[SmtpRelay] Message rejected – IP {Ip} is blocked after repeated failures (until {Expires:HH:mm:ss} UTC)",
                 remoteIp, blockedUntil);
+            await RecordRejectionSafeAsync(RejectionReasons.IpBlocked, remoteIp, listenerPort);
             return SmtpResponse.MailboxUnavailable;
         }
 
@@ -73,6 +75,7 @@ internal sealed class SmtpMessageStore : MessageStore
         catch (Exception ex)
         {
             _logger.LogError(ex, "[SmtpRelay] Failed to queue message from {From}: {Error}", from, ex.Message);
+            await RecordRejectionSafeAsync(RejectionReasons.QueueError, remoteIp, listenerPort);
             // A failed local queue write (disk full, IO error, ACL problem) is transient
             // from the client's point of view: answer 451 so the client keeps the message
             // and retries later. A permanent 554 would make conforming clients discard
@@ -85,8 +88,24 @@ internal sealed class SmtpMessageStore : MessageStore
         // (the client would re-send an already-queued message → duplicate delivery).
         try
         {
-            await _metrics.RecordEmailReceivedAsync(meta.From, meta.To, meta.MessageId, meta.Subject,
-                sizeBytes: (long)sizeBytes, durationMs: (int)sw.ElapsedMilliseconds, clientIp: remoteIp, ct: cancellationToken);
+            await _metrics.RecordEmailReceivedAsync(new ReceivedEmailEvent
+            {
+                From = meta.From,
+                To = meta.To,
+                MessageId = meta.MessageId,
+                Subject = meta.Subject,
+                SizeBytes = (long)sizeBytes,
+                DurationMs = (int)sw.ElapsedMilliseconds,
+                ClientIp = remoteIp,
+                ListenerPort = listenerPort,
+                Tls = context.Pipe?.IsSecure ?? false,
+                Authenticated = context.Authentication?.IsAuthenticated ?? false,
+                AuthUser = context.Authentication?.User ?? string.Empty,
+                CcCount = meta.CcCount,
+                BccCount = meta.BccCount,
+                AttachmentCount = meta.AttachmentCount,
+                AttachmentBytes = meta.AttachmentBytes,
+            }, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -96,5 +115,31 @@ internal sealed class SmtpMessageStore : MessageStore
         }
 
         return SmtpResponse.Ok;
+    }
+
+    /// <summary>Local listener port of the session (0 when unavailable).</summary>
+    internal static int GetListenerPort(ISessionContext context)
+    {
+        try
+        {
+            return (context.EndpointDefinition.Endpoint as System.Net.IPEndPoint)?.Port ?? 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>Rejection metrics must never influence the SMTP response — swallow all errors.</summary>
+    private async Task RecordRejectionSafeAsync(string reason, string clientIp, int listenerPort)
+    {
+        try
+        {
+            await _metrics.RecordRejectionAsync(reason, clientIp, listenerPort);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[SmtpRelay] Failed to record rejection metric {Reason}", reason);
+        }
     }
 }

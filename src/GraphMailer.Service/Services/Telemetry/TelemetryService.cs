@@ -86,7 +86,7 @@ internal sealed class TelemetryService : BackgroundService
         var installId = previous?.InstallId ?? Guid.NewGuid().ToString();
         var countersSince = previous?.CountersSinceUtc ?? now - HeartbeatInterval;
 
-        var counts = await _metrics.GetEventCountsAsync(countersSince, ct);
+        var counts = await _metrics.GetAggregatesAsync(countersSince, ct);
         var (reports, overflow) = _collector.Drain();
 
         var success = false;
@@ -177,7 +177,8 @@ internal sealed class TelemetryService : BackgroundService
         };
     }
 
-    private IReadOnlyDictionary<string, double> BuildHeartbeatMetrics(EmailEventCounts counts, int overflow)
+    // PII boundary: aggregated counters only — never IPs, addresses or usernames.
+    private IReadOnlyDictionary<string, double> BuildHeartbeatMetrics(MetricsAggregates counts, int overflow)
         => new Dictionary<string, double>
         {
             ["received"] = counts.Received,
@@ -185,6 +186,22 @@ internal sealed class TelemetryService : BackgroundService
             ["failed"] = counts.Failed,
             ["uptimeHours"] = Math.Round((DateTime.UtcNow - _startedUtc).TotalHours, 2),
             ["errorReportOverflow"] = overflow,
+            ["sessionsTotal"] = counts.SessionsTotal,
+            ["sessionsAborted"] = counts.SessionsAborted,
+            ["sessionsFaulted"] = counts.SessionsFaulted,
+            ["sessionsTls"] = counts.SessionsTls,
+            ["sessionsAuthenticated"] = counts.SessionsAuthenticated,
+            ["rejectionsTotal"] = counts.RejectionsTotal,
+            ["rejectedIp"] = counts.RejectedIp,
+            ["rejectedAuth"] = counts.RejectedAuth,
+            ["rejectedSender"] = counts.RejectedSender,
+            ["rejectedRecipient"] = counts.RejectedRecipient,
+            ["rejectedSize"] = counts.RejectedSize,
+            ["mailsWithAttachments"] = counts.MailsWithAttachments,
+            ["deliveredFirstTry"] = counts.DeliveredFirstTry,
+            ["deliveredAfterRetry"] = counts.DeliveredAfterRetry,
+            ["deliveredViaUpload"] = counts.DeliveredViaUpload,
+            ["avgQueueLatencyMs"] = Math.Round(counts.AvgQueueLatencyMs ?? 0, 1),
         };
 
     private static IReadOnlyDictionary<string, string> BuildErrorReportProperties(ErrorReport report, string installId)

@@ -1,46 +1,108 @@
 # Metrics
 
-This is the **Metrics** page. It shows delivery statistics and resource usage recorded over time, so
-you can see trends and spot problems building up. The data comes from the local statistics database
-(SQLite) and is the same data the scheduled [report](../configuration/notifications.html) is built
-from.
+This is the **Metrics** page. It shows mail-traffic statistics and resource usage recorded over time,
+so you can see trends and spot problems building up — including behaviour that is hard to see in the
+logs, such as clients that connect and disconnect without sending mail. The data comes from the local
+statistics database (SQLite) and is the same data the scheduled
+[report](../configuration/notifications.html) is built from.
+
+The page is split into five tabs — **Overview**, **Reception**, **Delivery**, **End-to-End** and
+**Server** — with a global **time range** selector (**24h / 7d / 30d / 90d**) and a **↺ Refresh**
+button that apply to all tabs.
 
 > [!NOTE]
 > This page is **read-only**. What is recorded (and for how long) is controlled by *Metrics Storage*
 > and *Performance Metrics* on the [Monitoring](../configuration/monitoring.html) page.
 
-## Email statistics (30 days)
+## Overview
+
+The combined picture of the selected time range:
 
 | Card | Shows |
 |---|---|
-| Total Sent (30 days) | Messages delivered in the last 30 days. |
-| Total Failed (30 days) | Delivery failures in the last 30 days. |
-| Avg. Delivery (ms) | Average time to hand a message to Microsoft 365. |
-| Unique Senders | Distinct From addresses seen. |
+| Received | Messages accepted over SMTP. |
+| Delivered | Messages delivered to Microsoft 365 via the Graph API. |
+| Failed | Permanently failed messages (with the permanently-rejected share). |
+| Success Rate | Delivered / (delivered + failed). |
+| Volume | Total delivered bytes and average message size. |
+| Avg. Delivery | Average and maximum time to hand a message to Microsoft 365. |
+| Unique Senders | Distinct From addresses, plus the most active one. |
+| Queued Now | Messages currently waiting in the mail queue. |
 
-## Performance
+**Mail Flow per Day** charts delivered and failed messages per day (per hour in the 24h range).
 
-The latest sampled **Memory**, **CPU**, and **Disk Free** values, plus trend charts you can view over
-**24h / 7d / 30d**.
-
-> [!NOTE]
-> If the charts are empty and you see *“No performance data yet,”* performance sampling is turned
-> off. Enable **Performance Metrics** on the [Monitoring](../configuration/monitoring.html)
-> page to start recording memory, CPU and disk usage.
-
-## Recent Activity
-
-A table of recent per-message events — timestamp, event type, From, To, subject, size, delivery
-duration, and a detail/error column — with a **↺ Refresh** button.
+**Recent Activity** lists the latest per-message events — timestamp, event type, From, To, subject,
+attachment count, receiving listener, TLS, authenticated user, size, and a detail/error column.
 
 > [!TIP]
 > Recent Activity is the fastest way to confirm a specific message went through and how long it took.
 > For the actual message file (headers, body, attachments) use the [Messages](messages.html) page;
 > for the underlying service events use the [Logs](logs.html) page.
 
+## Reception
+
+How the SMTP side of the relay is being used:
+
+| Card | Shows |
+|---|---|
+| Sessions | SMTP connections in the range (the service's own health probes are excluded). |
+| Aborted (no QUIT) | Sessions the client dropped without saying QUIT, and their share. |
+| Rejected | Commands/connections rejected by filters, authentication or policy. |
+| TLS Share / Auth Share | How many sessions were encrypted / authenticated. |
+
+- **Aborted Sessions by Last Stage** — at which protocol stage clients disconnect (before HELO,
+  after EHLO, after AUTH, after MAIL/RCPT, …). Many aborts right after AUTH are the typical
+  fingerprint of a monitoring system checking the relay.
+- **Rejections by Reason** — IP blacklist / missing whitelist entry, dynamic IP block, failed
+  authentication, blocked sender/recipient, size limit, and more.
+- **Top Client Hosts** — sessions, aborted sessions and delivered mails per client IP. Hosts with a
+  high aborted share are flagged as possible monitoring probes.
+- **Per Listener** — sessions, mails, TLS and auth share per configured listener port, plus the
+  average recipients per mail (To/CC/BCC) and the share of mails with attachments.
+
+## Delivery
+
+How messages leave the relay towards Microsoft 365:
+
+| Card | Shows |
+|---|---|
+| Delivered | Messages delivered via the Graph API. |
+| Avg. Delivery Time | Average and maximum Graph send duration. |
+| First-Try Rate | Share of messages delivered on the first attempt. |
+| Retries / Mail | Average retries across all delivered messages. |
+
+- **Delivery Attempts until Success** — how many messages needed 1, 2, 3 or more attempts.
+- **Delivery Variant** — direct `sendMail` versus draft + upload session (used for attachments
+  ≥ 3 MB).
+- **Top Failure Causes** — the most frequent Graph errors, grouped.
+
+## End-to-End
+
+The complete journey from SMTP receipt to Graph delivery:
+
+| Card | Shows |
+|---|---|
+| Queue Latency Ø / P95 / Max | Time between SMTP receipt and successful delivery. |
+| First-Try Rate | Share of messages delivered on the first attempt. |
+
+- **Message Funnel** — received → delivered / failed / still queued.
+- **Permanent Failures** — messages rejected permanently by Graph versus messages that expired
+  after the retry window.
+
+## Server
+
+The latest sampled **Memory**, **CPU**, and **Disk Free** values with trend charts over the selected
+time range, plus the on-disk size of the statistics database.
+
+> [!NOTE]
+> If the charts are empty and you see *“No performance data yet,”* performance sampling is turned
+> off. Enable **Performance Metrics** on the [Monitoring](../configuration/monitoring.html)
+> page to start recording memory, CPU and disk usage.
+
 > [!NOTE]
 > If you see *“No metrics data available,”* the service has not processed any messages yet, or
-> metrics recording is disabled on the Monitoring page.
+> metrics recording is disabled on the Monitoring page. Session and rejection statistics start
+> being recorded after the first service start with version 1.3 or later.
 
 ## Related
 

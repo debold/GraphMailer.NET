@@ -67,6 +67,13 @@ internal static class IpFilterService
         return "no matching rule";   // unreachable when IsAllowed returned false
     }
 
+    /// <summary>
+    /// True when the IP matches a blacklist entry — distinguishes a blacklist hit from
+    /// missing whitelist coverage for the rejection statistics.
+    /// </summary>
+    public static bool IsBlacklisted(string ip, IReadOnlyList<string> blacklist)
+        => IPAddress.TryParse(ip, out var address) && blacklist.Count > 0 && MatchesAny(address, blacklist);
+
     private static bool MatchesAny(IPAddress address, IReadOnlyList<string> cidrs)
         => FindMatch(address, cidrs) is not null;
 

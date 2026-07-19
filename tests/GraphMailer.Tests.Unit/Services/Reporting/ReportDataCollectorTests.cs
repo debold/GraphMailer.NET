@@ -70,9 +70,12 @@ public sealed class ReportDataCollectorTests : IDisposable
     public async Task Collect_AggregatesDeliveredFailedAndTopHosts()
     {
         var metrics = SeedMetrics();
-        await metrics.RecordEmailReceivedAsync("a@corp.com", ["x@ext.com"], "m1", clientIp: "10.0.0.5");
-        await metrics.RecordEmailReceivedAsync("b@corp.com", ["y@ext.com"], "m2", clientIp: "10.0.0.5");
-        await metrics.RecordEmailSentAsync("a@corp.com", ["x@ext.com"], "m1");
+        await metrics.RecordEmailReceivedAsync(new ReceivedEmailEvent
+            { From = "a@corp.com", To = ["x@ext.com"], MessageId = "m1", ClientIp = "10.0.0.5" });
+        await metrics.RecordEmailReceivedAsync(new ReceivedEmailEvent
+            { From = "b@corp.com", To = ["y@ext.com"], MessageId = "m2", ClientIp = "10.0.0.5" });
+        await metrics.RecordEmailSentAsync(new SentEmailEvent
+            { From = "a@corp.com", To = ["x@ext.com"], MessageId = "m1" });
         await metrics.RecordEmailFailedAsync("m3", "550 rejected", "c@corp.com");
 
         var data = CreateCollector().Collect(new ScheduledReportOptions { Frequency = ReportFrequency.Weekly }, DateTimeOffset.Now);
@@ -113,8 +116,10 @@ public sealed class ReportDataCollectorTests : IDisposable
         // column affinity), while AVG always yields double — the collector once dropped
         // the long and rendered "no data" next to a populated average.
         var metrics = SeedMetrics();
-        await metrics.RecordEmailSentAsync("a@corp.com", ["x@ext.com"], "m1", durationMs: 200);
-        await metrics.RecordEmailSentAsync("a@corp.com", ["y@ext.com"], "m2", durationMs: 400);
+        await metrics.RecordEmailSentAsync(new SentEmailEvent
+            { From = "a@corp.com", To = ["x@ext.com"], MessageId = "m1", DurationMs = 200 });
+        await metrics.RecordEmailSentAsync(new SentEmailEvent
+            { From = "a@corp.com", To = ["y@ext.com"], MessageId = "m2", DurationMs = 400 });
 
         var data = CreateCollector().Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
 

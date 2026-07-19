@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Net.Sockets;
 using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure.Certificates;
+using GraphMailer.Service.Infrastructure.Metrics;
 using GraphMailer.Service.Infrastructure.Security;
 using GraphMailer.Service.Infrastructure.Smtp;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,6 +29,7 @@ internal sealed class SmtpRelayService : BackgroundService
     private readonly ICertificateLoader _certStore;
     private readonly IServiceProvider _serviceProvider;
     private readonly PortProbeRegistry _probeRegistry;
+    private readonly IMetricsService _metrics;
     private readonly ILogger<SmtpRelayService> _logger;
 
     public SmtpRelayService(
@@ -36,6 +39,7 @@ internal sealed class SmtpRelayService : BackgroundService
         ICertificateLoader certStore,
         IServiceProvider serviceProvider,
         PortProbeRegistry probeRegistry,
+        IMetricsService metrics,
         ILogger<SmtpRelayService> logger)
     {
         _serverEntries = serverEntries;
@@ -44,6 +48,7 @@ internal sealed class SmtpRelayService : BackgroundService
         _certStore = certStore;
         _serviceProvider = serviceProvider;
         _probeRegistry = probeRegistry;
+        _metrics = metrics;
         _logger = logger;
     }
 
@@ -263,6 +268,113 @@ internal sealed class SmtpRelayService : BackgroundService
         return int.MaxValue;
     }
 
+    // -------------------------------------------------------------------------
+    // Session tracking: per-session progress for the statistics store and the
+    // end-of-session summary log line (identifies clients that connect and
+    // disconnect without QUIT, e.g. monitoring probes).
+    // -------------------------------------------------------------------------
+
+    private const string TrackerKey = "Metrics:SessionTracker";
+    private const int MaxLoggedCommands = 20;
+
+    private sealed class SessionTracker
+    {
+        public readonly Stopwatch Stopwatch = Stopwatch.StartNew();
+        public string LastStage = SessionStages.Connect;
+        public bool QuitSeen;
+        public bool Finalized;
+        public int TotalCommands;
+        public readonly List<string> Commands = [];
+    }
+
+    /// <summary>Advances the tracker after a command has executed. RSET/NOOP/PROXY are
+    /// listed in the command trace but never advance the stage — "aborted after AUTH"
+    /// must survive a trailing NOOP.</summary>
+    private static void OnCommandExecuted(SessionTracker tracker, SmtpCommandEventArgs e)
+    {
+        var name = e.Command?.Name?.ToUpperInvariant() ?? "?";
+
+        tracker.TotalCommands++;
+        if (tracker.Commands.Count < MaxLoggedCommands)
+            tracker.Commands.Add(name);
+
+        var stage = name switch
+        {
+            "HELO" => SessionStages.Helo,
+            "EHLO" => SessionStages.Ehlo,
+            "STARTTLS" => SessionStages.StartTls,
+            "AUTH" => SessionStages.Auth,
+            "MAIL" => SessionStages.Mail,
+            "RCPT" => SessionStages.Rcpt,
+            "DATA" => SessionStages.Data,
+            "QUIT" => SessionStages.Quit,
+            _ => null,
+        };
+        if (stage is not null)
+            tracker.LastStage = stage;
+        if (name == "QUIT")
+            tracker.QuitSeen = true;
+    }
+
+    /// <summary>
+    /// Records the finished session into the hourly statistics bucket and optionally logs
+    /// the one-line summary. Idempotent per session: SmtpServer can raise Faulted and
+    /// Completed for the same session — only the first call counts.
+    /// </summary>
+    private void FinalizeSession(ISessionContext context, SmtpServerEntry entry, string ip,
+        SessionOutcome outcome, bool logSummary)
+    {
+        if (!context.Properties.TryGetValue(TrackerKey, out var value) || value is not SessionTracker tracker)
+            return;   // probe connection or tracking not attached
+        if (tracker.Finalized)
+            return;
+        tracker.Finalized = true;
+        tracker.Stopwatch.Stop();
+
+        // A "completed" session that never said QUIT was dropped by the client.
+        if (outcome == SessionOutcome.Clean && !tracker.QuitSeen)
+            outcome = SessionOutcome.Aborted;
+
+        // The pipe/auth context may already be torn down on faulted sessions.
+        var tls = false;
+        var authenticated = false;
+        string authUser = "";
+        try { tls = context.Pipe?.IsSecure ?? false; } catch { /* disposed */ }
+        try
+        {
+            authenticated = context.Authentication?.IsAuthenticated ?? false;
+            authUser = context.Authentication?.User ?? "";
+        }
+        catch { /* disposed */ }
+
+        if (logSummary)
+        {
+            var commands = tracker.TotalCommands > MaxLoggedCommands
+                ? $"{string.Join(",", tracker.Commands)},+{tracker.TotalCommands - MaxLoggedCommands} more"
+                : tracker.Commands.Count > 0 ? string.Join(",", tracker.Commands) : "(none)";
+            _logger.LogInformation(
+                "[SmtpRelay] Session ended for {Ip} on port {Port}: outcome={Outcome}, last stage={Stage}, tls={Tls}, auth={AuthUser}, commands={Commands}, duration={DurationMs}ms",
+                ip, entry.Port,
+                outcome.ToString().ToLowerInvariant(), tracker.LastStage,
+                tls ? "yes" : "no",
+                authenticated ? authUser : "no",
+                commands, tracker.Stopwatch.ElapsedMilliseconds);
+        }
+
+        // Fire-and-forget: metrics must never block or fault the SMTP event pipeline
+        // (RecordSmtpSessionAsync catches and logs all its own errors).
+        _ = _metrics.RecordSmtpSessionAsync(new SmtpSessionRecord
+        {
+            ClientIp = ip,
+            ListenerPort = entry.Port,
+            Outcome = outcome,
+            LastStage = tracker.LastStage,
+            Tls = tls,
+            Authenticated = authenticated,
+            DurationMs = tracker.Stopwatch.ElapsedMilliseconds,
+        });
+    }
+
     private void AttachSessionLogging(SmtpServer.SmtpServer server, SmtpServerEntry entry)
     {
         server.SessionCreated += (_, e) =>
@@ -270,11 +382,19 @@ internal sealed class SmtpRelayService : BackgroundService
             var ip = IpFilterService.GetRemoteIp(e.Context)?.ToString() ?? "unknown";
 
             // Local health-check probes (PortMonitor) announce themselves —
-            // keep them out of the Information log.
+            // keep them out of the Information log and out of the statistics.
             if (_probeRegistry.IsProbeConnection(entry.Port, ip))
+            {
                 _logger.LogDebug("[SmtpRelay] Health-probe connection from {Ip} on port {Port}", ip, entry.Port);
+            }
             else
+            {
                 _logger.LogInformation("[SmtpRelay] Connection accepted from {Ip} on port {Port}", ip, entry.Port);
+
+                var tracker = new SessionTracker();
+                e.Context.Properties[TrackerKey] = tracker;
+                e.Context.CommandExecuted += (_, ce) => OnCommandExecuted(tracker, ce);
+            }
 
             // Tag sessions on auth-required endpoints so SmtpMailboxFilter can
             // reject unauthenticated MAIL FROM even when SmtpServer itself does not.
@@ -288,7 +408,7 @@ internal sealed class SmtpRelayService : BackgroundService
             if (_probeRegistry.IsProbeConnection(entry.Port, ip))
                 _logger.LogDebug("[SmtpRelay] Health-probe session ended for {Ip} on port {Port}", ip, entry.Port);
             else
-                _logger.LogInformation("[SmtpRelay] Session completed for {Ip} on port {Port}", ip, entry.Port);
+                FinalizeSession(e.Context, entry, ip, SessionOutcome.Clean, logSummary: true);
         };
 
         server.SessionFaulted += (_, e) =>
@@ -304,6 +424,8 @@ internal sealed class SmtpRelayService : BackgroundService
                     ip, entry.Port, e.Exception?.Message ?? "unknown");
                 return;
             }
+
+            FinalizeSession(e.Context, entry, ip, SessionOutcome.Faulted, logSummary: false);
 
             // IOException "unexpected EOF / 0 bytes" happens when a plain-text client
             // connects to an Implicit-TLS port (port 465) or the client drops the
@@ -343,6 +465,8 @@ internal sealed class SmtpRelayService : BackgroundService
         {
             var ip = IpFilterService.GetRemoteIp(e.Context)?.ToString() ?? "unknown";
             _logger.LogDebug("[SmtpRelay] Session cancelled for {Ip} on port {Port}", ip, entry.Port);
+            if (!_probeRegistry.IsProbeConnection(entry.Port, ip))
+                FinalizeSession(e.Context, entry, ip, SessionOutcome.Cancelled, logSummary: false);
         };
     }
 }

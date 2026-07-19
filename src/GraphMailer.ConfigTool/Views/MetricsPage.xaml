@@ -2,273 +2,1012 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="{StaticResource BackgroundBrush}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Margin="24,20,24,24">
+        <UserControl.Resources>
 
-                        <!-- Summary KPIs row -->
-                        <Grid Margin="0,0,0,20">
+                <!-- Flat tab strip matching the app's light Fluent look -->
+                <Style x:Key="StatsTabItem"
+                       TargetType="TabItem">
+                        <Setter Property="Template">
+                                <Setter.Value>
+                                        <ControlTemplate TargetType="TabItem">
+                                                <Border x:Name="Bd"
+                                                        Background="Transparent"
+                                                        BorderThickness="0,0,0,2.5"
+                                                        BorderBrush="Transparent"
+                                                        Padding="16,8,16,9"
+                                                        Margin="0,0,2,0">
+                                                        <TextBlock x:Name="Txt"
+                                                                   Text="{TemplateBinding Header}"
+                                                                   FontSize="13.5"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsSelected"
+                                                                 Value="True">
+                                                                <Setter TargetName="Bd"
+                                                                        Property="BorderBrush"
+                                                                        Value="{StaticResource AccentBrush}"/>
+                                                                <Setter TargetName="Txt"
+                                                                        Property="Foreground"
+                                                                        Value="{StaticResource AccentBrush}"/>
+                                                                <Setter TargetName="Txt"
+                                                                        Property="FontWeight"
+                                                                        Value="SemiBold"/>
+                                                        </Trigger>
+                                                        <MultiTrigger>
+                                                                <MultiTrigger.Conditions>
+                                                                        <Condition Property="IsMouseOver"
+                                                                                   Value="True"/>
+                                                                        <Condition Property="IsSelected"
+                                                                                   Value="False"/>
+                                                                </MultiTrigger.Conditions>
+                                                                <Setter TargetName="Txt"
+                                                                        Property="Foreground"
+                                                                        Value="{StaticResource TextBrush}"/>
+                                                        </MultiTrigger>
+                                                </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                </Setter.Value>
+                        </Setter>
+                </Style>
+
+                <!-- KPI card building blocks -->
+                <Style x:Key="KpiValue"
+                       TargetType="TextBlock">
+                        <Setter Property="FontSize"
+                                Value="25"/>
+                        <Setter Property="FontWeight"
+                                Value="SemiBold"/>
+                        <Setter Property="Margin"
+                                Value="0,5,0,0"/>
+                        <Setter Property="Foreground"
+                                Value="{StaticResource TextBrush}"/>
+                </Style>
+                <Style x:Key="KpiSub"
+                       TargetType="TextBlock">
+                        <Setter Property="FontSize"
+                                Value="11.5"/>
+                        <Setter Property="Foreground"
+                                Value="{StaticResource TextSecondaryBrush}"/>
+                        <Setter Property="Margin"
+                                Value="0,3,0,0"/>
+                        <Setter Property="TextTrimming"
+                                Value="CharacterEllipsis"/>
+                </Style>
+
+                <!-- Horizontal proportional bar row (distributions, funnels) -->
+                <DataTemplate x:Key="HBarTemplate">
+                        <Grid Margin="0,4">
                                 <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160"/>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="12"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="12"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="12"/>
-                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="70"/>
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0"
-                                        Style="{StaticResource Card}"
-                                        Padding="16,14">
-                                        <StackPanel>
-                                                <TextBlock Text="Total Sent (30 days)"
-                                                           Style="{StaticResource LabelText}"/>
-                                                <TextBlock x:Name="M30Sent"
-                                                           Text="—"
-                                                           FontSize="26"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource OkBrush}"
-                                                           Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                </Border>
-                                <Border Grid.Column="2"
-                                        Style="{StaticResource Card}"
-                                        Padding="16,14">
-                                        <StackPanel>
-                                                <TextBlock Text="Total Failed (30 days)"
-                                                           Style="{StaticResource LabelText}"/>
-                                                <TextBlock x:Name="M30Failed"
-                                                           Text="—"
-                                                           FontSize="26"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource DangerBrush}"
-                                                           Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                </Border>
-                                <Border Grid.Column="4"
-                                        Style="{StaticResource Card}"
-                                        Padding="16,14">
-                                        <StackPanel>
-                                                <TextBlock Text="Avg. Delivery (ms)"
-                                                           Style="{StaticResource LabelText}"/>
-                                                <TextBlock x:Name="M30Avg"
-                                                           Text="—"
-                                                           FontSize="26"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource AccentBrush}"
-                                                           Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                </Border>
-                                <Border Grid.Column="6"
-                                        Style="{StaticResource Card}"
-                                        Padding="16,14">
-                                        <StackPanel>
-                                                <TextBlock Text="Unique Senders"
-                                                           Style="{StaticResource LabelText}"/>
-                                                <TextBlock x:Name="M30Senders"
-                                                           Text="—"
-                                                           FontSize="26"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource TextBrush}"
-                                                           Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                </Border>
+                                <TextBlock Text="{Binding Name}"
+                                           FontSize="12.5"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <Grid Grid.Column="1"
+                                      Height="14"
+                                      VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="{Binding FillStar}"/>
+                                                <ColumnDefinition Width="{Binding RestStar}"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.ColumnSpan="2"
+                                                Background="#F0F0F0"
+                                                CornerRadius="3"/>
+                                        <Border Grid.Column="0"
+                                                Background="{Binding Fill}"
+                                                CornerRadius="3"
+                                                MinWidth="2"/>
+                                </Grid>
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding CountText}"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Right"/>
                         </Grid>
+                </DataTemplate>
 
-                        <!-- Performance KPIs row -->
-                        <Grid Margin="0,0,0,20">
-                                <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="12"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="12"/>
-                                        <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0"
-                                        Style="{StaticResource Card}"
-                                        Padding="16,14">
-                                        <StackPanel>
-                                                <TextBlock Text="Memory (latest)"
-                                                           Style="{StaticResource LabelText}"/>
-                                                <TextBlock x:Name="PerfMemory"
-                                                           Text="—"
-                                                           FontSize="26"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource AccentBrush}"
-                                                           Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                </Border>
-                                <Border Grid.Column="2"
-                                        Style="{StaticResource Card}"
-                                        Padding="16,14">
-                                        <StackPanel>
-                                                <TextBlock Text="CPU (latest)"
-                                                           Style="{StaticResource LabelText}"/>
-                                                <TextBlock x:Name="PerfCpu"
-                                                           Text="—"
-                                                           FontSize="26"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource TextBrush}"
-                                                           Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                </Border>
-                                <Border Grid.Column="4"
-                                        Style="{StaticResource Card}"
-                                        Padding="16,14">
-                                        <StackPanel>
-                                                <TextBlock Text="Disk Free (latest)"
-                                                           Style="{StaticResource LabelText}"/>
-                                                <TextBlock x:Name="PerfDisk"
-                                                           Text="—"
-                                                           FontSize="26"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource OkBrush}"
-                                                           Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                </Border>
-                        </Grid>
+        </UserControl.Resources>
 
-                        <!-- Performance chart card -->
-                        <Border Style="{StaticResource Card}"
-                                Margin="0,0,0,20">
-                                <StackPanel>
-                                        <Border Style="{StaticResource CardHeader}">
-                                                <Grid>
+        <Grid>
+                <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header: global time range + refresh -->
+                <Grid Grid.Row="0"
+                      Margin="24,16,24,0">
+                        <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="Time range:"
+                                           Style="{StaticResource LabelText}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0"/>
+                                <Button x:Name="Range24h"
+                                        Content="24h"
+                                        Style="{StaticResource SmallButton}"
+                                        Margin="0,0,4,0"
+                                        Tag="1"
+                                        Click="Range_Click"/>
+                                <Button x:Name="Range7d"
+                                        Content="7d"
+                                        Style="{StaticResource SmallPrimaryButton}"
+                                        Margin="0,0,4,0"
+                                        Tag="7"
+                                        Click="Range_Click"/>
+                                <Button x:Name="Range30d"
+                                        Content="30d"
+                                        Style="{StaticResource SmallButton}"
+                                        Margin="0,0,4,0"
+                                        Tag="30"
+                                        Click="Range_Click"/>
+                                <Button x:Name="Range90d"
+                                        Content="90d"
+                                        Style="{StaticResource SmallButton}"
+                                        Margin="0,0,12,0"
+                                        Tag="90"
+                                        Click="Range_Click"/>
+                                <Button Content="↺ Refresh"
+                                        Style="{StaticResource SmallButton}"
+                                        Click="Refresh_Click"/>
+                        </StackPanel>
+                </Grid>
+
+                <TabControl Grid.Row="1"
+                            x:Name="StatsTabs"
+                            Margin="24,8,24,20"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="0">
+
+                        <!-- ══════════ OVERVIEW ══════════ -->
+                        <TabItem Header="Overview"
+                                 Style="{StaticResource StatsTabItem}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel Margin="0,14,0,4">
+                                                <Grid Margin="0,0,0,14">
                                                         <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*"/>
-                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0"
-                                                                   Text="Performance"
-                                                                   Style="{StaticResource SectionHeader}"/>
-                                                        <StackPanel Grid.Column="1"
-                                                                    Orientation="Horizontal"
-                                                                    VerticalAlignment="Center">
-                                                                <Button x:Name="PerfRange24h"
-                                                                        Content="24h"
-                                                                        Style="{StaticResource SmallPrimaryButton}"
-                                                                        Margin="0,0,4,0"
-                                                                        Tag="1"
-                                                                        Click="PerfRange_Click"/>
-                                                                <Button x:Name="PerfRange7d"
-                                                                        Content="7d"
-                                                                        Style="{StaticResource SmallButton}"
-                                                                        Margin="0,0,4,0"
-                                                                        Tag="7"
-                                                                        Click="PerfRange_Click"/>
-                                                                <Button x:Name="PerfRange30d"
-                                                                        Content="30d"
-                                                                        Style="{StaticResource SmallButton}"
-                                                                        Tag="30"
-                                                                        Click="PerfRange_Click"/>
+                                                        <Border Grid.Column="0"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Received"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="OvReceived"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"/>
+                                                                        <TextBlock Text="mails accepted"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="2"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Delivered"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="OvDelivered"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   Foreground="{StaticResource AccentBrush}"/>
+                                                                        <TextBlock Text="via Graph API"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="4"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Failed"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="OvFailed"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   Foreground="{StaticResource DangerBrush}"/>
+                                                                        <TextBlock x:Name="OvFailedSub"
+                                                                                   Text="permanently failed"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="6"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Success Rate"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="OvSuccessRate"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   Foreground="{StaticResource OkBrush}"/>
+                                                                        <TextBlock Text="delivered / (delivered + failed)"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                </Grid>
+
+                                                <Border Style="{StaticResource Card}"
+                                                        Margin="0,0,0,14">
+                                                        <StackPanel>
+                                                                <Border Style="{StaticResource CardHeader}">
+                                                                        <TextBlock Text="Mail Flow per Day"
+                                                                                   Style="{StaticResource SectionHeader}"/>
+                                                                </Border>
+                                                                <Canvas x:Name="DailyCanvas"
+                                                                        Height="180"
+                                                                        Margin="12,10,12,2"
+                                                                        ClipToBounds="True"
+                                                                        SizeChanged="DailyCanvas_SizeChanged"/>
+                                                                <StackPanel Orientation="Horizontal"
+                                                                            Margin="16,2,16,10">
+                                                                        <Border Width="10"
+                                                                                Height="10"
+                                                                                CornerRadius="2"
+                                                                                Background="{StaticResource AccentBrush}"
+                                                                                VerticalAlignment="Center"/>
+                                                                        <TextBlock Text="Delivered"
+                                                                                   Style="{StaticResource KpiSub}"
+                                                                                   Margin="5,0,14,0"/>
+                                                                        <Border Width="10"
+                                                                                Height="10"
+                                                                                CornerRadius="2"
+                                                                                Background="{StaticResource DangerBrush}"
+                                                                                VerticalAlignment="Center"/>
+                                                                        <TextBlock Text="Failed"
+                                                                                   Style="{StaticResource KpiSub}"
+                                                                                   Margin="5,0,0,0"/>
+                                                                </StackPanel>
                                                         </StackPanel>
-                                                </Grid>
-                                        </Border>
-                                        <Grid Margin="12,8,12,4">
-                                                <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="12"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="12"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Grid.Column="0">
-                                                        <TextBlock Text="Memory (MB)"
-                                                                   Style="{StaticResource LabelText}"
-                                                                   Margin="0,0,0,4"/>
-                                                        <Canvas x:Name="MemoryCanvas"
-                                                                Height="100"
-                                                                HorizontalAlignment="Stretch"
-                                                                ClipToBounds="True"
-                                                                SizeChanged="PerfCanvas_SizeChanged"/>
-                                                </StackPanel>
-                                                <StackPanel Grid.Column="2">
-                                                        <TextBlock Text="CPU (%)"
-                                                                   Style="{StaticResource LabelText}"
-                                                                   Margin="0,0,0,4"/>
-                                                        <Canvas x:Name="CpuCanvas"
-                                                                Height="100"
-                                                                HorizontalAlignment="Stretch"
-                                                                ClipToBounds="True"
-                                                                SizeChanged="PerfCanvas_SizeChanged"/>
-                                                </StackPanel>
-                                                <StackPanel Grid.Column="4">
-                                                        <TextBlock Text="Disk Free (%)"
-                                                                   Style="{StaticResource LabelText}"
-                                                                   Margin="0,0,0,4"/>
-                                                        <Canvas x:Name="DiskCanvas"
-                                                                Height="100"
-                                                                HorizontalAlignment="Stretch"
-                                                                ClipToBounds="True"
-                                                                SizeChanged="PerfCanvas_SizeChanged"/>
-                                                </StackPanel>
-                                        </Grid>
-                                        <TextBlock x:Name="NoPerfText"
-                                                   Text="No performance data yet. Enable Performance Metrics in the Monitoring settings."
-                                                   Style="{StaticResource HintText}"
-                                                   Margin="16,4,16,12"/>
-                                </StackPanel>
-                        </Border>
+                                                </Border>
 
-                        <!-- Recent activity card -->
-                        <Border Style="{StaticResource Card}">
-                                <StackPanel>
-                                        <Border Style="{StaticResource CardHeader}">
-                                                <Grid>
+                                                <Grid Margin="0,0,0,14">
                                                         <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*"/>
-                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0"
-                                                                   Text="Recent Activity"
-                                                                   Style="{StaticResource SectionHeader}"/>
-                                                        <Button Grid.Column="1"
-                                                                Content="↺ Refresh"
-                                                                Style="{StaticResource SmallButton}"
-                                                                Click="Refresh_Click"/>
+                                                        <Border Grid.Column="0"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Volume"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="OvVolume"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   FontSize="21"/>
+                                                                        <TextBlock x:Name="OvVolumeSub"
+                                                                                   Text="Ø per mail"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="2"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Avg. Delivery"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="OvAvgDelivery"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   FontSize="21"/>
+                                                                        <TextBlock x:Name="OvAvgDeliverySub"
+                                                                                   Text="max —"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="4"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Unique Senders"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="OvSenders"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   FontSize="21"/>
+                                                                        <TextBlock x:Name="OvSendersSub"
+                                                                                   Text=""
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="6"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Queued Now"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="OvQueuedNow"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   FontSize="21"/>
+                                                                        <TextBlock Text="waiting for delivery"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
                                                 </Grid>
-                                        </Border>
-                                        <DataGrid x:Name="ActivityGrid"
-                                                  Margin="0"
-                                                  MinHeight="120"
-                                                  CanUserAddRows="False"
-                                                  CanUserDeleteRows="False"
-                                                  AutoGenerateColumns="False"
-                                                  IsReadOnly="True">
-                                                <DataGrid.Columns>
-                                                        <DataGridTextColumn Header="Timestamp"
-                                                                            Binding="{Binding Timestamp}"
-                                                                            Width="160"/>
-                                                        <DataGridTextColumn Header="Event"
-                                                                            Binding="{Binding Event}"
-                                                                            Width="80"/>
-                                                        <DataGridTextColumn Header="From"
-                                                                            Binding="{Binding From}"
-                                                                            Width="180"/>
-                                                        <DataGridTextColumn Header="To"
-                                                                            Binding="{Binding To}"
-                                                                            Width="180"/>
-                                                        <DataGridTextColumn Header="Subject"
-                                                                            Binding="{Binding Subject}"
-                                                                            Width="*"/>
-                                                        <DataGridTextColumn Header="Size"
-                                                                            Binding="{Binding Size}"
-                                                                            Width="75"/>
-                                                        <DataGridTextColumn Header="Duration"
-                                                                            Binding="{Binding Duration}"
-                                                                            Width="85"/>
-                                                        <DataGridTextColumn Header="Detail"
-                                                                            Binding="{Binding Detail}"
-                                                                            Width="200"/>
-                                                </DataGrid.Columns>
-                                        </DataGrid>
-                                        <TextBlock x:Name="NoDataText"
-                                                   Text="No metrics data available. The service must have processed at least one message."
-                                                   Style="{StaticResource HintText}"
-                                                   Margin="16,10,16,12"/>
-                                </StackPanel>
-                        </Border>
 
-                </StackPanel>
-        </ScrollViewer>
+                                                <Border Style="{StaticResource Card}">
+                                                        <StackPanel>
+                                                                <Border Style="{StaticResource CardHeader}">
+                                                                        <TextBlock Text="Recent Activity"
+                                                                                   Style="{StaticResource SectionHeader}"/>
+                                                                </Border>
+                                                                <DataGrid x:Name="ActivityGrid"
+                                                                          Margin="0"
+                                                                          MinHeight="120"
+                                                                          MaxHeight="420"
+                                                                          CanUserAddRows="False"
+                                                                          CanUserDeleteRows="False"
+                                                                          AutoGenerateColumns="False"
+                                                                          IsReadOnly="True">
+                                                                        <DataGrid.Columns>
+                                                                                <DataGridTextColumn Header="Timestamp"
+                                                                                                    Binding="{Binding Timestamp}"
+                                                                                                    Width="150"/>
+                                                                                <DataGridTextColumn Header="Event"
+                                                                                                    Binding="{Binding Event}"
+                                                                                                    Width="75"/>
+                                                                                <DataGridTextColumn Header="From"
+                                                                                                    Binding="{Binding From}"
+                                                                                                    Width="160"/>
+                                                                                <DataGridTextColumn Header="To"
+                                                                                                    Binding="{Binding To}"
+                                                                                                    Width="160"/>
+                                                                                <DataGridTextColumn Header="Subject"
+                                                                                                    Binding="{Binding Subject}"
+                                                                                                    Width="*"/>
+                                                                                <DataGridTextColumn Header="Attach."
+                                                                                                    Binding="{Binding Attachments}"
+                                                                                                    Width="60"/>
+                                                                                <DataGridTextColumn Header="Listener"
+                                                                                                    Binding="{Binding Listener}"
+                                                                                                    Width="65"/>
+                                                                                <DataGridTextColumn Header="TLS"
+                                                                                                    Binding="{Binding Tls}"
+                                                                                                    Width="45"/>
+                                                                                <DataGridTextColumn Header="Auth"
+                                                                                                    Binding="{Binding Auth}"
+                                                                                                    Width="90"/>
+                                                                                <DataGridTextColumn Header="Size"
+                                                                                                    Binding="{Binding Size}"
+                                                                                                    Width="70"/>
+                                                                                <DataGridTextColumn Header="Detail"
+                                                                                                    Binding="{Binding Detail}"
+                                                                                                    Width="170"/>
+                                                                        </DataGrid.Columns>
+                                                                </DataGrid>
+                                                                <TextBlock x:Name="NoDataText"
+                                                                           Text="No metrics data available. The service must have processed at least one message."
+                                                                           Style="{StaticResource HintText}"
+                                                                           Margin="16,10,16,12"/>
+                                                        </StackPanel>
+                                                </Border>
+                                        </StackPanel>
+                                </ScrollViewer>
+                        </TabItem>
+
+                        <!-- ══════════ RECEPTION ══════════ -->
+                        <TabItem Header="Reception"
+                                 Style="{StaticResource StatsTabItem}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel Margin="0,14,0,4">
+                                                <Grid Margin="0,0,0,14">
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="14,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Sessions"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="RcSessions"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"/>
+                                                                        <TextBlock Text="excl. own health probes"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="2"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="14,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Aborted (no QUIT)"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="RcAborted"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   Foreground="{StaticResource WarnBrush}"/>
+                                                                        <TextBlock x:Name="RcAbortedSub"
+                                                                                   Text=""
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="4"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="14,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Rejected"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="RcRejected"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   Foreground="{StaticResource DangerBrush}"/>
+                                                                        <TextBlock Text="by filter / auth / policy"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="6"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="14,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="TLS Share"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="RcTlsShare"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   Foreground="{StaticResource OkBrush}"/>
+                                                                        <TextBlock x:Name="RcTlsShareSub"
+                                                                                   Text=""
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="8"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="14,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Auth Share"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="RcAuthShare"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"/>
+                                                                        <TextBlock x:Name="RcAuthShareSub"
+                                                                                   Text=""
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                </Grid>
+
+                                                <Grid Margin="0,0,0,14">
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0"
+                                                                Style="{StaticResource Card}">
+                                                                <StackPanel>
+                                                                        <Border Style="{StaticResource CardHeader}">
+                                                                                <TextBlock Text="Aborted Sessions by Last Stage"
+                                                                                           Style="{StaticResource SectionHeader}"/>
+                                                                        </Border>
+                                                                        <ItemsControl x:Name="RcAbortStages"
+                                                                                      ItemTemplate="{StaticResource HBarTemplate}"
+                                                                                      Margin="16,10,16,6"/>
+                                                                        <TextBlock Text="Clients disconnecting right after AUTH are typically monitoring probes — see Top Client Hosts."
+                                                                                   Style="{StaticResource HintText}"
+                                                                                   Margin="16,0,16,12"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="2"
+                                                                Style="{StaticResource Card}">
+                                                                <StackPanel>
+                                                                        <Border Style="{StaticResource CardHeader}">
+                                                                                <TextBlock Text="Rejections by Reason"
+                                                                                           Style="{StaticResource SectionHeader}"/>
+                                                                        </Border>
+                                                                        <DataGrid x:Name="RcRejectionsGrid"
+                                                                                  MinHeight="80"
+                                                                                  MaxHeight="240"
+                                                                                  CanUserAddRows="False"
+                                                                                  AutoGenerateColumns="False"
+                                                                                  IsReadOnly="True">
+                                                                                <DataGrid.Columns>
+                                                                                        <DataGridTextColumn Header="Reason"
+                                                                                                            Binding="{Binding Name}"
+                                                                                                            Width="*"/>
+                                                                                        <DataGridTextColumn Header="Count"
+                                                                                                            Binding="{Binding Count}"
+                                                                                                            Width="90"/>
+                                                                                </DataGrid.Columns>
+                                                                        </DataGrid>
+                                                                </StackPanel>
+                                                        </Border>
+                                                </Grid>
+
+                                                <Grid Margin="0,0,0,14">
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0"
+                                                                Style="{StaticResource Card}">
+                                                                <StackPanel>
+                                                                        <Border Style="{StaticResource CardHeader}">
+                                                                                <TextBlock Text="Top Client Hosts"
+                                                                                           Style="{StaticResource SectionHeader}"/>
+                                                                        </Border>
+                                                                        <DataGrid x:Name="RcTopHostsGrid"
+                                                                                  MinHeight="80"
+                                                                                  MaxHeight="240"
+                                                                                  CanUserAddRows="False"
+                                                                                  AutoGenerateColumns="False"
+                                                                                  IsReadOnly="True">
+                                                                                <DataGrid.Columns>
+                                                                                        <DataGridTextColumn Header="Client IP"
+                                                                                                            Binding="{Binding Ip}"
+                                                                                                            Width="130"/>
+                                                                                        <DataGridTextColumn Header="Sessions"
+                                                                                                            Binding="{Binding Sessions}"
+                                                                                                            Width="80"/>
+                                                                                        <DataGridTextColumn Header="Aborted"
+                                                                                                            Binding="{Binding Aborted}"
+                                                                                                            Width="80"/>
+                                                                                        <DataGridTextColumn Header="Mails"
+                                                                                                            Binding="{Binding Mails}"
+                                                                                                            Width="80"/>
+                                                                                        <DataGridTextColumn Header="Note"
+                                                                                                            Binding="{Binding Note}"
+                                                                                                            Width="*"/>
+                                                                                </DataGrid.Columns>
+                                                                        </DataGrid>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="2"
+                                                                Style="{StaticResource Card}">
+                                                                <StackPanel>
+                                                                        <Border Style="{StaticResource CardHeader}">
+                                                                                <TextBlock Text="Per Listener"
+                                                                                           Style="{StaticResource SectionHeader}"/>
+                                                                        </Border>
+                                                                        <DataGrid x:Name="RcListenersGrid"
+                                                                                  MinHeight="80"
+                                                                                  MaxHeight="200"
+                                                                                  CanUserAddRows="False"
+                                                                                  AutoGenerateColumns="False"
+                                                                                  IsReadOnly="True">
+                                                                                <DataGrid.Columns>
+                                                                                        <DataGridTextColumn Header="Listener"
+                                                                                                            Binding="{Binding Listener}"
+                                                                                                            Width="110"/>
+                                                                                        <DataGridTextColumn Header="Sessions"
+                                                                                                            Binding="{Binding Sessions}"
+                                                                                                            Width="80"/>
+                                                                                        <DataGridTextColumn Header="Mails"
+                                                                                                            Binding="{Binding Mails}"
+                                                                                                            Width="80"/>
+                                                                                        <DataGridTextColumn Header="TLS"
+                                                                                                            Binding="{Binding TlsShare}"
+                                                                                                            Width="70"/>
+                                                                                        <DataGridTextColumn Header="Auth"
+                                                                                                            Binding="{Binding AuthShare}"
+                                                                                                            Width="70"/>
+                                                                                </DataGrid.Columns>
+                                                                        </DataGrid>
+                                                                        <TextBlock x:Name="RcRecipientsHint"
+                                                                                   Text=""
+                                                                                   Style="{StaticResource HintText}"
+                                                                                   Margin="16,8,16,12"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                </Grid>
+                                        </StackPanel>
+                                </ScrollViewer>
+                        </TabItem>
+
+                        <!-- ══════════ DELIVERY ══════════ -->
+                        <TabItem Header="Delivery"
+                                 Style="{StaticResource StatsTabItem}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel Margin="0,14,0,4">
+                                                <Grid Margin="0,0,0,14">
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Delivered"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="DlDelivered"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   Foreground="{StaticResource AccentBrush}"/>
+                                                                        <TextBlock Text="via Graph API"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="2"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Avg. Delivery Time"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="DlAvgTime"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"/>
+                                                                        <TextBlock x:Name="DlAvgTimeSub"
+                                                                                   Text="max —"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="4"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="First-Try Rate"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="DlFirstTry"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   Foreground="{StaticResource OkBrush}"/>
+                                                                        <TextBlock x:Name="DlFirstTrySub"
+                                                                                   Text=""
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="6"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Retries / Mail"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="DlRetriesPerMail"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"/>
+                                                                        <TextBlock Text="Ø over all delivered"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                </Grid>
+
+                                                <Grid Margin="0,0,0,14">
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0"
+                                                                Style="{StaticResource Card}">
+                                                                <StackPanel>
+                                                                        <Border Style="{StaticResource CardHeader}">
+                                                                                <TextBlock Text="Delivery Attempts until Success"
+                                                                                           Style="{StaticResource SectionHeader}"/>
+                                                                        </Border>
+                                                                        <ItemsControl x:Name="DlRetryHistogram"
+                                                                                      ItemTemplate="{StaticResource HBarTemplate}"
+                                                                                      Margin="16,10,16,12"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="2"
+                                                                Style="{StaticResource Card}">
+                                                                <StackPanel>
+                                                                        <Border Style="{StaticResource CardHeader}">
+                                                                                <TextBlock Text="Delivery Variant"
+                                                                                           Style="{StaticResource SectionHeader}"/>
+                                                                        </Border>
+                                                                        <ItemsControl x:Name="DlVariants"
+                                                                                      ItemTemplate="{StaticResource HBarTemplate}"
+                                                                                      Margin="16,10,16,6"/>
+                                                                        <TextBlock Text="Large attachments (≥ 3 MB) are delivered via draft + upload session (Mail.ReadWrite)."
+                                                                                   Style="{StaticResource HintText}"
+                                                                                   Margin="16,0,16,12"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                </Grid>
+
+                                                <Border Style="{StaticResource Card}">
+                                                        <StackPanel>
+                                                                <Border Style="{StaticResource CardHeader}">
+                                                                        <TextBlock Text="Top Failure Causes"
+                                                                                   Style="{StaticResource SectionHeader}"/>
+                                                                </Border>
+                                                                <DataGrid x:Name="DlErrorsGrid"
+                                                                          MinHeight="80"
+                                                                          MaxHeight="240"
+                                                                          CanUserAddRows="False"
+                                                                          AutoGenerateColumns="False"
+                                                                          IsReadOnly="True">
+                                                                        <DataGrid.Columns>
+                                                                                <DataGridTextColumn Header="Error"
+                                                                                                    Binding="{Binding Name}"
+                                                                                                    Width="*"/>
+                                                                                <DataGridTextColumn Header="Count"
+                                                                                                    Binding="{Binding Count}"
+                                                                                                    Width="90"/>
+                                                                        </DataGrid.Columns>
+                                                                </DataGrid>
+                                                        </StackPanel>
+                                                </Border>
+                                        </StackPanel>
+                                </ScrollViewer>
+                        </TabItem>
+
+                        <!-- ══════════ END-TO-END ══════════ -->
+                        <TabItem Header="End-to-End"
+                                 Style="{StaticResource StatsTabItem}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel Margin="0,14,0,4">
+                                                <Grid Margin="0,0,0,14">
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Queue Latency Ø"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="E2AvgLatency"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"/>
+                                                                        <TextBlock Text="receipt → delivered"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="2"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Queue Latency P95"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="E2P95Latency"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"/>
+                                                                        <TextBlock Text="95 % delivered faster"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="4"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Queue Latency Max"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="E2MaxLatency"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   Foreground="{StaticResource WarnBrush}"/>
+                                                                        <TextBlock Text="delivered within retry window"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="6"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="First-Try Rate"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="E2FirstTry"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   Foreground="{StaticResource OkBrush}"/>
+                                                                        <TextBlock Text="delivered on the 1st attempt"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                </Grid>
+
+                                                <Grid Margin="0,0,0,14">
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0"
+                                                                Style="{StaticResource Card}">
+                                                                <StackPanel>
+                                                                        <Border Style="{StaticResource CardHeader}">
+                                                                                <TextBlock Text="Message Funnel"
+                                                                                           Style="{StaticResource SectionHeader}"/>
+                                                                        </Border>
+                                                                        <ItemsControl x:Name="E2Funnel"
+                                                                                      ItemTemplate="{StaticResource HBarTemplate}"
+                                                                                      Margin="16,10,16,12"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="2"
+                                                                Style="{StaticResource Card}">
+                                                                <StackPanel>
+                                                                        <Border Style="{StaticResource CardHeader}">
+                                                                                <TextBlock Text="Permanent Failures"
+                                                                                           Style="{StaticResource SectionHeader}"/>
+                                                                        </Border>
+                                                                        <ItemsControl x:Name="E2Failures"
+                                                                                      ItemTemplate="{StaticResource HBarTemplate}"
+                                                                                      Margin="16,10,16,6"/>
+                                                                        <TextBlock Text="Permanent Graph rejections fail fast with an immediate NDR; everything else retries until the expiration window closes."
+                                                                                   Style="{StaticResource HintText}"
+                                                                                   Margin="16,0,16,12"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                </Grid>
+                                        </StackPanel>
+                                </ScrollViewer>
+                        </TabItem>
+
+                        <!-- ══════════ SERVER ══════════ -->
+                        <TabItem Header="Server"
+                                 Style="{StaticResource StatsTabItem}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel Margin="0,14,0,4">
+                                                <Grid Margin="0,0,0,14">
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Memory (latest)"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="PerfMemory"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   FontSize="21"
+                                                                                   Foreground="{StaticResource AccentBrush}"/>
+                                                                        <TextBlock x:Name="PerfMemorySub"
+                                                                                   Text=""
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="2"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="CPU (latest)"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="PerfCpu"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   FontSize="21"/>
+                                                                        <TextBlock x:Name="PerfCpuSub"
+                                                                                   Text=""
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="4"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Disk Free (latest)"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="PerfDisk"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   FontSize="21"
+                                                                                   Foreground="{StaticResource OkBrush}"/>
+                                                                        <TextBlock Text=""
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="6"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="metrics.db"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="SrvDbSize"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"
+                                                                                   FontSize="21"/>
+                                                                        <TextBlock x:Name="SrvDbSizeSub"
+                                                                                   Text=""
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                </Grid>
+
+                                                <Border Style="{StaticResource Card}">
+                                                        <StackPanel>
+                                                                <Border Style="{StaticResource CardHeader}">
+                                                                        <TextBlock Text="Performance"
+                                                                                   Style="{StaticResource SectionHeader}"/>
+                                                                </Border>
+                                                                <Grid Margin="12,8,12,4">
+                                                                        <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="12"/>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="12"/>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <StackPanel Grid.Column="0">
+                                                                                <TextBlock Text="Memory (MB)"
+                                                                                           Style="{StaticResource LabelText}"
+                                                                                           Margin="0,0,0,4"/>
+                                                                                <Canvas x:Name="MemoryCanvas"
+                                                                                        Height="100"
+                                                                                        HorizontalAlignment="Stretch"
+                                                                                        ClipToBounds="True"
+                                                                                        SizeChanged="PerfCanvas_SizeChanged"/>
+                                                                        </StackPanel>
+                                                                        <StackPanel Grid.Column="2">
+                                                                                <TextBlock Text="CPU (%)"
+                                                                                           Style="{StaticResource LabelText}"
+                                                                                           Margin="0,0,0,4"/>
+                                                                                <Canvas x:Name="CpuCanvas"
+                                                                                        Height="100"
+                                                                                        HorizontalAlignment="Stretch"
+                                                                                        ClipToBounds="True"
+                                                                                        SizeChanged="PerfCanvas_SizeChanged"/>
+                                                                        </StackPanel>
+                                                                        <StackPanel Grid.Column="4">
+                                                                                <TextBlock Text="Disk Free (%)"
+                                                                                           Style="{StaticResource LabelText}"
+                                                                                           Margin="0,0,0,4"/>
+                                                                                <Canvas x:Name="DiskCanvas"
+                                                                                        Height="100"
+                                                                                        HorizontalAlignment="Stretch"
+                                                                                        ClipToBounds="True"
+                                                                                        SizeChanged="PerfCanvas_SizeChanged"/>
+                                                                        </StackPanel>
+                                                                </Grid>
+                                                                <TextBlock x:Name="NoPerfText"
+                                                                           Text="No performance data yet. Enable Performance Metrics in the Monitoring settings."
+                                                                           Style="{StaticResource HintText}"
+                                                                           Margin="16,4,16,12"/>
+                                                        </StackPanel>
+                                                </Border>
+                                        </StackPanel>
+                                </ScrollViewer>
+                        </TabItem>
+
+                </TabControl>
+        </Grid>
 </UserControl>
