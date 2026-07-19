@@ -56,9 +56,25 @@ public sealed class ConfigSchemaTests
         var changed = ConfigSchema.Migrate(root);
 
         changed.Should().BeTrue();
-        ConfigSchema.ReadVersion(root).Should().Be(3);
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
         root["Certificate"]!.AsObject()["SubjectName"]!.GetValue<string>().Should().Be("smtp.local");
         root.ContainsKey("UpdateCheck").Should().BeFalse(
+            "the absent key is valid — the options binder falls back to the default (disabled)");
+    }
+
+    [Fact]
+    public void Migrate_V3_ToV4_IsAdditiveOnly_ContentUnchangedExceptVersion()
+    {
+        // v4 only introduced Telemetry.Enabled (default false) — the migration is a pure
+        // version stamp; existing content must survive byte-identical.
+        var root = JsonNode.Parse("""{ "SchemaVersion": 3, "Certificate": { "SubjectName": "smtp.local" } }""")!.AsObject();
+
+        var changed = ConfigSchema.Migrate(root);
+
+        changed.Should().BeTrue();
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+        root["Certificate"]!.AsObject()["SubjectName"]!.GetValue<string>().Should().Be("smtp.local");
+        root.ContainsKey("Telemetry").Should().BeFalse(
             "the absent key is valid — the options binder falls back to the default (disabled)");
     }
 

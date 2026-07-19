@@ -146,6 +146,26 @@ public sealed class ConfigSchemaLoadTests : IDisposable
     }
 
     // =========================================================================
+    // Telemetry  (SectionName = "Telemetry")
+    // =========================================================================
+
+    [Fact]
+    public void Load_Telemetry_Enabled_AppearsInDocMonitoringTelemetryEnabled()
+    {
+        WriteJson("""{ "Telemetry": { "Enabled": true } }""");
+
+        _sut.Load().Monitoring.TelemetryEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Load_Telemetry_Absent_DefaultsToDisabled()
+    {
+        WriteJson("""{ "Smtp": { "Banner": "test" } }""");
+
+        _sut.Load().Monitoring.TelemetryEnabled.Should().BeFalse("telemetry is strictly opt-in");
+    }
+
+    // =========================================================================
     // AdminNotifications  (SectionName = "AdminNotifications")
     // Maps to ConfigDocument.NotificationSection
     // =========================================================================

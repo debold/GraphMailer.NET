@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using GraphMailer.Service.Infrastructure.Config;
 
 namespace GraphMailer.ConfigTool.Views;
@@ -7,12 +8,31 @@ namespace GraphMailer.ConfigTool.Views;
 public partial class MonitoringPage : UserControl
 {
     private readonly Action _markDirty;
+    private readonly DispatcherTimer _telemetryStatusTimer;
 
     public MonitoringPage(Action markDirty)
     {
         _markDirty = markDirty;
         InitializeComponent();
         LogLevel.ItemsSource = LogLevels;
+
+        // The "Last transmission" line mirrors a file the service rewrites on every
+        // heartbeat — refresh it while the page is visible (StatusPage idiom), not
+        // only on LoadFrom, so a send while the tool is open becomes visible.
+        _telemetryStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _telemetryStatusTimer.Tick += (_, _) => TelemetryStatusText.Text = DescribeTelemetryStatus();
+        IsVisibleChanged += (_, e) =>
+        {
+            if ((bool)e.NewValue)
+            {
+                TelemetryStatusText.Text = DescribeTelemetryStatus();
+                _telemetryStatusTimer.Start();
+            }
+            else
+            {
+                _telemetryStatusTimer.Stop();
+            }
+        };
     }
 
     // All valid Serilog levels; sole source of the LogLevel ComboBox items.
@@ -25,6 +45,8 @@ public partial class MonitoringPage : UserControl
         PortCheckInterval.Text = doc.Monitoring.PortCheckIntervalMinutes.ToString();
         GraphCheckInterval.Text = doc.Monitoring.GraphCheckIntervalMinutes.ToString();
         UpdateCheckEnabled.IsChecked = doc.Monitoring.UpdateCheckEnabled;
+        TelemetryEnabled.IsChecked = doc.Monitoring.TelemetryEnabled;
+        TelemetryStatusText.Text = DescribeTelemetryStatus();
 
         MetricsEnabled.IsChecked = doc.Metrics.Enabled;
         MetricsRetentionDays.Text = doc.Metrics.RetentionDays.ToString();
@@ -46,6 +68,7 @@ public partial class MonitoringPage : UserControl
         doc.Monitoring.PortCheckIntervalMinutes = int.TryParse(PortCheckInterval.Text, out var pc) ? pc : 5;
         doc.Monitoring.GraphCheckIntervalMinutes = int.TryParse(GraphCheckInterval.Text, out var gc) ? gc : 15;
         doc.Monitoring.UpdateCheckEnabled = UpdateCheckEnabled.IsChecked == true;
+        doc.Monitoring.TelemetryEnabled = TelemetryEnabled.IsChecked == true;
 
         doc.Metrics.Enabled = MetricsEnabled.IsChecked == true;
         doc.Metrics.RetentionDays = int.TryParse(MetricsRetentionDays.Text, out var rd) ? rd : 90;
@@ -57,6 +80,18 @@ public partial class MonitoringPage : UserControl
 
         if (LogLevel.SelectedIndex >= 0)
             doc.Logging.DefaultLevel = LogLevels[LogLevel.SelectedIndex];
+    }
+
+    /// <summary>Transparency line: install id + last heartbeat from the service-written status file.</summary>
+    private static string DescribeTelemetryStatus()
+    {
+        var status = GraphMailer.Service.Services.Telemetry.TelemetryStatus.TryLoad(
+            GraphMailer.Service.Services.Telemetry.TelemetryStatus.StatusFilePath);
+        if (status?.LastHeartbeatUtc is not DateTime last)
+            return "No telemetry sent yet.";
+
+        var line = $"Install id {status.InstallId} — last heartbeat {last.ToLocalTime():g}";
+        return status.LastError is null ? line : $"{line} (failed: {status.LastError})";
     }
 
     private void AnyField_Changed(object sender, TextChangedEventArgs e) => _markDirty();

@@ -70,6 +70,36 @@ check. An optional admin email for new releases can be enabled on the
 > your installation, and it never installs anything automatically. A failed check (e.g. no
 > internet access) is retried the next day.
 
+## Anonymous Usage Telemetry
+
+Once a day, sends **one anonymous report** to the GraphMailer developer to help improve the
+software: which versions are in use, whether mail flows succeed, and which unexpected errors occur
+in the field.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Send telemetry | Off | Master switch. While disabled, nothing is collected and nothing leaves the machine. |
+| Last transmission | — | Read-only: this installation's random id and when the last report was sent. |
+
+**Exactly what is transmitted** (and nothing else):
+
+- **Heartbeat (daily)** — a random installation id (a GUID, not derived from your hardware, user,
+  or network), the GraphMailer version, Windows and .NET runtime version, service uptime, the
+  *number* of received / sent / failed mails since the last report, and the configuration *shape*
+  (how many listeners, whether TLS/authentication/archiving are enabled).
+- **Error reports** — for unexpected errors only (log level Error or Fatal): the exception type,
+  the stack trace, the log message *template* (e.g. `Delivery failed for {MessageId}` — the
+  placeholders, never the actual values), the affected component, the Microsoft Graph error code /
+  HTTP status if any, and how often the error occurred.
+
+**Never transmitted**: email addresses, message content, subjects, IP addresses, hostnames, user
+or tenant names, or any configuration values. Error messages are deliberately dropped because they
+could contain such data — only type names and code locations are kept.
+
+> [!NOTE]
+> The data is sent to the developer's Microsoft Azure telemetry endpoint (Application Insights,
+> EU region) over HTTPS. A failed transmission is retried hourly and never affects mail delivery.
+
 ## Metrics Storage
 
 Records email and performance statistics to the local SQLite database that feeds the

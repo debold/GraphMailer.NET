@@ -143,6 +143,7 @@ try
     builder.Services.Configure<PortMonitoringOptions>(builder.Configuration.GetSection(PortMonitoringOptions.SectionName));
     builder.Services.Configure<GraphApiMonitoringOptions>(builder.Configuration.GetSection(GraphApiMonitoringOptions.SectionName));
     builder.Services.Configure<UpdateCheckOptions>(builder.Configuration.GetSection(UpdateCheckOptions.SectionName));
+    builder.Services.Configure<TelemetryOptions>(builder.Configuration.GetSection(TelemetryOptions.SectionName));
     builder.Services.Configure<MetricsOptions>(builder.Configuration.GetSection(MetricsOptions.SectionName));
     builder.Services.Configure<AdminNotificationsOptions>(builder.Configuration.GetSection(AdminNotificationsOptions.SectionName));
     builder.Services.Configure<NdrOptions>(builder.Configuration.GetSection(NdrOptions.SectionName));
@@ -227,6 +228,15 @@ try
     builder.Services.AddSingleton<GraphMailer.Service.Services.UpdateCheck.IUpdateChecker,
         GraphMailer.Service.Services.UpdateCheck.GitHubUpdateChecker>();
     builder.Services.AddHostedService<GraphMailer.Service.Services.UpdateCheck.UpdateCheckService>();
+
+    // Opt-in anonymous telemetry: daily heartbeat + PII-free error reports to the
+    // developer's Application Insights. The sink is picked up by Serilog via
+    // ReadFrom.Services(...) above; it only forwards while Telemetry.Enabled is true.
+    builder.Services.AddSingleton<GraphMailer.Service.Services.Telemetry.ErrorReportCollector>();
+    builder.Services.AddSingleton<Serilog.Core.ILogEventSink, GraphMailer.Service.Services.Telemetry.TelemetrySink>();
+    builder.Services.AddSingleton<GraphMailer.Service.Services.Telemetry.ITelemetrySender,
+        GraphMailer.Service.Services.Telemetry.AppInsightsTelemetrySender>();
+    builder.Services.AddHostedService<GraphMailer.Service.Services.Telemetry.TelemetryService>();
 
     builder.Services.AddHostedService<Worker>();
 

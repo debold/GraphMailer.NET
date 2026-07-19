@@ -170,6 +170,53 @@
                 </StackPanel>
             </Border>
 
+            <!-- Anonymous usage telemetry -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,16,0,0">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <TextBlock Text="Anonymous Usage Telemetry"
+                                   Style="{StaticResource SectionHeader}"/>
+                    </Border>
+                    <Grid Margin="16,12,16,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Send telemetry"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <CheckBox x:Name="TelemetryEnabled"
+                                      Content="Enabled"
+                                      ToolTip="Once a day the service sends an anonymous heartbeat to the developer:&#x0a;random install id, version, OS/runtime, aggregated mail counters and error&#x0a;reports (exception type, stack trace, log message template — never email&#x0a;addresses, IPs, hostnames or message content).&#x0a;Disabled by default — nothing leaves the machine until you enable it."
+                                      Checked="AnyCheckBox_Changed"
+                                      Unchecked="AnyCheckBox_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,4,0,0"
+                                   Text="Help improve GraphMailer by sending one anonymous daily report: install id (random GUID), version, OS/runtime, mail success/failure counts and PII-free error details. No email addresses, IPs, hostnames or message content are ever transmitted. See the help for the full field list."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                    <Grid Margin="16,4,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Last transmission"
+                                   Style="{StaticResource LabelText}"
+                                   Margin="0,0,0,4"/>
+                        <TextBlock Grid.Column="2"
+                                   x:Name="TelemetryStatusText"
+                                   Text="No telemetry sent yet."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- Metrics storage -->
             <Border Style="{StaticResource Card}"
                     Margin="0,16,0,16">

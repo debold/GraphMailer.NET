@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 688 tests** (641 unit · 47 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-18
+**Total: 724 tests** (677 unit · 47 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-19
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -881,6 +881,8 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `RecordEmailReceivedAsync_Enabled_StoresRecipientsAndSubject` | Metrics enabled; record with two recipients and a subject | `to_addrs` column contains comma-separated addresses; `subject` column contains the subject |
 | `RecordEmailSentAsync_Enabled_StoresRecipientsAndSubject` | Metrics enabled; record sent with one recipient and subject | `to_addrs` and `subject` columns in DB match the supplied values |
 | `RecordEmailReceivedAsync_StoresClientIp_ForTopHostsReport` | Record received with `clientIp = 203.0.113.9` | `client_ip` column holds the IP (powers the report's top-sending-hosts table) |
+| `GetEventCountsAsync_CountsByType_IgnoringQueued` | 2 received, 1 queued, 1 sent, 1 failed recorded | `EmailEventCounts(2, 1, 1)` — queued events are not counted (telemetry heartbeat) |
+| `GetEventCountsAsync_ExcludesEventsBeforeSince` | Event recorded, then counted with a `since` in the future | `EmailEventCounts(0, 0, 0)` — the watermark window is respected |
 | `Constructor_FreshDb_StampsCurrentSchemaVersion` | New database created | `PRAGMA user_version` == `MetricsService.SchemaVersion` |
 | `Constructor_OldDbWithoutClientIp_MigratesColumnAndStampsVersion` | Pre-versioning DB (no `client_ip`, `user_version` 0) | `client_ip` column added by the migration; `user_version` stamped to current |
 
@@ -978,6 +980,57 @@ Weekly opt-in check scheduler: persists the cadence in `data\update-status.json`
 
 ---
 
+### ErrorReportCollector (`Services/Telemetry/ErrorReportCollectorTests.cs`)
+
+Bounded, thread-safe aggregator between the Serilog telemetry sink and the daily heartbeat flush; dedupe by error-site fingerprint.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Record_SameErrorTwice_AggregatesIntoOneReportWithCount2` | Identical error recorded twice | One report, `Count == 2`, no overflow |
+| `Record_DifferentTemplates_ProduceSeparateReports` | Two distinct templates | Two reports |
+| `ComputeFingerprint_SameInputs_IsStable_DifferentInputs_Differ` | Same vs. different top stack frame | Stable fingerprint for the same site (cross-install grouping); distinct sites differ |
+| `Record_BeyondCap_OnlyIncrementsOverflow` | 57 distinct errors recorded (cap 50) | 50 reports kept, `Overflow == 7` — a log storm cannot grow memory or payload |
+| `Record_KnownFingerprintAtCap_StillAggregates` | Collector at cap; a known fingerprint re-occurs | Aggregated into the existing report, no overflow |
+| `Drain_ClearsCollector` | Drain after recording | Second drain returns nothing |
+| `Restore_AfterFailedFlush_MergesWithNewOccurrences` | Drained reports restored while the same error re-occurred | Counts merged into one report |
+| `Record_ReportContainsTemplateAndTypesOnly_NoRenderedValues` | Full record incl. Graph code + HTTP status | Report carries template placeholders, type names, code/status — no rendered values (PII guarantee) |
+
+---
+
+### TelemetrySink (`Services/Telemetry/TelemetrySinkTests.cs`)
+
+Serilog sink feeding Error/Fatal events into the collector while `Telemetry.Enabled` — the PII boundary of the telemetry feature.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Emit_BelowError_IsIgnored` (Theory ×3) | Warning / Information / Debug event | Nothing recorded |
+| `Emit_TelemetryDisabled_RecordsNothing` | `Telemetry.Enabled = false`, Error event | Nothing recorded — while disabled no data is even collected |
+| `Emit_ErrorOrFatal_IsRecorded` (Theory ×2) | Error / Fatal event | One report recorded |
+| `Emit_CapturesTemplate_NeverRenderedPropertyValues` | Template with `{From}` bound to a real address | Report holds the raw template; the address never appears (PII guarantee) |
+| `Emit_WithException_KeepsTypeAndStack_DropsMessage` | Exception whose message contains an address | Report holds type + stack frames; the message (and address) is dropped (PII guarantee) |
+| `Emit_ODataErrorInInnerChain_ExtractsCodeAndStatus` | `ODataError` (404, `ErrorInvalidUser`) wrapped in an outer exception | `graphErrorCode`/`httpStatus` extracted; type chain lists both exceptions |
+| `ExtractComponent_ParsesLoggingConventionPrefix` (Theory ×3) | `[SmtpRelay]` prefix / no prefix / empty brackets | Component name / `unknown` / `unknown` |
+
+---
+
+### TelemetryService (`Services/Telemetry/TelemetryServiceTests.cs`)
+
+Daily opt-in heartbeat scheduler: persists cadence + install id + counter watermark in `data\telemetry-status.json`; failed transmissions retry hourly without losing data.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `IsHeartbeatDue_NoStatusFile_IsDue` | No status file yet | Due — the first heartbeat runs right after enabling |
+| `IsHeartbeatDue_NextInFuture_IsNotDue` | Persisted `NextHeartbeatUtc` 12 h ahead | Not due — a restart within the daily window does not re-send |
+| `IsHeartbeatDue_NextPassed_IsDue` | Persisted `NextHeartbeatUtc` in the past | Due |
+| `RunHeartbeat_Success_WritesStatus_WithDailyNextAndAdvancedWatermark` | Successful send | Status file with GUID install id, no error, `NextHeartbeatUtc ≈ now + 24 h`, watermark advanced to now |
+| `RunHeartbeat_InstallId_IsStableAcrossHeartbeats` | Two heartbeats | Same install id — required for distinct-counting the install base |
+| `RunHeartbeat_SendsCountersAndConfigShape` | 3 listeners configured (1 disabled), counts 12/10/2 | Heartbeat carries `listenerCount = 2`, TLS/auth/archiving flags, env properties and the counter metrics; the hostname appears nowhere |
+| `RunHeartbeat_SendsPendingErrorReports_AndDrainsCollector` | One pending error report | `TrackErrorReport` called with template + install id; collector empty afterwards |
+| `RunHeartbeat_FlushFails_SetsError_RetriesHourly_KeepsWatermarkAndReports` | `FlushAsync` returns false | `LastError` set; `NextHeartbeatUtc ≈ now + 1 h`; watermark unchanged; error report restored for the retry |
+| `RunHeartbeat_SenderThrows_IsHandled_AndRetriesHourly` | Sender throws | No exception escapes; `LastError` set; hourly retry scheduled |
+
+---
+
 ### Config schema versioning (`Infrastructure/Config/ConfigSchemaTests.cs`, `ConfigServiceTests.cs`)
 
 `ConfigSchema` / `ConfigMigrator` migrate `graphmailer.json` forward to the current schema version.
@@ -988,7 +1041,8 @@ Weekly opt-in check scheduler: persists the cadence in `data\update-status.json`
 | `ReadVersion_Present_IsValue` | `SchemaVersion = 3` | `3` |
 | `Migrate_V0_RemovesObsoleteRetryKeys_AndStampsVersion` | v0 doc with `MailQueue.MaxRetries`/`RetryDelaySeconds` | Obsolete keys removed, unrelated keys kept, version stamped to current |
 | `Migrate_V1_ToCurrent_IsAdditiveOnly_ContentUnchangedExceptVersion` | v1 doc (v2 only added `Certificate.FailClosed`) | Version stamped to current; existing content untouched; the absent key stays absent (binder default applies) |
-| `Migrate_V2_ToV3_IsAdditiveOnly_ContentUnchangedExceptVersion` | v2 doc (v3 only added `UpdateCheck.Enabled` + the `UpdateAvailable` notification type) | Version stamped to 3; existing content untouched; the absent keys stay absent (binder defaults apply) |
+| `Migrate_V2_ToV3_IsAdditiveOnly_ContentUnchangedExceptVersion` | v2 doc (v3 only added `UpdateCheck.Enabled` + the `UpdateAvailable` notification type) | Version stamped to current; existing content untouched; the absent keys stay absent (binder defaults apply) |
+| `Migrate_V3_ToV4_IsAdditiveOnly_ContentUnchangedExceptVersion` | v3 doc (v4 only added `Telemetry.Enabled`) | Version stamped to current; existing content untouched; the absent key stays absent (binder default applies) |
 | `Migrate_AlreadyCurrent_IsNoOp` | Doc already at current version | `false` (no change) |
 | `Migrate_Idempotent` | Migrate twice | First `true`, second `false` |
 | `Migrate_NewerThanBuild_LeavesFileAlone` | `SchemaVersion = Current + 1` | `false`; version left untouched |
@@ -1045,6 +1099,8 @@ Verifies that every JSON key written by the service (`graphmailer.json`) is corr
 | `Load_AdminNotifications_ScheduledReport_AllFields_AppearInDocNotification` | Full `AdminNotifications.ScheduledReport` section (enabled, frequency, time, day-of-week, day-of-month) | All map to `doc.Notification.Report*` |
 | `Load_UpdateCheck_Enabled_AppearsInDocMonitoringUpdateCheckEnabled` | `UpdateCheck.Enabled = true` | `doc.Monitoring.UpdateCheckEnabled == true` |
 | `Load_UpdateCheck_Absent_DefaultsToDisabled` | No `UpdateCheck` section (pre-v3 config) | `doc.Monitoring.UpdateCheckEnabled == false` |
+| `Load_Telemetry_Enabled_AppearsInDocMonitoringTelemetryEnabled` | `Telemetry.Enabled = true` | `doc.Monitoring.TelemetryEnabled == true` |
+| `Load_Telemetry_Absent_DefaultsToDisabled` | No `Telemetry` section (pre-v4 config) | `doc.Monitoring.TelemetryEnabled == false` — telemetry is strictly opt-in |
 | `Load_AdminNotifications_UpdateAvailable_Enabled_AppearsInDocNotifUpdateAvailable_True` | `UpdateAvailable.Enabled = true` | `doc.Notification.NotifUpdateAvailable == true` |
 | `Load_AdminNotifications_UpdateAvailable_Absent_DefaultsToDisabled` | `NotificationTypes` without `UpdateAvailable` | `doc.Notification.NotifUpdateAvailable == false` (opt-in) |
 
@@ -1090,4 +1146,6 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `Backup_Password_IsWrittenEncrypted` | `Backup.Password` saved | JSON value is `ENC[...]` |
 | `Save_NotifBackup_False_BindsToBackupResultEnabled_False` | `Notification.NotifBackup = false` | `AdminNotifications:NotificationTypes:BackupResult:Enabled == false` |
 | `Save_UpdateCheckEnabled_BindsToUpdateCheckEnabled` | `doc.Monitoring.UpdateCheckEnabled = true` saved | Options bound: `UpdateCheck:Enabled == true` |
+| `Save_TelemetryEnabled_BindsToTelemetryOptionsEnabled` | `doc.Monitoring.TelemetryEnabled = true` saved | Options bound: `Telemetry:Enabled == true` |
+| `Save_TelemetryDisabled_BindsToTelemetryOptionsDisabled` | `doc.Monitoring.TelemetryEnabled = false` saved | Options bound: `Telemetry:Enabled == false` |
 | `Save_NotifUpdateAvailable_True_BindsToUpdateAvailableEnabled_True` | `Notification.NotifUpdateAvailable = true` | `AdminNotifications:NotificationTypes:UpdateAvailable:Enabled == true` |

@@ -171,6 +171,32 @@ public sealed class MetricsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetEventCountsAsync_CountsByType_IgnoringQueued()
+    {
+        var svc = CreateService();
+        await svc.RecordEmailReceivedAsync("a@b.com", ["r@b.com"], "cnt-1");
+        await svc.RecordEmailReceivedAsync("a@b.com", ["r@b.com"], "cnt-2");
+        await svc.RecordEmailQueuedAsync("cnt-1");
+        await svc.RecordEmailSentAsync("a@b.com", ["r@b.com"], "cnt-1");
+        await svc.RecordEmailFailedAsync("cnt-2", "Graph API error");
+
+        var counts = await svc.GetEventCountsAsync(DateTime.UtcNow.AddMinutes(-5));
+
+        Assert.Equal(new EmailEventCounts(Received: 2, Sent: 1, Failed: 1), counts);
+    }
+
+    [Fact]
+    public async Task GetEventCountsAsync_ExcludesEventsBeforeSince()
+    {
+        var svc = CreateService();
+        await svc.RecordEmailSentAsync("a@b.com", ["r@b.com"], "old-cnt");
+
+        var counts = await svc.GetEventCountsAsync(DateTime.UtcNow.AddMinutes(5));
+
+        Assert.Equal(new EmailEventCounts(0, 0, 0), counts);
+    }
+
+    [Fact]
     public void Constructor_FreshDb_StampsCurrentSchemaVersion()
     {
         _ = CreateService();

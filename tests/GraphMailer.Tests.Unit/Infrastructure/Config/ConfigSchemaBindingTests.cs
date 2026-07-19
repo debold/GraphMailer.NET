@@ -557,6 +557,30 @@ public sealed class ConfigSchemaBindingTests : IDisposable
         opts.Enabled.Should().BeTrue();
     }
 
+    // =========================================================================
+    // Telemetry
+    // =========================================================================
+
+    [Fact]
+    public void Save_TelemetryEnabled_BindsToTelemetryOptionsEnabled()
+    {
+        _sut.Save(new ConfigDocument { Monitoring = new() { TelemetryEnabled = true } });
+
+        var opts = Bind<TelemetryOptions>(LoadServiceConfig(), TelemetryOptions.SectionName);
+
+        opts.Enabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Save_TelemetryDisabled_BindsToTelemetryOptionsDisabled()
+    {
+        _sut.Save(new ConfigDocument { Monitoring = new() { TelemetryEnabled = false } });
+
+        var opts = Bind<TelemetryOptions>(LoadServiceConfig(), TelemetryOptions.SectionName);
+
+        opts.Enabled.Should().BeFalse();
+    }
+
     [Fact]
     public void Save_NotifUpdateAvailable_True_BindsToUpdateAvailableEnabled_True()
     {

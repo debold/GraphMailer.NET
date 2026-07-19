@@ -35,10 +35,13 @@ livesettings.local.json
 
 # ── Runtime artifacts (the service writes these under ProgramData, but guard
 #    against accidental dev runs with a project working directory) ────────────
-src/**/config/
-src/**/data/
-src/**/logs/
-src/**/mail/
+# One directory level only (src/<project>/…): gitignore matches case-insensitively
+# on Windows, and the previous src/**/config/ silently swallowed the C# source
+# folder src/GraphMailer.Service/Infrastructure/Config/.
+src/*/config/
+src/*/data/
+src/*/logs/
+src/*/mail/
 *.log
 *.db
 *.db-shm

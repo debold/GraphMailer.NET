@@ -4,6 +4,25 @@
 
 ### Added
 
+#### Anonymous usage telemetry (opt-in)
+- The service can send **one anonymous daily report** to the developer's Application Insights
+  instance to reveal the install base, version distribution and field errors. Fully opt-in:
+  **Health Checks → Anonymous Usage Telemetry** in the ConfigTool (config key
+  `Telemetry.Enabled`, default off) — while disabled, nothing is collected and nothing leaves
+  the machine.
+- **Heartbeat contents**: random install id (GUID, not derived from hardware/user/network),
+  GraphMailer version, OS + .NET runtime version, uptime, received/sent/failed mail counts
+  since the last report (from the local metrics DB) and the configuration shape (listener
+  count, TLS/auth/archiving enabled). **Error reports** (log level Error/Fatal): exception
+  type, stack trace, log message *template* (placeholders, never rendered values), component,
+  Graph error code/HTTP status, occurrence count — deduplicated by fingerprint, capped at 50
+  distinct errors per day. PII-free by construction: no addresses, hostnames, message content
+  or exception messages are ever transmitted; the SDK's hostname tags are scrubbed.
+- Transmission state (install id, last/next heartbeat) is persisted in
+  `data\telemetry-status.json` and shown on the Health Checks page ("Last transmission").
+  A failed transmission retries hourly and keeps its unsent counters/error reports.
+- Config schema bumped to **v4** (purely additive: `Telemetry.Enabled`).
+
 #### Weekly update check with admin notification (opt-in)
 - The service can check the GraphMailer releases on GitHub once a week and report a newer
   version. Fully opt-in: **Health Checks → Update Check** in the ConfigTool (config key

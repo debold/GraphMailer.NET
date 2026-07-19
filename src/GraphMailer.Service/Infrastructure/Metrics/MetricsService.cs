@@ -102,6 +102,42 @@ internal sealed class MetricsService : IMetricsService
         }
     }
 
+    public async Task<EmailEventCounts> GetEventCountsAsync(DateTime sinceUtc, CancellationToken ct = default)
+    {
+        // Read-only: WAL mode allows this concurrently with writes — no write lock needed.
+        try
+        {
+            await using var conn = OpenConnection();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT event_type, COUNT(*)
+                FROM email_events
+                WHERE occurred_at >= $since
+                GROUP BY event_type
+                """;
+            cmd.Parameters.AddWithValue("$since", sinceUtc.ToString("O"));
+
+            int received = 0, sent = 0, failed = 0;
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var count = reader.GetInt32(1);
+                switch (reader.GetString(0))
+                {
+                    case "received": received = count; break;
+                    case "sent": sent = count; break;
+                    case "failed": failed = count; break;
+                }
+            }
+            return new EmailEventCounts(received, sent, failed);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Metrics] Failed to count email events since {Since}", sinceUtc);
+            return new EmailEventCounts(0, 0, 0);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Cleanup (called by MetricsCollectorService)
     // -------------------------------------------------------------------------
