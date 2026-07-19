@@ -204,7 +204,7 @@
                                                 </StackPanel>
                                         </Grid>
                                         <TextBlock x:Name="NoPerfText"
-                                                   Text="No performance data yet. Enable Performance Metrics in the Health Checks settings."
+                                                   Text="No performance data yet. Enable Performance Metrics in the Monitoring settings."
                                                    Style="{StaticResource HintText}"
                                                    Margin="16,4,16,12"/>
                                 </StackPanel>

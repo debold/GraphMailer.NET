@@ -110,7 +110,7 @@
             <Border Style="{StaticResource Card}">
                 <StackPanel>
                     <Border Style="{StaticResource CardHeader}">
-                        <TextBlock Text="Graph API Health Checks"
+                        <TextBlock Text="Graph API Monitoring"
                                    Style="{StaticResource SectionHeader}"/>
                     </Border>
                     <Grid Margin="16,12,16,16">

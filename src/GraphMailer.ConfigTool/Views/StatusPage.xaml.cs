@@ -135,7 +135,7 @@ public partial class StatusPage : UserControl
                 ? "Check requested — waiting for the service to pick it up…"
                 : status?.LastError is { } err
                     ? $"Last check failed: {err} (checked {LocalTime(status.LastCheckUtc)})"
-                    : "No check has run yet. Enable the weekly update check on the Health Checks page or press \"Check now\".";
+                    : "No check has run yet. Enable the weekly update check on the Monitoring page or press \"Check now\".";
             return;
         }
 

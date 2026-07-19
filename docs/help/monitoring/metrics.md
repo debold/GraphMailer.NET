@@ -7,7 +7,7 @@ from.
 
 > [!NOTE]
 > This page is **read-only**. What is recorded (and for how long) is controlled by *Metrics Storage*
-> and *Performance Metrics* on the [Health Checks](../configuration/health-checks.html) page.
+> and *Performance Metrics* on the [Monitoring](../configuration/monitoring.html) page.
 
 ## Email statistics (30 days)
 
@@ -25,7 +25,7 @@ The latest sampled **Memory**, **CPU**, and **Disk Free** values, plus trend cha
 
 > [!NOTE]
 > If the charts are empty and you see *“No performance data yet,”* performance sampling is turned
-> off. Enable **Performance Metrics** on the [Health Checks](../configuration/health-checks.html)
+> off. Enable **Performance Metrics** on the [Monitoring](../configuration/monitoring.html)
 > page to start recording memory, CPU and disk usage.
 
 ## Recent Activity
@@ -40,10 +40,10 @@ duration, and a detail/error column — with a **↺ Refresh** button.
 
 > [!NOTE]
 > If you see *“No metrics data available,”* the service has not processed any messages yet, or
-> metrics recording is disabled on the Health Checks page.
+> metrics recording is disabled on the Monitoring page.
 
 ## Related
 
-- [Health Checks](../configuration/health-checks.html) — enable/tune what is recorded and retention
+- [Monitoring](../configuration/monitoring.html) — enable/tune what is recorded and retention
 - [Messages](messages.html) — the actual queued / sent / failed message files
 - [Notifications](../configuration/notifications.html) — the scheduled report built from this data

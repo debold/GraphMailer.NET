@@ -76,7 +76,7 @@ $SiteMap = @(
     @{ Group = 'Configuration';   Path = 'configuration/ip-filtering.md';     Title = 'IP Filtering' }
     @{ Group = 'Configuration';   Path = 'configuration/graph-api.md';        Title = 'Graph API' }
     @{ Group = 'Configuration';   Path = 'configuration/mail-queue.md';       Title = 'Mail Queue' }
-    @{ Group = 'Configuration';   Path = 'configuration/health-checks.md';    Title = 'Health Checks' }
+    @{ Group = 'Configuration';   Path = 'configuration/monitoring.md';       Title = 'Monitoring' }
     @{ Group = 'Configuration';   Path = 'configuration/notifications.md';    Title = 'Notifications' }
     @{ Group = 'Configuration';   Path = 'configuration/backup-restore.md';   Title = 'Backup & Restore' }
     @{ Group = 'Monitoring';      Path = 'monitoring/status.md';              Title = 'Status' }

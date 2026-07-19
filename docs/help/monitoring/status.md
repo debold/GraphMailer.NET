@@ -40,7 +40,7 @@ to manage it:
 ## Software Update
 
 Shows the installed GraphMailer version and — when the weekly update check on the
-[Health Checks](../configuration/health-checks.html) page is enabled — the latest release published
+[Monitoring](../configuration/monitoring.html) page is enabled — the latest release published
 on GitHub, with a badge (*Up to date* / *Update available*), the time of the last and next check,
 and a **Release notes** link.
 
@@ -61,7 +61,7 @@ Status page.
 
 ## System Health
 
-A table of the same self-checks configured on the [Health Checks](../configuration/health-checks.html)
+A table of the same self-checks configured on the [Monitoring](../configuration/monitoring.html)
 page — each component (certificates, disk space, SMTP ports, Graph API) with its current status
 (OK / Warning / Error), a detail message, and when it was last checked. This is the quickest place
 to see *why* something is wrong.
@@ -74,6 +74,6 @@ its page — [Graph API](../configuration/graph-api.html) or [Access Control](..
 
 ## Related
 
-- [Health Checks](../configuration/health-checks.html) — configure the checks shown here
+- [Monitoring](../configuration/monitoring.html) — configure the checks shown here
 - [Metrics](metrics.html) — longer-term statistics and trends
 - [Logs](logs.html) — the detailed event log behind a problem

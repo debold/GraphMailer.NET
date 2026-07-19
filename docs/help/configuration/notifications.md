@@ -63,11 +63,11 @@ Toggle which conditions raise an alert email. Sensible defaults are pre-set:
 | New GraphMailer version available | **Off** |
 
 The thresholds behind several of these (certificate warning days, disk-space percentage, port and
-Graph check intervals) are set on the [Health Checks](health-checks.html) page.
+Graph check intervals) are set on the [Monitoring](monitoring.html) page.
 
 > [!NOTE]
 > The *New GraphMailer version available* alert additionally requires the weekly **update check**
-> to be enabled on the [Health Checks](health-checks.html) page. You receive **one email per new
+> to be enabled on the [Monitoring](monitoring.html) page. You receive **one email per new
 > release**, not a weekly reminder.
 
 ## Periodic Reports
@@ -91,5 +91,5 @@ failures — to the Admin Recipients on a schedule.
 ## Related
 
 - [Graph API](graph-api.html) — the connection used to send notifications
-- [Health Checks](health-checks.html) — the thresholds that trigger many of these alerts
+- [Monitoring](monitoring.html) — the thresholds that trigger many of these alerts
 - [Mail Queue](mail-queue.html) — when a message becomes a permanent failure (NDR)

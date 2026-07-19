@@ -91,7 +91,7 @@ run the renewal: it signs you in, generates a fresh certificate, uploads it to t
 registration in Entra, and updates the config — no new app registration, no downtime.
 
 > [!TIP]
-> The [Health Checks](../configuration/health-checks.html) page and the scheduled
+> The [Monitoring](../configuration/monitoring.html) page and the scheduled
 > [report](../configuration/notifications.html) warn you as the certificate approaches expiry, so
 > renewal never takes you by surprise.
 

@@ -64,7 +64,7 @@ this page.
 > If a TLS listener is configured but **no certificate can be loaded**, GraphMailer logs an error
 > and falls back to **plain (unencrypted)** SMTP on that port rather than refusing all mail. This
 > keeps mail flowing during a certificate problem, but means traffic is briefly unencrypted —
-> watch the [Logs](../monitoring/logs.html) and [Health Checks](health-checks.html) for this.
+> watch the [Logs](../monitoring/logs.html) and [Monitoring](monitoring.html) for this.
 
 ### Do not start TLS listeners without a certificate (fail-closed)
 
@@ -94,4 +94,4 @@ certificate is missing. Changing the option requires a **service restart**.
 
 - [Access Control](access-control.html) — who may authenticate and which senders are allowed
 - [IP Filtering](ip-filtering.html) — which networks may connect at all
-- [Health Checks](health-checks.html) — alerts when a certificate is missing or expiring
+- [Monitoring](monitoring.html) — alerts when a certificate is missing or expiring

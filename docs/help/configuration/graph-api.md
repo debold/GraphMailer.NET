@@ -90,4 +90,4 @@ GraphMailer needs three Microsoft Graph **application** permissions, all granted
 
 - [Entra / Graph Setup](../getting-started/entra-setup.html) — full setup and renewal walkthrough
 - [Access Control](access-control.html) — Microsoft 365 sender validation (`User.Read.All`)
-- [Health Checks](health-checks.html) — alerts for permission gaps and certificate expiry
+- [Monitoring](monitoring.html) — alerts for permission gaps and certificate expiry

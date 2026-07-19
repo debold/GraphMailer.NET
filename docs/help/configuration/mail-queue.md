@@ -72,4 +72,4 @@ folders from the [Messages](../monitoring/messages.html) page.
 
 - [Messages](../monitoring/messages.html) — browse the queue, sent and failed folders
 - [Notifications](notifications.html) — non-delivery reports and failed-queue alerts
-- [Health Checks](health-checks.html) — disk-space monitoring for the mail directory
+- [Monitoring](monitoring.html) — disk-space monitoring for the mail directory

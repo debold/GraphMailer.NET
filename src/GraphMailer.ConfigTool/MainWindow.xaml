@@ -237,7 +237,7 @@
                                                                    Width="20"
                                                                    TextAlignment="Center"
                                                                    Foreground="#FFCCCCCC"/>
-                                                        <TextBlock Text="Health Checks"
+                                                        <TextBlock Text="Monitoring"
                                                                    FontSize="13"
                                                                    Foreground="#FFCCCCCC"
                                                                    Margin="10,0,0,0"/>

@@ -355,7 +355,7 @@
                                       Unchecked="AnyCheckbox_Changed"/>
                             <TextBlock Grid.Row="9"
                                        Grid.Column="1"
-                                       Text="New GraphMailer version available (requires the update check on the Health Checks page; one email per new version)"
+                                       Text="New GraphMailer version available (requires the update check on the Monitoring page; one email per new version)"
                                        Style="{StaticResource BodyText}"
                                        Margin="10,0,0,0"
                                        VerticalAlignment="Center"/>

@@ -1,6 +1,6 @@
-# Health Checks
+# Monitoring
 
-This is the **Health Checks** page of the Configuration Tool. It tunes the background self-checks
+This is the **Monitoring** page of the Configuration Tool. It tunes the background self-checks
 GraphMailer runs to catch problems early — expiring certificates, low disk space, an unreachable
 SMTP port, or a broken Microsoft 365 connection — and it controls how statistics and logs are
 recorded.
@@ -40,7 +40,7 @@ accepting connections.
 |---|---|---|---|
 | Check interval (minutes) | `5` | 1–1440 | How often each listener port is probed. A failed probe raises an alert. |
 
-## Graph API Health Checks
+## Graph API Monitoring
 
 Periodically authenticates against the Graph API to confirm the credentials still work and the
 required permissions are present.
@@ -58,7 +58,8 @@ required permissions are present.
 Once a week, queries the GraphMailer releases on GitHub (`api.github.com`) and reports whether a
 newer version is available. The result appears in the **Software Update** card on the
 [Status](../monitoring/status.html) page, which also offers a **Check now** button for an immediate
-check. An optional admin email for new releases can be enabled on the
+check, and as a **Software Update** row in the health table of the scheduled
+[report](notifications.html). An optional admin email for new releases can be enabled on the
 [Notifications](notifications.html) page (one email per new version).
 
 | Setting | Default | Meaning |

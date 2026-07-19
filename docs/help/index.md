@@ -26,7 +26,7 @@ One page per screen in the ConfigTool, in the same order as the app's sidebar:
 - [IP Filtering](configuration/ip-filtering.html) — allowed networks and automatic blocking
 - [Graph API](configuration/graph-api.html) — Microsoft 365 connection and certificate
 - [Mail Queue](configuration/mail-queue.html) — delivery, retries, archiving
-- [Health Checks](configuration/health-checks.html) — monitoring thresholds
+- [Monitoring](configuration/monitoring.html) — self-check thresholds, metrics recording, log level
 - [Notifications](configuration/notifications.html) — admin alerts and the scheduled report
 - [Backup & Restore](configuration/backup-restore.html) — configuration backups
 

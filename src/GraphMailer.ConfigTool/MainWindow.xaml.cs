@@ -350,7 +350,7 @@ public partial class MainWindow : Window
         => NavigateTo(NavQueue, "Mail Queue", "configuration/mail-queue.html", () => _queuePage!);
 
     private void NavMonitoring_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
-        => NavigateTo(NavMonitoring, "Health Checks", "configuration/health-checks.html", () => _monitoringPage!);
+        => NavigateTo(NavMonitoring, "Monitoring", "configuration/monitoring.html", () => _monitoringPage!);
 
     private void NavNotifications_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
         => NavigateTo(NavNotifications, "Notifications", "configuration/notifications.html", () => _notificationsPage!);
