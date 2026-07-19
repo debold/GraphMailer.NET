@@ -1,13 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.2.1.1009 — 2026-07-19
 
 ### Added
 
 #### Anonymous usage telemetry (opt-in)
 - The service can send **one anonymous daily report** to the developer's Application Insights
   instance to reveal the install base, version distribution and field errors. Fully opt-in:
-  **Health Checks → Anonymous Usage Telemetry** in the ConfigTool (config key
+  **Monitoring → Anonymous Usage Telemetry** in the ConfigTool (config key
   `Telemetry.Enabled`, default off) — while disabled, nothing is collected and nothing leaves
   the machine.
 - **Heartbeat contents**: random install id (GUID, not derived from hardware/user/network),
@@ -19,13 +19,13 @@
   distinct errors per day. PII-free by construction: no addresses, hostnames, message content
   or exception messages are ever transmitted; the SDK's hostname tags are scrubbed.
 - Transmission state (install id, last/next heartbeat) is persisted in
-  `data\telemetry-status.json` and shown on the Health Checks page ("Last transmission").
+  `data\telemetry-status.json` and shown on the Monitoring page ("Last transmission").
   A failed transmission retries hourly and keeps its unsent counters/error reports.
 - Config schema bumped to **v4** (purely additive: `Telemetry.Enabled`).
 
 #### Weekly update check with admin notification (opt-in)
 - The service can check the GraphMailer releases on GitHub once a week and report a newer
-  version. Fully opt-in: **Health Checks → Update Check** in the ConfigTool (config key
+  version. Fully opt-in: **Monitoring → Update Check** in the ConfigTool (config key
   `UpdateCheck.Enabled`, default off) — while disabled, no request leaves the machine. The
   check downloads only the public release info from `api.github.com`; nothing about the
   installation is sent, and nothing is installed automatically. A failed check (no internet,
@@ -37,6 +37,10 @@
 - **New admin notification type "New GraphMailer version available"** (Notifications page,
   default off): one email per new release — not a weekly reminder — with both versions and
   the release link.
+- **Scheduled operations report: new "Software Update" row** in the Health Checks table,
+  mirroring the Status page's Software Update card: *Up to date* (OK), *Update available*
+  with both versions (Warning, so it also surfaces in the report's alert summary), or
+  Unknown while the check is disabled / has not run / last failed.
 - **Sidebar update badge**: while an update is available, a small green pill with the new
   version number appears next to the GraphMailer name at the top of the sidebar — visible
   on every page; clicking it opens the Status page.
@@ -44,6 +48,15 @@
   `AdminNotifications.NotificationTypes.UpdateAvailable.Enabled`).
 
 ### Changed
+
+#### "Health Checks" page renamed to "Monitoring"
+- The ConfigTool configuration page **Health Checks** is now called **Monitoring** — the name
+  matches what the page actually configures (certificate/disk/port/Graph monitoring, metrics
+  recording, update check, telemetry, log level). Renamed everywhere the page is referenced:
+  sidebar entry, page title, the "Graph API Health Checks" card (now "Graph API Monitoring"),
+  hint texts on the Metrics/Notifications/Status pages, and the help
+  (`configuration/health-checks.html` → `configuration/monitoring.html` including all
+  cross-links). Pure UI/docs rename — no config keys or behaviour changed.
 
 #### Build number is now a running counter instead of the day-of-year
 - The 4th part of the version (e.g. `1.2.0.**1004**`) is now `offset + git commit count`

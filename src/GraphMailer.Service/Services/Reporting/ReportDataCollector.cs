@@ -5,6 +5,7 @@ using System.Text.Json;
 using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure;
 using GraphMailer.Service.Infrastructure.Encryption;
+using GraphMailer.Service.Services.UpdateCheck;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -26,8 +27,12 @@ internal sealed class ReportDataCollector
     private readonly IOptionsMonitor<CertificateMonitoringOptions> _certMon;
     private readonly IOptionsMonitor<DiskSpaceMonitoringOptions> _diskMon;
     private readonly IOptionsMonitor<List<SmtpServerEntry>> _servers;
+    private readonly IOptionsMonitor<UpdateCheckOptions> _updateCheck;
     private readonly IDataProtector _configProtector;
     private readonly ILogger<ReportDataCollector> _logger;
+
+    /// <summary>Path of the persisted update-check result; overridable in tests.</summary>
+    internal string UpdateStatusPath { get; set; } = UpdateCheckStatus.StatusFilePath;
 
     public ReportDataCollector(
         IOptionsMonitor<MailQueueOptions> mailQueue,
@@ -36,6 +41,7 @@ internal sealed class ReportDataCollector
         IOptionsMonitor<CertificateMonitoringOptions> certMon,
         IOptionsMonitor<DiskSpaceMonitoringOptions> diskMon,
         IOptionsMonitor<List<SmtpServerEntry>> servers,
+        IOptionsMonitor<UpdateCheckOptions> updateCheck,
         IDataProtectionProvider dpProvider,
         ILogger<ReportDataCollector> logger)
     {
@@ -45,6 +51,7 @@ internal sealed class ReportDataCollector
         _certMon = certMon;
         _diskMon = diskMon;
         _servers = servers;
+        _updateCheck = updateCheck;
         _configProtector = dpProvider.CreateProtector(DataProtectionExtensions.ConfigPurpose);
         _logger = logger;
     }
@@ -319,7 +326,37 @@ internal sealed class ReportDataCollector
             CheckDisk(),
             CheckQueue(queuedNow, failedCount),
             CheckGraphApi(now),
+            CheckSoftwareUpdate(),
         ];
+    }
+
+    private HealthItem CheckSoftwareUpdate()
+    {
+        try
+        {
+            var status = UpdateCheckStatus.TryLoad(UpdateStatusPath);
+            if (status?.LatestVersion is null)
+            {
+                if (status?.LastError is { } err)
+                    return new HealthItem("Software Update", HealthStatus.Unknown, $"Last check failed: {err}");
+                return new HealthItem("Software Update", HealthStatus.Unknown,
+                    _updateCheck.CurrentValue.Enabled ? "No check has run yet" : "Update check disabled");
+            }
+
+            var installed = status.CurrentVersion ?? BuildInfo.FileVersion;
+            var stale = status.LastError is null ? "" : " — last check failed, previous result shown";
+            if (status.UpdateAvailable)
+                return new HealthItem("Software Update", HealthStatus.Warning,
+                    $"Update available: {status.LatestVersion} (installed: {installed}){stale}");
+
+            var checkedAt = status.LastCheckUtc is { } t ? $", checked {t:yyyy-MM-dd}" : "";
+            return new HealthItem("Software Update", HealthStatus.Ok,
+                $"Up to date ({installed}{checkedAt}){stale}");
+        }
+        catch (Exception ex)
+        {
+            return new HealthItem("Software Update", HealthStatus.Unknown, ex.Message);
+        }
     }
 
     private HealthItem CheckSecrets()

@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 724 tests** (677 unit · 47 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-19
+**Total: 728 tests** (681 unit · 47 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-19
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -323,6 +323,10 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Collect_ReadsFailedQueueFolder` | One `*.meta.json` in `mail\failed\` | `FailedQueueCount == 1`; the item's subject and last error are surfaced |
 | `Collect_SentWithDuration_ReportsAvgAndPeakDelivery` | Two sent events with 200 ms / 400 ms durations | `AvgDeliveryMs == 300` **and** `PeakDeliveryMs == 400` — regression: SQLite returns `MAX(duration_ms)` on the INT column as `long`, which was once dropped and rendered as "no data" |
 | `Collect_NoMetricsDb_ReturnsZeroedStatsWithoutThrowing` | No metrics DB present | Stats are zero, health checks still populated, no exception (monthly title) |
+| `Collect_UpdateAvailable_ReportsSoftwareUpdateWarning` | `update-status.json` with `UpdateAvailable = true` | Health row "Software Update" is `Warning` and names both the latest and the installed version |
+| `Collect_UpToDate_ReportsSoftwareUpdateOk` | `update-status.json` with `UpdateAvailable = false` | Health row "Software Update" is `Ok` with "Up to date" and the last-check date |
+| `Collect_NoUpdateStatusFile_ReportsSoftwareUpdateUnknown` | No status file; update check disabled vs. enabled | `Unknown` with "Update check disabled" (off) / "No check has run yet" (on) |
+| `Collect_UpdateCheckFailedWithoutResult_ReportsSoftwareUpdateUnknown` | Status file has only `LastError`, no version | `Unknown` with the error text surfaced in the detail |
 
 ---
 
