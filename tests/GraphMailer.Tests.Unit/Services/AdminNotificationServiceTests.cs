@@ -41,6 +41,11 @@ public sealed class AdminNotificationServiceTests : IDisposable
             Directory.Delete(_tempDir, recursive: true);
     }
 
+    private Task AssertNothingSent() =>
+        _graph.DidNotReceive().SendHtmlNotificationAsync(
+            Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
+
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -48,20 +53,20 @@ public sealed class AdminNotificationServiceTests : IDisposable
     {
         var svc = CreateService(new AdminNotificationsOptions { Enabled = false });
         await svc.NotifyCertificateExpiringAsync("CN=test", DateTime.UtcNow.AddDays(5));
-        await _graph.DidNotReceive().SendNotificationAsync(
-            Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<string>());
+        await AssertNothingSent();
     }
 
     [Fact]
-    public async Task NotifyCertificateExpiring_Enabled_Sends()
+    public async Task NotifyCertificateExpiring_Enabled_SendsHtml()
     {
         var svc = CreateService();
         await svc.NotifyCertificateExpiringAsync("CN=test", DateTime.UtcNow.AddDays(5));
-        await _graph.Received(1).SendNotificationAsync(
+        await _graph.Received(1).SendHtmlNotificationAsync(
             "admin@contoso.com",
             Arg.Any<IEnumerable<string>>(),
             Arg.Is<string>(s => s.Contains("expiring")),
-            Arg.Any<string>());
+            Arg.Is<string>(b => b.Contains("<!DOCTYPE html>") && b.Contains("CN=test")),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -69,11 +74,12 @@ public sealed class AdminNotificationServiceTests : IDisposable
     {
         var svc = CreateService();
         await svc.NotifyCertificateExpiredAsync("CN=expired", DateTime.UtcNow.AddDays(-1));
-        await _graph.Received(1).SendNotificationAsync(
+        await _graph.Received(1).SendHtmlNotificationAsync(
             "admin@contoso.com",
             Arg.Any<IEnumerable<string>>(),
             Arg.Is<string>(s => s.Contains("EXPIRED")),
-            Arg.Any<string>());
+            Arg.Is<string>(b => b.Contains("CN=expired")),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -81,10 +87,12 @@ public sealed class AdminNotificationServiceTests : IDisposable
     {
         var svc = CreateService();
         await svc.NotifyLowDiskSpaceAsync("C:\\", 4.2);
-        await _graph.Received(1).SendNotificationAsync(
+        // Percentage formatting is culture-dependent ("4.2" vs "4,2") — assert on the drive instead.
+        await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
             Arg.Is<string>(s => s.Contains("disk")),
-            Arg.Any<string>());
+            Arg.Is<string>(b => b.Contains("C:\\")),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -92,10 +100,11 @@ public sealed class AdminNotificationServiceTests : IDisposable
     {
         var svc = CreateService();
         await svc.NotifyGraphApiErrorAsync("Connection refused");
-        await _graph.Received(1).SendNotificationAsync(
+        await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
             Arg.Is<string>(s => s.Contains("Graph API")),
-            Arg.Any<string>());
+            Arg.Is<string>(b => b.Contains("Connection refused")),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -103,10 +112,11 @@ public sealed class AdminNotificationServiceTests : IDisposable
     {
         var svc = CreateService();
         await svc.NotifyBackupResultAsync(succeeded: true, "File: backup.gmbak (123 bytes)");
-        await _graph.Received(1).SendNotificationAsync(
+        await _graph.Received(1).SendHtmlNotificationAsync(
             "admin@contoso.com", Arg.Any<IEnumerable<string>>(),
             Arg.Is<string>(s => s.Contains("backup succeeded")),
-            Arg.Is<string>(b => b.Contains("backup.gmbak")));
+            Arg.Is<string>(b => b.Contains("backup.gmbak")),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -114,10 +124,11 @@ public sealed class AdminNotificationServiceTests : IDisposable
     {
         var svc = CreateService();
         await svc.NotifyBackupResultAsync(succeeded: false, "Backup failed: disk full");
-        await _graph.Received(1).SendNotificationAsync(
+        await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
             Arg.Is<string>(s => s.Contains("FAILED")),
-            Arg.Is<string>(b => b.Contains("disk full")));
+            Arg.Is<string>(b => b.Contains("disk full")),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -131,8 +142,7 @@ public sealed class AdminNotificationServiceTests : IDisposable
             NotificationTypes = new AdminNotificationTypesOptions { BackupResult = new() { Enabled = false } },
         });
         await svc.NotifyBackupResultAsync(succeeded: true, "x");
-        await _graph.DidNotReceive().SendNotificationAsync(
-            Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<string>());
+        await AssertNothingSent();
     }
 
     [Fact]
@@ -142,8 +152,7 @@ public sealed class AdminNotificationServiceTests : IDisposable
         // default must stay silent.
         var svc = CreateService();
         await svc.NotifyUpdateAvailableAsync("1.2.0.196", "1.3.0.210", "https://github.com/x/releases/tag/v1.3.0.210");
-        await _graph.DidNotReceive().SendNotificationAsync(
-            Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<string>());
+        await AssertNothingSent();
     }
 
     [Fact]
@@ -157,10 +166,11 @@ public sealed class AdminNotificationServiceTests : IDisposable
             NotificationTypes = new AdminNotificationTypesOptions { UpdateAvailable = new() { Enabled = true } },
         });
         await svc.NotifyUpdateAvailableAsync("1.2.0.196", "1.3.0.210", "https://github.com/x/releases/tag/v1.3.0.210");
-        await _graph.Received(1).SendNotificationAsync(
+        await _graph.Received(1).SendHtmlNotificationAsync(
             "admin@contoso.com", Arg.Any<IEnumerable<string>>(),
             Arg.Is<string>(s => s.Contains("Update available") && s.Contains("1.3.0.210")),
-            Arg.Is<string>(b => b.Contains("1.2.0.196") && b.Contains("1.3.0.210") && b.Contains("https://github.com/x/releases/tag/v1.3.0.210")));
+            Arg.Is<string>(b => b.Contains("1.2.0.196") && b.Contains("1.3.0.210") && b.Contains("https://github.com/x/releases/tag/v1.3.0.210")),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -174,8 +184,7 @@ public sealed class AdminNotificationServiceTests : IDisposable
             NotificationTypes = new AdminNotificationTypesOptions { UpdateAvailable = new() { Enabled = true } },
         });
         await svc.NotifyUpdateAvailableAsync("1.2.0.196", "1.3.0.210", null);
-        await _graph.DidNotReceive().SendNotificationAsync(
-            Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<string>());
+        await AssertNothingSent();
     }
 
     [Fact]
@@ -183,10 +192,11 @@ public sealed class AdminNotificationServiceTests : IDisposable
     {
         var svc = CreateService();
         await svc.NotifyGraphApiRestoredAsync();
-        await _graph.Received(1).SendNotificationAsync(
+        await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
             Arg.Is<string>(s => s.Contains("restored")),
-            Arg.Any<string>());
+            Arg.Any<string>(),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -194,10 +204,11 @@ public sealed class AdminNotificationServiceTests : IDisposable
     {
         var svc = CreateService();
         await svc.NotifyPortOutageAsync(2525, "Unreachable");
-        await _graph.Received(1).SendNotificationAsync(
+        await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
             Arg.Is<string>(s => s.Contains("2525")),
-            Arg.Any<string>());
+            Arg.Is<string>(b => b.Contains("Unreachable")),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -205,10 +216,11 @@ public sealed class AdminNotificationServiceTests : IDisposable
     {
         var svc = CreateService();
         await svc.NotifyPortRestoredAsync(2525);
-        await _graph.Received(1).SendNotificationAsync(
+        await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
             Arg.Is<string>(s => s.Contains("2525") && s.Contains("restored")),
-            Arg.Any<string>());
+            Arg.Any<string>(),
+            Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -221,8 +233,7 @@ public sealed class AdminNotificationServiceTests : IDisposable
             RecipientAddresses = ["ops@contoso.com"]
         });
         await svc.NotifyCertificateExpiringAsync("CN=test", DateTime.UtcNow.AddDays(5));
-        await _graph.DidNotReceive().SendNotificationAsync(
-            Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<string>());
+        await AssertNothingSent();
     }
 
     [Fact]
@@ -244,8 +255,7 @@ public sealed class AdminNotificationServiceTests : IDisposable
         for (var i = 0; i < 4; i++)
             await svc.NotifyIpBlockedAsync("10.0.0.1");
 
-        await _graph.DidNotReceive().SendNotificationAsync(
-            Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<string>());
+        await AssertNothingSent();
     }
 
     [Fact]
@@ -265,7 +275,6 @@ public sealed class AdminNotificationServiceTests : IDisposable
         await svc.NotifyEmailDeliveryFailedAsync("msg-1", "timeout");
 
         // Graph API should NOT have been called
-        await _graph.DidNotReceive().SendNotificationAsync(
-            Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<string>());
+        await AssertNothingSent();
     }
 }

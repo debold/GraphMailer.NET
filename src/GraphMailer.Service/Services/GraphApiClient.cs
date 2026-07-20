@@ -497,42 +497,6 @@ internal sealed class GraphApiClient : IGraphApiClient
     // Notification helper (used by AdminNotificationService)
     // -------------------------------------------------------------------------
 
-    public async Task SendNotificationAsync(
-        string from,
-        IEnumerable<string> to,
-        string subject,
-        string bodyText,
-        CancellationToken ct = default)
-    {
-        var opts = _options.CurrentValue;
-        if (!opts.IsConfigured)
-        {
-            _logger.LogDebug("[GraphApi] SendNotification skipped – Graph API not configured");
-            return;
-        }
-
-        try
-        {
-            var client = GetOrCreateClient(opts);
-            var message = new Message
-            {
-                Subject = subject,
-                Body = new ItemBody { ContentType = BodyType.Text, Content = bodyText },
-                ToRecipients = to.Select(addr =>
-                    new Recipient { EmailAddress = new EmailAddress { Address = addr } }).ToList()
-            };
-
-            await client.Users[from].SendMail.PostAsync(
-                new SendMailPostRequestBody { Message = message, SaveToSentItems = false },
-                cancellationToken: ct);
-        }
-        catch (Exception ex)
-        {
-            // Notifications must never crash the caller
-            _logger.LogWarning(ex, "[GraphApi] Failed to send admin notification: {Subject}", subject);
-        }
-    }
-
     public async Task<bool> SendHtmlNotificationAsync(
         string from,
         IEnumerable<string> to,
@@ -593,7 +557,7 @@ internal sealed class GraphApiClient : IGraphApiClient
         string from,
         IEnumerable<string> to,
         string subject,
-        string bodyText,
+        string bodyHtml,
         string attachmentName,
         byte[] attachmentBytes,
         string attachmentContentType,
@@ -608,7 +572,7 @@ internal sealed class GraphApiClient : IGraphApiClient
         var message = new Message
         {
             Subject = subject,
-            Body = new ItemBody { ContentType = BodyType.Text, Content = bodyText },
+            Body = new ItemBody { ContentType = BodyType.Html, Content = bodyHtml },
             ToRecipients = to.Select(addr =>
                 new Recipient { EmailAddress = new EmailAddress { Address = addr } }).ToList(),
             Attachments =

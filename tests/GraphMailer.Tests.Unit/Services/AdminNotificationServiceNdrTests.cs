@@ -181,4 +181,28 @@ public sealed class AdminNotificationServiceNdrTests : IDisposable
         mime.TextBody.Should().Contain("Mailbox not found");
         mime.From.ToString().Should().Contain("relay@contoso.com");
     }
+
+    [Fact]
+    public async Task SendNdrAsync_QueuedNdrIsMultipartAlternative_WithHtmlAndTextBody()
+    {
+        // NDRs go out as multipart/alternative: styled HTML for modern clients plus a
+        // plain-text fallback, both carrying the failure reason and the original metadata.
+        var svc = CreateService(
+            ndrOpts: new NdrOptions { Enabled = true, NotifySender = true, NotifyAdmin = false });
+
+        await svc.SendNdrAsync(MakeMeta(), "Mailbox not found");
+
+        var emlPath = Directory.GetFiles(Path.Combine(_tempDir, "queue"), "*.eml").Single();
+        var mime = await MimeKit.MimeMessage.LoadAsync(emlPath);
+
+        mime.HtmlBody.Should().NotBeNull("NDRs must contain a styled HTML part");
+        mime.HtmlBody.Should().Contain("<!DOCTYPE html>");
+        mime.HtmlBody.Should().Contain("Mailbox not found");
+        mime.HtmlBody.Should().Contain("sender@example.com");
+        mime.HtmlBody.Should().Contain("Important invoice");
+
+        mime.TextBody.Should().NotBeNull("NDRs must keep a plain-text fallback");
+        mime.TextBody.Should().Contain("Mailbox not found");
+        mime.TextBody.Should().Contain("Important invoice");
+    }
 }

@@ -1,3 +1,4 @@
+using GraphMailer.Service.Services.Reporting;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
@@ -75,6 +76,17 @@ internal static class GraphApiTestService
                 new StaticBearerProvider(tokenResult.AccessToken)));
 
         // ── Send test email ───────────────────────────────────────────────
+        var bodyHtml = NotificationHtmlRenderer.Render(new NotificationEmail
+        {
+            Severity = NotificationSeverity.Success,
+            Title = "Microsoft Graph API connection is working",
+            Intro = "This is a test message sent by the GraphMailer ConfigTool. " +
+                    "If you received this, the Microsoft Graph API connection is working correctly.",
+            Fields = [new("Sent at", $"{DateTime.Now:f}")],
+            Kicker = "Connection Test",
+            FooterNote = "Sent manually from the ConfigTool → Graph API page (Send test email).",
+        });
+
         var body = new SendMailPostRequestBody
         {
             Message = new Message
@@ -82,12 +94,8 @@ internal static class GraphApiTestService
                 Subject = "[GraphMailer] Connection test",
                 Body = new ItemBody
                 {
-                    ContentType = BodyType.Text,
-                    Content =
-                        $"This is a test message sent by GraphMailer ConfigTool on " +
-                        $"{DateTime.Now:f}.\r\n\r\n" +
-                        "If you received this, the Microsoft Graph API connection is " +
-                        "working correctly.",
+                    ContentType = BodyType.Html,
+                    Content = bodyHtml,
                 },
                 ToRecipients =
                 [

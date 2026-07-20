@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 748 tests** (692 unit · 56 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-19
+**Total: 756 tests** (700 unit · 56 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-20
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -312,6 +312,23 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Render_NoFailedQueue_OmitsActionRequiredSection` | `FailedQueueCount = 0` | No "Action Required" section |
 | `Render_WithFailedQueue_ShowsActionRequiredSection` | One failed-queue item | "Action Required" section with the item's error |
 | `Render_HtmlEncodesUserControlledText` | Subject/sender/top-sender contain `<script>` and other markup | Raw tags are HTML-encoded (`&lt;script&gt;…`); no live markup in the output |
+
+---
+
+### NotificationHtmlRenderer (`Services/Reporting/NotificationHtmlRendererTests.cs`)
+
+> Shared Outlook-safe HTML template for all system mails (admin notifications, NDRs,
+> backup mail, ConfigTool test mail) — same Primer shell as the operations report.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Render_ProducesWellFormedHtmlDocument_WithTitleIntroAndFields` | Render a sample warning notification | Full HTML doc with title, intro, field values, default "System Notification" kicker; no `<svg>` |
+| `Render_BannerBackground_MatchesSeverity` | Render once per severity (Success/Info/Warning/Critical) | Each severity uses its Primer banner background color |
+| `Render_HtmlEncodesUntrustedText` | Title/intro/fields/items/note contain `<script>`, `<img onerror>`, `<iframe>` | All markup HTML-encoded; no live tags in the output |
+| `Render_WithItems_RendersItemsTitleAndLines` | Two mono line items with a heading | Heading and both lines rendered |
+| `Render_WithLink_RendersButtonWithUrl` | `LinkUrl` + `LinkLabel` set | Button with `href` to the URL and the label text |
+| `Render_WithoutLink_OmitsButton` | No `LinkUrl` | No `href` in the output |
+| `Render_CustomKickerAndFooterNote_OverrideDefaults` | NDR-style kicker + footer note | Custom kicker/footer rendered, default ConfigTool footer absent |
 
 ---
 
@@ -923,23 +940,23 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 
 | Test | Scenario | Expected result |
 |---|---|---|
-| `NotifyCertificateExpiring_Disabled_DoesNotSend` | `Enabled = false` | `SendNotificationAsync` not called |
-| `NotifyCertificateExpiring_Enabled_Sends` | Notifications enabled, cert expiring | `SendNotificationAsync` called with subject containing `"expiring"` |
-| `NotifyCertificateExpired_Enabled_Sends` | Notifications enabled, cert expired | `SendNotificationAsync` called with subject containing `"EXPIRED"` |
-| `NotifyLowDiskSpace_Enabled_Sends` | Notifications enabled, low disk | `SendNotificationAsync` called with subject containing `"disk"` |
-| `NotifyGraphApiError_Enabled_Sends` | Notifications enabled, Graph API error | `SendNotificationAsync` called with subject containing `"Graph API"` |
-| `NotifyGraphApiRestored_Enabled_Sends` | Notifications enabled, Graph API restored | `SendNotificationAsync` called with subject containing `"restored"` |
-| `NotifyPortOutage_Enabled_Sends` | Notifications enabled, port 2525 down | `SendNotificationAsync` called with subject containing `"2525"` |
-| `NotifyPortRestored_Enabled_Sends` | Notifications enabled, port 2525 recovered | `SendNotificationAsync` called with subject containing `"2525"` and `"restored"` |
-| `NotifyCertificateExpiring_NoSenderAddress_DoesNotSend` | `SenderAddress = null` | `SendNotificationAsync` not called (warning logged) |
-| `NotifyIpBlocked_BelowThreshold_DoesNotSend` | 4 IP-blocked events; threshold = 5 | `SendNotificationAsync` not called |
+| `NotifyCertificateExpiring_Disabled_DoesNotSend` | `Enabled = false` | `SendHtmlNotificationAsync` not called |
+| `NotifyCertificateExpiring_Enabled_SendsHtml` | Notifications enabled, cert expiring | `SendHtmlNotificationAsync` called with subject containing `"expiring"` and an HTML document body containing the cert subject |
+| `NotifyCertificateExpired_Enabled_Sends` | Notifications enabled, cert expired | `SendHtmlNotificationAsync` called with subject containing `"EXPIRED"`, body contains the cert subject |
+| `NotifyLowDiskSpace_Enabled_Sends` | Notifications enabled, low disk | `SendHtmlNotificationAsync` called with subject containing `"disk"`, body contains the drive |
+| `NotifyGraphApiError_Enabled_Sends` | Notifications enabled, Graph API error | `SendHtmlNotificationAsync` called with subject containing `"Graph API"`, body contains the error |
+| `NotifyGraphApiRestored_Enabled_Sends` | Notifications enabled, Graph API restored | `SendHtmlNotificationAsync` called with subject containing `"restored"` |
+| `NotifyPortOutage_Enabled_Sends` | Notifications enabled, port 2525 down | `SendHtmlNotificationAsync` called with subject containing `"2525"`, body contains the reason |
+| `NotifyPortRestored_Enabled_Sends` | Notifications enabled, port 2525 recovered | `SendHtmlNotificationAsync` called with subject containing `"2525"` and `"restored"` |
+| `NotifyCertificateExpiring_NoSenderAddress_DoesNotSend` | `SenderAddress = null` | `SendHtmlNotificationAsync` not called (warning logged) |
+| `NotifyIpBlocked_BelowThreshold_DoesNotSend` | 4 IP-blocked events; threshold = 5 | `SendHtmlNotificationAsync` not called |
 | `NotifyEmailDeliveryFailed_Disabled_DoesNotQueue` | `EmailDeliveryFailed.Enabled = false` | Timer not started; Graph API not called |
-| `NotifyBackupResult_Success_Sends_WithSucceededSubject` | Backup succeeded | `SendNotificationAsync` with subject containing `"backup succeeded"` and the file in the body |
+| `NotifyBackupResult_Success_Sends_WithSucceededSubject` | Backup succeeded | `SendHtmlNotificationAsync` with subject containing `"backup succeeded"` and the file in the body |
 | `NotifyBackupResult_Failure_Sends_WithFailedSubject` | Backup failed | Subject contains `"FAILED"`, body contains the reason |
-| `NotifyBackupResult_TypeDisabled_DoesNotSend` | `BackupResult.Enabled = false` | `SendNotificationAsync` not called |
-| `NotifyUpdateAvailable_DefaultOptions_DoesNotSend` | Admin notifications enabled, `UpdateAvailable` at its default | `SendNotificationAsync` not called (the type is opt-in) |
+| `NotifyBackupResult_TypeDisabled_DoesNotSend` | `BackupResult.Enabled = false` | `SendHtmlNotificationAsync` not called |
+| `NotifyUpdateAvailable_DefaultOptions_DoesNotSend` | Admin notifications enabled, `UpdateAvailable` at its default | `SendHtmlNotificationAsync` not called (the type is opt-in) |
 | `NotifyUpdateAvailable_TypeEnabled_Sends_WithVersionsAndUrl` | `UpdateAvailable.Enabled = true` | Subject contains `"Update available"` + latest version; body contains both versions and the release URL |
-| `NotifyUpdateAvailable_MasterDisabled_DoesNotSend` | `Enabled = false`, type enabled | `SendNotificationAsync` not called |
+| `NotifyUpdateAvailable_MasterDisabled_DoesNotSend` | `Enabled = false`, type enabled | `SendHtmlNotificationAsync` not called |
 
 ---
 
@@ -958,6 +975,7 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `SendNdrAsync_FromEqualsAdminSender_SkipsSenderNdrToPreventLoop` | `meta.From == SenderAddress` | Nothing queued (loop prevention guard) |
 | `SendNdrAsync_NoSenderAddress_QueuesNothing` | `AdminNotifications.SenderAddress = null` | Nothing queued; warning logged |
 | `SendNdrAsync_QueuedNdrIsParseableEml` | NDR queued for the sender | The queued `.eml` is valid MIME (parseable by MimeKit) with the expected subject, body and From |
+| `SendNdrAsync_QueuedNdrIsMultipartAlternative_WithHtmlAndTextBody` | NDR queued for the sender | The `.eml` is multipart/alternative: styled HTML part (`<!DOCTYPE html>`, reason, original From/Subject) **and** a plain-text fallback with reason + subject |
 
 ---
 

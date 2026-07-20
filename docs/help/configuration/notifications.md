@@ -5,7 +5,9 @@ sends *to you*: operational alerts when something needs attention, optional non-
 (bounces) for failed mail, and a scheduled HTML operations report.
 
 All of these are sent **through Microsoft 365 using the same Graph connection** as normal mail, so
-the [Graph API](graph-api.html) connection must be working first.
+the [Graph API](graph-api.html) connection must be working first. All system emails share one
+styled HTML design (matching the operations report); NDRs additionally carry a plain-text
+fallback for legacy applications that parse bounce messages.
 
 > [!NOTE]
 > Changes on this page apply to the running service **without a restart**.

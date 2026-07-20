@@ -32,25 +32,19 @@ internal interface IGraphApiClient
     Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, CancellationToken ct = default);
 
     /// <summary>
-    /// Sends a simple plain-text notification email directly via the Graph API.
-    /// Returns without throwing when Graph API is not configured or unavailable.
-    /// </summary>
-    Task SendNotificationAsync(string from, IEnumerable<string> to, string subject, string bodyText, CancellationToken ct = default);
-
-    /// <summary>
-    /// Sends an HTML notification email (e.g. the periodic operations report) directly via the
-    /// Graph API, optionally with a CID inline image. Returns <see langword="true"/> when accepted
-    /// by Graph; <see langword="false"/> when Graph is not configured or the send failed (failures
-    /// are logged, never thrown).
+    /// Sends an HTML notification email (admin notifications, the periodic operations report)
+    /// directly via the Graph API, optionally with a CID inline image. Returns
+    /// <see langword="true"/> when accepted by Graph; <see langword="false"/> when Graph is not
+    /// configured or the send failed (failures are logged, never thrown).
     /// </summary>
     Task<bool> SendHtmlNotificationAsync(string from, IEnumerable<string> to, string subject, string htmlBody, GraphInlineImage? inlineImage = null, CancellationToken ct = default);
 
     /// <summary>
-    /// Sends a plain-text email with a single inline attachment (e.g. a configuration backup).
-    /// Unlike <see cref="SendNotificationAsync"/>, this throws on failure so the caller can react.
+    /// Sends an HTML email with a single inline attachment (e.g. a configuration backup).
+    /// Unlike <see cref="SendHtmlNotificationAsync"/>, this throws on failure so the caller can react.
     /// </summary>
     Task SendNotificationWithAttachmentAsync(
-        string from, IEnumerable<string> to, string subject, string bodyText,
+        string from, IEnumerable<string> to, string subject, string bodyHtml,
         string attachmentName, byte[] attachmentBytes, string attachmentContentType,
         CancellationToken ct = default);
 }

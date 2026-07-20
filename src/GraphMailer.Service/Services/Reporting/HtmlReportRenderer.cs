@@ -12,15 +12,17 @@ namespace GraphMailer.Service.Services.Reporting;
 /// </summary>
 internal static class HtmlReportRenderer
 {
-    // Primer palette
-    private const string Border = "#d0d7de", Hair = "#eaeef2", Text = "#1f2328", Muted = "#656d76",
-                         Faint = "#8c959f", Accent = "#0969da", PageBg = "#f6f8fa", Dark = "#1f2328";
-    private const string OkFg = "#1a7f37", OkBg = "#dafbe1", OkBorder = "#aceebb";
-    private const string WarnFg = "#9a6700", WarnBg = "#fff8c5", WarnBorder = "#eac54f";
-    private const string DangerFg = "#cf222e", DangerBg = "#ffebe9", DangerBorder = "#ffcecb", DangerDark = "#86181d";
+    // Primer palette — single source in EmailTheme, aliased to keep the template code terse.
+    private const string Border = EmailTheme.Border, Hair = EmailTheme.Hair, Text = EmailTheme.Text,
+                         Muted = EmailTheme.Muted, Faint = EmailTheme.Faint, Accent = EmailTheme.Accent,
+                         PageBg = EmailTheme.PageBg, Dark = EmailTheme.Dark;
+    private const string OkFg = EmailTheme.OkFg, OkBg = EmailTheme.OkBg, OkBorder = EmailTheme.OkBorder;
+    private const string WarnFg = EmailTheme.WarnFg, WarnBg = EmailTheme.WarnBg, WarnBorder = EmailTheme.WarnBorder;
+    private const string DangerFg = EmailTheme.DangerFg, DangerBg = EmailTheme.DangerBg,
+                         DangerBorder = EmailTheme.DangerBorder, DangerDark = EmailTheme.DangerDark;
 
-    private const string SansFont = "'Segoe UI',Arial,sans-serif";
-    private const string MonoFont = "Consolas,'Courier New',monospace";
+    private const string SansFont = EmailTheme.SansFont;
+    private const string MonoFont = EmailTheme.MonoFont;
 
     /// <summary>Content-ID under which the daily-volume PNG is attached and referenced (<c>cid:…</c>).</summary>
     internal const string ChartContentId = "daily-volume@graphmailer";

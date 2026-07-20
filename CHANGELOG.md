@@ -1,6 +1,21 @@
 # Changelog
 
-## 1.3.0 — Unreleased
+## 1.2.2 — Unreleased
+
+### Changed
+
+#### All system emails now use a unified HTML template
+- Every mail the service (and ConfigTool) generates is now styled like the existing HTML
+  operations report — same header, severity banner (green/blue/yellow/red), details table
+  and footer — instead of unformatted plain text:
+  - all **admin notifications** (certificate expiring/expired, low disk space, IP blocked,
+    auth-failure alert, Graph API error/restored, config-decryption error, backup result,
+    update available, port outage/restored, service start/stop, batched delivery failures);
+  - **NDRs (bounces)** — sent as multipart/alternative with a plain-text fallback, so
+    legacy applications that parse bounce text keep working;
+  - the **emailed configuration backup** (file name + size shown in the details table);
+  - the ConfigTool's **Graph API test email**.
+- The "Update available" notification now renders the release link as a button.
 
 ### Added
 

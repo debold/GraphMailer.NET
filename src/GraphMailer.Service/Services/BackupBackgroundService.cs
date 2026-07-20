@@ -220,11 +220,23 @@ internal sealed class BackupBackgroundService : BackgroundService
         {
             var bytes = await File.ReadAllBytesAsync(path, ct);
             var name = Path.GetFileName(path);
+            var bodyHtml = Reporting.NotificationHtmlRenderer.Render(new Reporting.NotificationEmail
+            {
+                Severity = Reporting.NotificationSeverity.Info,
+                Title = "Encrypted configuration backup attached",
+                Intro = "Attached is an encrypted GraphMailer configuration backup. " +
+                        "Restore it via the ConfigTool's Backup & Restore page using the configured backup password.",
+                Fields =
+                [
+                    new("File", name),
+                    new("Size", $"{bytes.Length:N0} bytes"),
+                ],
+                Kicker = "Configuration Backup",
+            });
             await _graph.SendNotificationWithAttachmentAsync(
                 sender, opts.Email.Recipients,
                 subject: $"GraphMailer configuration backup — {name}",
-                bodyText: "Attached is an encrypted GraphMailer configuration backup. " +
-                          "Restore it via the ConfigTool's Backup & Restore page using the configured backup password.",
+                bodyHtml: bodyHtml,
                 attachmentName: name, attachmentBytes: bytes, attachmentContentType: "application/octet-stream",
                 ct);
             _logger.LogInformation("[Backup] Emailed backup {Name} to {Count} recipient(s)", name, opts.Email.Recipients.Count);

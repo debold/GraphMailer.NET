@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using GraphMailer.Service.Configuration;
+using GraphMailer.Service.Services.Reporting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text;
@@ -66,7 +67,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var delay = opts.NotificationTypes.EmailDeliveryFailed.BatchDelaySeconds;
         lock (_batchLock)
         {
-            _pendingFailures.Add($"  • {messageId}: {error}");
+            _pendingFailures.Add($"{messageId}: {error}");
 
             // Restart/start the flush timer on every new failure
             _batchFlushTimer?.Dispose();
@@ -88,8 +89,14 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var opts = _options.CurrentValue;
         if (!IsEnabled(opts, opts.NotificationTypes.CertificateExpiringWarning, "cert-expiring")) return Task.CompletedTask;
 
-        var body = $"Certificate is expiring soon.\n\nSubject: {certSubject}\nExpires:  {notAfter:R}";
-        return SendAsync(opts, $"Certificate expiring: {certSubject}", body, "cert-expiring", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Warning,
+            Title = "Certificate is expiring soon",
+            Intro = "A certificate used by GraphMailer expires shortly. Renew or replace it before the expiry date to avoid a service degradation.",
+            Fields = [new("Subject", certSubject), new("Expires", $"{notAfter:R}")],
+        };
+        return SendAsync(opts, $"Certificate expiring: {certSubject}", mail, "cert-expiring", ct);
     }
 
     public Task NotifyCertificateExpiredAsync(string certSubject, DateTime notAfter, CancellationToken ct = default)
@@ -97,8 +104,14 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var opts = _options.CurrentValue;
         if (!IsEnabled(opts, opts.NotificationTypes.CertificateExpired, "cert-expired")) return Task.CompletedTask;
 
-        var body = $"Certificate has expired!\n\nSubject: {certSubject}\nExpired: {notAfter:R}";
-        return SendAsync(opts, $"Certificate EXPIRED: {certSubject}", body, "cert-expired", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Critical,
+            Title = "Certificate has expired",
+            Intro = "A certificate used by GraphMailer has expired and must be renewed or replaced now.",
+            Fields = [new("Subject", certSubject), new("Expired", $"{notAfter:R}")],
+        };
+        return SendAsync(opts, $"Certificate EXPIRED: {certSubject}", mail, "cert-expired", ct);
     }
 
     public Task NotifyLowDiskSpaceAsync(string drivePath, double freePercent, CancellationToken ct = default)
@@ -106,8 +119,14 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var opts = _options.CurrentValue;
         if (!IsEnabled(opts, opts.NotificationTypes.LowDiskSpaceWarning, "disk-low")) return Task.CompletedTask;
 
-        var body = $"Low disk space detected.\n\nDrive:     {drivePath}\nFree:      {freePercent:F1}%";
-        return SendAsync(opts, $"Low disk space: {freePercent:F1}% free on {drivePath}", body, "disk-low", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Warning,
+            Title = "Low disk space detected",
+            Intro = "Free space on the drive holding the GraphMailer data directory is running low. The mail queue and logs stop working when the disk is full.",
+            Fields = [new("Drive", drivePath), new("Free", $"{freePercent:F1}%")],
+        };
+        return SendAsync(opts, $"Low disk space: {freePercent:F1}% free on {drivePath}", mail, "disk-low", ct);
     }
 
     public Task NotifyIpBlockedAsync(string ip, CancellationToken ct = default)
@@ -119,8 +138,14 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         if (!IsAboveThreshold("ip-blocked", thr.FailureThreshold, thr.TimeWindowSeconds)) return Task.CompletedTask;
         if (!CanSend("ip-blocked")) return Task.CompletedTask;
 
-        var body = $"An IP address has been blocked.\n\nBlocked IP: {ip}";
-        return SendAsync(opts, $"IP blocked: {ip}", body, "ip-blocked", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Critical,
+            Title = "IP address blocked",
+            Intro = "An SMTP client exceeded the failure limit and has been blocked temporarily. Repeated blocks may indicate an attack or a misconfigured application.",
+            Fields = [new("Blocked IP", ip)],
+        };
+        return SendAsync(opts, $"IP blocked: {ip}", mail, "ip-blocked", ct);
     }
 
     public Task NotifyAuthFailureAsync(string ip, string username, CancellationToken ct = default)
@@ -132,8 +157,14 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         if (!IsAboveThreshold("auth-failure", thr.FailureThreshold, thr.TimeWindowSeconds)) return Task.CompletedTask;
         if (!CanSend("auth-failure")) return Task.CompletedTask;
 
-        var body = $"Authentication failure threshold reached.\n\nIP:       {ip}\nUsername: {username}";
-        return SendAsync(opts, $"Auth failures from {ip}", body, "auth-failure", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Critical,
+            Title = "Authentication failure threshold reached",
+            Intro = "Repeated SMTP authentication failures were detected. Check whether this is a misconfigured application or a password-guessing attempt.",
+            Fields = [new("IP", ip), new("Username", username)],
+        };
+        return SendAsync(opts, $"Auth failures from {ip}", mail, "auth-failure", ct);
     }
 
     public Task NotifyGraphApiErrorAsync(string error, CancellationToken ct = default)
@@ -141,8 +172,14 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var opts = _options.CurrentValue;
         if (!IsEnabled(opts, opts.NotificationTypes.GraphApiConnectionError, "graph-error")) return Task.CompletedTask;
 
-        var body = $"Graph API connectivity problem detected.\n\nError: {error}";
-        return SendAsync(opts, "Graph API connection error", body, "graph-error", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Critical,
+            Title = "Graph API connectivity problem detected",
+            Intro = "GraphMailer cannot reach the Microsoft Graph API. Queued mail is retried automatically and delivered once connectivity returns.",
+            Fields = [new("Error", error)],
+        };
+        return SendAsync(opts, "Graph API connection error", mail, "graph-error", ct);
     }
 
     public Task NotifyGraphApiRestoredAsync(CancellationToken ct = default)
@@ -150,7 +187,13 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var opts = _options.CurrentValue;
         if (!IsEnabled(opts, opts.NotificationTypes.GraphApiConnectivityRestored, "graph-restored")) return Task.CompletedTask;
 
-        return SendAsync(opts, "Graph API connection restored", "Graph API connectivity has been restored.", "graph-restored", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Success,
+            Title = "Graph API connection restored",
+            Intro = "Graph API connectivity has been restored. Queued mail is being delivered again.",
+        };
+        return SendAsync(opts, "Graph API connection restored", mail, "graph-restored", ct);
     }
 
     public Task NotifyConfigDecryptionFailedAsync(IReadOnlyList<string> fieldPaths, CancellationToken ct = default)
@@ -160,14 +203,16 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
 
         // Note: this notification is sent via Graph API. If the Graph client secret itself is
         // among the undecryptable values, the send will fail and only the LogError remains.
-        var list = string.Join("\n", fieldPaths.Select(f => $"  • {f}"));
-        var body =
-            "One or more encrypted values in graphmailer.json cannot be decrypted with the current " +
-            "Data Protection key ring.\n\nAffected configuration values:\n" + list +
-            "\n\nLikely cause: the key ring (HKLM\\SOFTWARE\\GraphMailer\\DataProtection) differs from the " +
-            "one that encrypted the config — e.g. after restoring graphmailer.json to a different machine.\n" +
-            "Re-enter the affected values in the ConfigTool to re-encrypt them with the current key.";
-        return SendAsync(opts, "Config secrets cannot be decrypted", body, "config-decrypt-error", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Critical,
+            Title = "Config secrets cannot be decrypted",
+            Intro = "One or more encrypted values in graphmailer.json cannot be decrypted with the current Data Protection key ring.",
+            ItemsTitle = "Affected configuration values",
+            Items = [.. fieldPaths],
+            Note = "Likely cause: the key ring (HKLM\\SOFTWARE\\GraphMailer\\DataProtection) differs from the one that encrypted the config — e.g. after restoring graphmailer.json to a different machine. Re-enter the affected values in the ConfigTool to re-encrypt them with the current key.",
+        };
+        return SendAsync(opts, "Config secrets cannot be decrypted", mail, "config-decrypt-error", ct);
     }
 
     public Task NotifyBackupResultAsync(bool succeeded, string detail, CancellationToken ct = default)
@@ -176,10 +221,16 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         if (!IsEnabled(opts, opts.NotificationTypes.BackupResult, "backup-result")) return Task.CompletedTask;
 
         var subject = succeeded ? "Configuration backup succeeded" : "Configuration backup FAILED";
-        var intro = succeeded
-            ? "A scheduled configuration backup completed successfully.\n\n"
-            : "A scheduled configuration backup failed.\n\n";
-        return SendAsync(opts, subject, intro + detail, "backup-result", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = succeeded ? NotificationSeverity.Success : NotificationSeverity.Critical,
+            Title = succeeded ? "Configuration backup completed successfully" : "Configuration backup failed",
+            Intro = succeeded
+                ? "A scheduled configuration backup completed successfully."
+                : "A scheduled configuration backup failed. Check the service log for details and verify the backup settings.",
+            Items = detail.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        };
+        return SendAsync(opts, subject, mail, "backup-result", ct);
     }
 
     public Task NotifyUpdateAvailableAsync(string currentVersion, string latestVersion, string? releaseUrl, CancellationToken ct = default)
@@ -187,11 +238,15 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var opts = _options.CurrentValue;
         if (!IsEnabled(opts, opts.NotificationTypes.UpdateAvailable, "update-available")) return Task.CompletedTask;
 
-        var body =
-            $"A newer GraphMailer version is available.\n\n" +
-            $"Installed: {currentVersion}\nLatest:    {latestVersion}\n" +
-            (string.IsNullOrEmpty(releaseUrl) ? "" : $"\nRelease notes and download:\n{releaseUrl}\n");
-        return SendAsync(opts, $"Update available: {latestVersion}", body, "update-available", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Info,
+            Title = "A newer GraphMailer version is available",
+            Fields = [new("Installed", currentVersion), new("Latest", latestVersion)],
+            LinkUrl = releaseUrl,
+            LinkLabel = "Release notes & download",
+        };
+        return SendAsync(opts, $"Update available: {latestVersion}", mail, "update-available", ct);
     }
 
     public Task NotifyPortOutageAsync(int port, string reason, CancellationToken ct = default)
@@ -199,8 +254,14 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var opts = _options.CurrentValue;
         if (!IsEnabled(opts, opts.NotificationTypes.PortMonitoringAlert, $"port-outage-{port}")) return Task.CompletedTask;
 
-        var body = $"Port connectivity alert.\n\nPort:   {port}\nReason: {reason}";
-        return SendAsync(opts, $"Port {port} outage", body, $"port-outage-{port}", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Critical,
+            Title = $"Port {port} is not reachable",
+            Intro = "A monitored SMTP listener port failed its connectivity check.",
+            Fields = [new("Port", port.ToString()), new("Reason", reason)],
+        };
+        return SendAsync(opts, $"Port {port} outage", mail, $"port-outage-{port}", ct);
     }
 
     public Task NotifyPortRestoredAsync(int port, CancellationToken ct = default)
@@ -208,7 +269,13 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var opts = _options.CurrentValue;
         if (!IsEnabled(opts, opts.NotificationTypes.PortMonitoringRecovery, $"port-restored-{port}")) return Task.CompletedTask;
 
-        return SendAsync(opts, $"Port {port} restored", $"Port {port} is reachable again.", $"port-restored-{port}", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Success,
+            Title = $"Port {port} is reachable again",
+            Intro = "The monitored SMTP listener port passed its connectivity check again.",
+        };
+        return SendAsync(opts, $"Port {port} restored", mail, $"port-restored-{port}", ct);
     }
 
     public Task NotifyServiceStartedAsync(CancellationToken ct = default)
@@ -216,7 +283,13 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var opts = _options.CurrentValue;
         if (!IsEnabled(opts, opts.NotificationTypes.ServiceStartStopAlert, "service-started")) return Task.CompletedTask;
 
-        return SendAsync(opts, "Service started", $"GraphMailer service started at {DateTimeOffset.UtcNow:R}.", "service-started", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Info,
+            Title = "GraphMailer service started",
+            Fields = [new("Started at", $"{DateTimeOffset.UtcNow:R}")],
+        };
+        return SendAsync(opts, "Service started", mail, "service-started", ct);
     }
 
     public Task NotifyServiceStoppedAsync(CancellationToken ct = default)
@@ -224,7 +297,13 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var opts = _options.CurrentValue;
         if (!IsEnabled(opts, opts.NotificationTypes.ServiceStartStopAlert, "service-stopped")) return Task.CompletedTask;
 
-        return SendAsync(opts, "Service stopping", $"GraphMailer service is stopping at {DateTimeOffset.UtcNow:R}.", "service-stopped", ct);
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Info,
+            Title = "GraphMailer service is stopping",
+            Fields = [new("Stopping at", $"{DateTimeOffset.UtcNow:R}")],
+        };
+        return SendAsync(opts, "Service stopping", mail, "service-stopped", ct);
     }
 
     public async Task SendNdrAsync(MailMetadata meta, string deliveryError, CancellationToken ct = default)
@@ -241,6 +320,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
 
         var subject = $"Undeliverable: {(string.IsNullOrEmpty(meta.Subject) ? "(no subject)" : meta.Subject)}";
         var body = BuildNdrBody(meta, deliveryError);
+        var bodyHtml = NotificationHtmlRenderer.Render(BuildNdrEmail(meta, deliveryError));
 
         // NDRs are enqueued into the service's own mail queue instead of being sent
         // one-shot via Graph: a permanent delivery failure usually coincides with a
@@ -254,7 +334,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         {
             _logger.LogInformation("[AdminNotify] Queueing NDR for {MessageId} to original sender <{From}>",
                 meta.MessageId, meta.From);
-            await EnqueueNotificationMailAsync(adminOpts.SenderAddress, [meta.From], subject, body,
+            await EnqueueNotificationMailAsync(adminOpts.SenderAddress, [meta.From], subject, body, bodyHtml,
                 $"NDR for {meta.MessageId} to sender <{meta.From}>", ct);
         }
 
@@ -262,21 +342,23 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         {
             var adminSubject = $"{adminOpts.SubjectPrefix} NDR: {(string.IsNullOrEmpty(meta.Subject) ? meta.MessageId : meta.Subject)}";
             _logger.LogInformation("[AdminNotify] Queueing NDR admin copy for {MessageId}", meta.MessageId);
-            await EnqueueNotificationMailAsync(adminOpts.SenderAddress, adminOpts.RecipientAddresses, adminSubject, body,
+            await EnqueueNotificationMailAsync(adminOpts.SenderAddress, adminOpts.RecipientAddresses, adminSubject, body, bodyHtml,
                 $"admin NDR copy for {meta.MessageId}", ct);
         }
     }
 
     /// <summary>
-    /// Builds a plain-text mail as EML and writes it to the mail queue with the
-    /// IsNotification flag, so the queue processor delivers it with the normal
-    /// retry schedule. Never throws — a failed enqueue is logged like a failed send.
+    /// Builds a multipart/alternative mail (plain text + HTML) as EML and writes it to
+    /// the mail queue with the IsNotification flag, so the queue processor delivers it
+    /// with the normal retry schedule. Never throws — a failed enqueue is logged like a
+    /// failed send.
     /// </summary>
     private async Task EnqueueNotificationMailAsync(
         string from,
         IReadOnlyList<string> to,
         string subject,
         string bodyText,
+        string bodyHtml,
         string logContext,
         CancellationToken ct)
     {
@@ -287,7 +369,9 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             foreach (var addr in to)
                 mime.To.Add(MimeKit.MailboxAddress.Parse(addr));
             mime.Subject = subject;
-            mime.Body = new MimeKit.TextPart("plain") { Text = bodyText };
+
+            var builder = new MimeKit.BodyBuilder { TextBody = bodyText, HtmlBody = bodyHtml };
+            mime.Body = builder.ToMessageBody();
 
             using var ms = new MemoryStream();
             await mime.WriteToAsync(ms, ct);
@@ -320,6 +404,24 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         sb.Append("This is an automatically generated Non-Delivery Report from GraphMailer.");
         return sb.ToString();
     }
+
+    private static NotificationEmail BuildNdrEmail(MailMetadata meta, string deliveryError) => new()
+    {
+        Severity = NotificationSeverity.Critical,
+        Title = "Your message could not be delivered",
+        Intro = "The message below could not be delivered to one or more recipients.",
+        Fields =
+        [
+            new("From", meta.From),
+            new("To", meta.To.Count > 0 ? string.Join(", ", meta.To) : "(unknown)"),
+            new("Subject", meta.Subject ?? "(no subject)"),
+            new("Sent", $"{meta.ReceivedAt:R}"),
+            new("Message-ID", string.IsNullOrEmpty(meta.SmtpMessageId) ? "N/A" : meta.SmtpMessageId),
+            new("Reason", deliveryError),
+        ],
+        Kicker = "Non-Delivery Report",
+        FooterNote = "This is an automatically generated Non-Delivery Report from GraphMailer. This is an unmonitored mailbox — do not reply.",
+    };
 
     public void Dispose()
     {
@@ -376,7 +478,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         }
     }
 
-    private async Task SendAsync(AdminNotificationsOptions opts, string subject, string body, string cooldownKey, CancellationToken ct)
+    private async Task SendAsync(AdminNotificationsOptions opts, string subject, NotificationEmail mail, string cooldownKey, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(opts.SenderAddress) || opts.RecipientAddresses.Count == 0)
         {
@@ -392,7 +494,8 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         var fullSubject = $"{opts.SubjectPrefix} {subject}";
         _logger.LogInformation("[AdminNotify] Sending notification: {Subject}", fullSubject);
 
-        await _graph.SendNotificationAsync(opts.SenderAddress, opts.RecipientAddresses, fullSubject, body, ct);
+        var html = NotificationHtmlRenderer.Render(mail);
+        await _graph.SendHtmlNotificationAsync(opts.SenderAddress, opts.RecipientAddresses, fullSubject, html, ct: ct);
     }
 
     private async Task FlushFailureBatchAsync()
@@ -413,9 +516,16 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
 
         var count = lines.Count;
         var subject = $"Email delivery failed ({count} message{(count == 1 ? "" : "s")})";
-        var body = $"The following message(s) failed to deliver:\n\n{string.Join("\n", lines)}";
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Critical,
+            Title = $"Email delivery failed for {count} message{(count == 1 ? "" : "s")}",
+            Intro = "The following message(s) failed to deliver. Failed messages are retried automatically; permanently failed mail ends up in the failed queue.",
+            ItemsTitle = "Failed messages",
+            Items = lines,
+        };
 
         _logger.LogInformation("[AdminNotify] Flushing {Count} delivery failure(s) as batched notification", count);
-        await SendAsync(opts, subject, body, "delivery-failed-batch", CancellationToken.None);
+        await SendAsync(opts, subject, mail, "delivery-failed-batch", CancellationToken.None);
     }
 }
