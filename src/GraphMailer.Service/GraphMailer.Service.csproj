@@ -37,7 +37,7 @@
     <!-- Base SDK only (TelemetryClient + InMemoryChannel) for the opt-in daily
          telemetry heartbeat — no ASP.NET/auto-collection packages. -->
     <PackageReference Include="Microsoft.ApplicationInsights" Version="2.23.0" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="8.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="8.0.29" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.29" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
     <PackageReference Include="Microsoft.Graph" Version="5.105.0" />

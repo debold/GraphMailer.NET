@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Security
+
+- **Updated `Microsoft.AspNetCore.DataProtection` 8.0.0 → 8.0.29**, which pulls in
+  `System.Security.Cryptography.Xml` 8.0.4 and closes seven High-severity advisories in that
+  transitive dependency (GHSA-mmjf-rqrv-855v, GHSA-37gx-xxp4-5rgx, GHSA-w3x6-4m5h-cxqf,
+  GHSA-g8r8-53c2-pm3f, GHSA-8q5v-6pqq-x66h, GHSA-cvvh-rhrc-wg4q, GHSA-23rf-6693-g89p).
+  Data Protection encrypts every `ENC[...]` secret in `graphmailer.json`; the key ring format
+  is unchanged, so existing secrets keep decrypting.
+
 ## 1.2.4.1014 — 2026-07-21
 
 ### Added
