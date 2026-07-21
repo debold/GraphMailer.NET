@@ -23,9 +23,9 @@
     <!-- All versions pinned (no floating "x.*") — see GraphMailer.Service.csproj.
          Shared packages must resolve identically in both projects (both publish
          into the same release folder). -->
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.10" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.10" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.29" />
     <!-- Security pin, mirrors GraphMailer.Service.csproj: CVE-2025-6965 in the SQLite
