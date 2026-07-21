@@ -1,8 +1,7 @@
+using System.Globalization;
 using Microsoft.ApplicationInsights;
-using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
-using Microsoft.ApplicationInsights.Extensibility.Implementation;
 
 namespace GraphMailer.Service.Services.Telemetry;
 
@@ -42,17 +41,25 @@ internal sealed class AppInsightsTelemetrySender : ITelemetrySender, IDisposable
         var telemetry = new EventTelemetry(eventName);
         Scrub(telemetry.Context);
         foreach (var (key, value) in properties) telemetry.Properties[key] = value;
+        // SDK 3.x dropped EventTelemetry.Metrics: an AI custom event maps to an OpenTelemetry
+        // log record, which has no counterpart to customMeasurements. The heartbeat numbers ride
+        // along as customDimensions instead — invariant culture so "1.5" never becomes "1,5" on
+        // a German machine and breaks todouble() on the query side.
         if (metrics is not null)
-            foreach (var (key, value) in metrics) telemetry.Metrics[key] = value;
+            foreach (var (key, value) in metrics)
+                telemetry.Properties[key] = value.ToString(CultureInfo.InvariantCulture);
         _client.TrackEvent(telemetry);
     }
 
-    /// <summary>PII guarantee: the SDK defaults these tags to the machine's hostname.</summary>
+    /// <summary>
+    /// PII guarantee: the SDK defaults the role instance to the machine's hostname.
+    /// SDK 2.x additionally carried an internal context with a NodeName tag that had to be
+    /// cleared; 3.x has no such context — CloudContext is the only place a hostname can surface.
+    /// </summary>
     private static void Scrub(TelemetryContext context)
     {
         context.Cloud.RoleName = "GraphMailer";
         context.Cloud.RoleInstance = "-";
-        context.GetInternalContext().NodeName = "-";
     }
 
     public async Task<bool> FlushAsync(CancellationToken ct = default)

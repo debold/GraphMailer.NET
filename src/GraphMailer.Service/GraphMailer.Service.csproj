@@ -34,9 +34,11 @@
          (Microsoft.Data.Sqlite 8.0.28 vs 8.0.29 → FileNotFoundException).
          Upgrade deliberately by bumping the version here. -->
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
-    <!-- Base SDK only (TelemetryClient + InMemoryChannel) for the opt-in daily
-         telemetry heartbeat — no ASP.NET/auto-collection packages. -->
-    <PackageReference Include="Microsoft.ApplicationInsights" Version="2.23.0" />
+    <!-- Base SDK only (TelemetryClient) for the opt-in daily telemetry heartbeat —
+         no ASP.NET/auto-collection packages. The 3.x line is a compatibility layer over
+         OpenTelemetry, so it brings the OTel exporter and persistent-storage packages
+         with it; that is expected, not accidental. -->
+    <PackageReference Include="Microsoft.ApplicationInsights" Version="3.1.2" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.10" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
     <!-- Security pin: Microsoft.Data.Sqlite pulls a SQLitePCLRaw whose bundled SQLite is
