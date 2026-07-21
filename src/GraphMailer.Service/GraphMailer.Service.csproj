@@ -55,7 +55,7 @@
     <PackageReference Include="MimeKit" Version="4.17.0" />
     <!-- Explicit Serilog pin: keeps the shared DLL identical to the one the
          ConfigTool references (both publish into the same release folder) -->
-    <PackageReference Include="Serilog" Version="4.3.1" />
+    <PackageReference Include="Serilog" Version="4.4.0" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.4" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
