@@ -15,17 +15,23 @@
   8.0.29 — the highest version available for .NET 8 — still resolves SQLitePCLRaw 2.1.6, so no
   parent update fixes this and an explicit pin was required. `metrics.db` now runs on SQLite
   3.53.3; the file format is unchanged.
-- **Pinned `Microsoft.Graph.Core` to 3.2.6**, closing CVE-2026-44503 / GHSA-7j59-v9qr-6fq9
-  (High) in the Kiota libraries underneath the Graph SDK: their redirect handler stripped the
-  `Authorization` header when following a 3xx to a different host, but forwarded `Cookie`,
-  `Proxy-Authorization` and all custom headers. `Microsoft.Graph` 5.105.0 resolves Graph.Core
-  3.2.5 with the affected Kiota 1.21.1; 3.2.6 pulls the fixed 1.22.1. `Microsoft.Graph` itself
-  is unchanged.
+- **Closed CVE-2026-44503 / GHSA-7j59-v9qr-6fq9** (High) in the Kiota libraries underneath the
+  Graph SDK: their redirect handler stripped the `Authorization` header when following a 3xx to
+  a different host, but forwarded `Cookie`, `Proxy-Authorization` and all custom headers. The
+  Graph SDK 6 upgrade below pulls Kiota 2.0.0, well past the fixed 1.22.0.
 - **Updated MailKit 4.11.0 → 4.17.0 in the integration test suite**, closing
   GHSA-9j88-vvj5-vhgr (Moderate, STARTTLS response injection allowing a SASL downgrade). MailKit
   is the SMTP *client* the tests drive the relay with — it is not part of the shipped product,
   so no deployed version of GraphMailer was ever exposed to this. The `NoWarn="NU1902"` that
   suppressed the advisory has been removed, so future MailKit advisories surface again.
+
+### Changed
+
+- **Upgraded the Microsoft Graph SDK from 5.105.0 to 6.2.0** (Graph.Core 4.0.1, Kiota 2.0.0).
+  No functional change — mail delivery, sender directory lookups, the Entra setup wizard and the
+  permission self-check all use the same SDK surface as before, and the upgrade required no code
+  changes. Operators should see identical behaviour; the install grows by the
+  `Microsoft.IdentityModel.*` assemblies that Graph.Core 4 brings along.
 
 ## 1.2.4.1014 — 2026-07-21
 
