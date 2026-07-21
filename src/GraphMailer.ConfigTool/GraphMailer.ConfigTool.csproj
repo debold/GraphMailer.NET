@@ -39,7 +39,7 @@
     <!-- Pinned (not floating): published into the same folder as the Service,
          so the shared Serilog DLLs must match the versions in its deps.json -->
     <PackageReference Include="Serilog" Version="4.4.0" />
-    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
   </ItemGroup>
 
   <ItemGroup>

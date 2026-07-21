@@ -60,7 +60,7 @@
     <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.4" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Sinks.EventLog" Version="4.0.0" />
-    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="SmtpServer" Version="11.1.0" />
     <!-- Server-side PNG rendering of the periodic-report daily-volume chart.
          Embedded as a CID inline image so it renders in Outlook Classic + new Outlook
