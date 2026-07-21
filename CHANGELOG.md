@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.2.4.1014 — 2026-07-21
+
+### Added
+
+- **New “Activity” tab on the Metrics page.** *Recent Activity* used to sit at the bottom of
+  *Overview*, where the details of an event opened below the fold. It now has its own tab in
+  which the list fills the height and the details are always visible.
+- **Live search for Recent Activity.** The box in the card header filters the listed events as
+  you type — across every field, including those shown only in the details panel, so an error
+  message or a single sender can be found directly. A counter shows how many of the loaded
+  events match, and a **✕** in the box clears the search again. The Logs page's search box got
+  the same clear button.
+- **Details panel for a selected event**, showing what the list no longer carries: size,
+  attachment count, receiving listener, TLS, authenticated user, duration and the message id —
+  or the failure reason for a failed event. Right-click copies that last line.
+- **New “All” folder on the Messages page**, merging queue, failed and sent into one list,
+  newest first — and the new default view. An extra **Status** column marks each message as
+  *Queued* (amber), *Sent* (blue) or *Failed* (red). The 500-message cap applies to the merged
+  result, so the newest messages win regardless of which folder they are in.
+
+### Changed
+
+- **Logs, Messages and the new Activity tab now share one layout.** Each page is a single card
+  holding toolbar, list and details, instead of separate cards with a splitter between them.
+  The details panel is part of the same surface as the list, opens by selecting a row and
+  closes with a **✕** in its top right corner — the *▼ Details* toggle buttons are gone.
+- **Details are shown as a label/value raster** with fixed label columns and fixed row heights
+  instead of monospaced text with padded labels, in the same typography on all three pages.
+  Values that are worth pasting elsewhere (message ids, error texts, log messages incl. stack
+  traces) can be copied from the context menu. Empty fields show an em dash, so the raster no
+  longer shifts depending on which fields a message happens to have.
+- **The ↺ Refresh button on the Metrics and Messages pages is gone.** Both pages reload
+  themselves every five seconds and offer no way to pause that, which left the button without
+  a job. The Logs page keeps its Refresh button — there it works together with the
+  *Auto-refresh* checkbox, which can freeze the view.
+
+### Fixed
+
+- **Column widths in Recent Activity and the log list no longer snap back.** Every automatic
+  refresh replaced the list contents, which made WPF re-apply the column layout and discard any
+  width the user had dragged. The widths (and the selected row) now survive a refresh. The
+  *Subject* column additionally moved to the end of the grid: a proportional column between
+  fixed ones is re-measured to “whatever space is left” on every layout pass, which no saved
+  value could override.
+- **Recent Activity now honours the time range selector.** It listed the newest 200 events
+  regardless of the selected 24h/7d/30d/90d range, while every other section of the page
+  filtered correctly.
+- **The rounded bottom corners of the list cards are no longer covered** by the grid painting
+  its background over them.
+
 ## 1.2.3.1013 — 2026-07-21
 
 ### Added

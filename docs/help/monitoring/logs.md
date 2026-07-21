@@ -24,7 +24,7 @@ tagged with the component that produced it (for example `[SmtpRelay]`, `[QueuePr
 |---|---|
 | Level | Show entries at the chosen level **and above** (e.g. *Warning+* shows Warning, Error, Fatal). |
 | Component | Limit to one component (e.g. only SMTP relay or only Graph API entries). |
-| Search | Free-text filter across the message text. |
+| Search | Free-text filter across the message text. The **✕** in the box clears it again. |
 
 ## Live tail
 
@@ -34,8 +34,9 @@ button still reloads on demand.
 
 ## Reading an entry
 
-The list shows **Time**, **Level** (colour-coded), **Component**, and **Message**. Select a row and
-open **▼ Details** for the full entry, including any exception detail.
+The list shows **Time**, **Level** (colour-coded), **Component**, and **Message**. Select a row to
+open the details panel below the list with the full entry, including any exception detail; right-click
+the message to copy it. The **✕** in the top right corner of the panel closes it again.
 
 What the levels mean:
 

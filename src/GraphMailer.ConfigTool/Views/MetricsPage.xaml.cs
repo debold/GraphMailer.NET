@@ -11,7 +11,7 @@ using WpfShapes = System.Windows.Shapes;
 namespace GraphMailer.ConfigTool.Views;
 
 /// <summary>
-/// Statistics page: five tabs (Overview, Reception, Delivery, End-to-End, Server)
+/// Statistics page: six tabs (Overview, Activity, Reception, Delivery, End-to-End, Server)
 /// over the read-only metrics.db (schema v2). All queries are best-effort — a
 /// missing database, table or column degrades the affected section to "—".
 /// </summary>
@@ -23,6 +23,9 @@ public partial class MetricsPage : UserControl
     private List<double> _cpuSamples = [];
     private List<double> _diskSamples = [];
     private List<DailyBar> _dailyBars = [];
+    private List<ActivityRow> _activityRows = [];
+    private readonly string _noActivityText;
+    private bool _metricsDbAvailable;
     private int _rangeDays = 7;
 
     private static string DbPath => Path.Combine(AppPaths.DataDir, "metrics.db");
@@ -37,6 +40,10 @@ public partial class MetricsPage : UserControl
         // No LoadData() here: IsVisibleChanged below loads the data when the
         // page is first shown.
 
+        // The "no data" hint doubles as the "no search match" hint — keep the
+        // XAML wording as the single source for the empty-database case.
+        _noActivityText = NoDataText.Text;
+
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _timer.Tick += (_, _) => LoadData();
         IsVisibleChanged += (_, e) =>
@@ -46,7 +53,58 @@ public partial class MetricsPage : UserControl
         };
     }
 
-    private void Refresh_Click(object sender, RoutedEventArgs e) => LoadData();
+    private void ActivitySearch_Changed(object sender, TextChangedEventArgs e) => ApplyActivityFilter();
+
+    private void ActivitySearchClear_Click(object sender, RoutedEventArgs e)
+    {
+        ActivitySearchBox.Clear();      // TextChanged re-applies the (now empty) filter
+        ActivitySearchBox.Focus();
+    }
+
+    /// <summary>
+    /// Closes the details panel. Dropping the selection is what hides it — keeping the
+    /// row selected while the panel is gone would re-open it on the next refresh.
+    /// </summary>
+    private void ActivityDetailsClose_Click(object sender, RoutedEventArgs e) => ActivityGrid.UnselectAll();
+
+    /// <summary>Fills the details panel below the grid from the selected event.</summary>
+    private void ActivityGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ActivityGrid.SelectedItem is not ActivityRow row)
+        {
+            ActivityDetails.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        DetailSubject.Text = string.IsNullOrEmpty(row.Subject) ? "—" : row.Subject;
+        DetailFrom.Text = row.From;
+        DetailTo.Text = row.To;
+        DetailSize.Text = row.Size;
+        DetailAttachments.Text = row.Attachments;
+        DetailListener.Text = row.Listener;
+        DetailTls.Text = row.Tls;
+        DetailAuth.Text = row.Auth;
+        DetailDuration.Text = row.Duration;
+
+        // The detail column carries either the failure reason or the message id
+        DetailDetailLabel.Text = row.IsError ? "Error" : "Message ID";
+        DetailDetail.Text = row.Detail;
+
+        ActivityDetails.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Context-menu copy for the message id / error text of the selected event.</summary>
+    private void DetailDetail_Copy(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(DetailDetail.Text)) return;
+
+        try { Clipboard.SetText(DetailDetail.Text); }
+        catch (Exception ex)
+        {
+            // The clipboard can be locked by another process — never take down the page for it
+            ConfigToolLog.ErrorOnChange("MetricsPage", ex, "Could not copy the event detail to the clipboard");
+        }
+    }
 
     private void Range_Click(object sender, RoutedEventArgs e)
     {
@@ -75,6 +133,8 @@ public partial class MetricsPage : UserControl
             return;
         }
 
+        _metricsDbAvailable = true;
+
         try
         {
             var cutoff = DateTime.UtcNow.AddDays(-_rangeDays).ToString("O");
@@ -88,7 +148,7 @@ public partial class MetricsPage : UserControl
             TrySection(() => LoadDelivery(conn, cutoff));
             TrySection(() => LoadEndToEnd(conn, cutoff));
             LoadServer(conn);
-            LoadActivity(conn);
+            LoadActivity(conn, cutoff);
         }
         catch (Exception ex)
         {
@@ -121,7 +181,9 @@ public partial class MetricsPage : UserControl
         _cpuSamples = [];
         _diskSamples = [];
         _dailyBars = [];
-        ActivityGrid.ItemsSource = Array.Empty<ActivityRow>();
+        _metricsDbAvailable = false;
+        _activityRows = [];
+        ApplyActivityFilter();
         RcAbortStages.ItemsSource = null;
         RcRejectionsGrid.ItemsSource = null;
         RcTopHostsGrid.ItemsSource = null;
@@ -537,17 +599,21 @@ public partial class MetricsPage : UserControl
 
     // ── Recent activity ──────────────────────────────────────────────────────
 
-    private void LoadActivity(SqliteConnection conn)
+    private void LoadActivity(SqliteConnection conn, string cutoff)
     {
         var rows = new List<ActivityRow>();
         using var cmd = conn.CreateCommand();
+        // Honours the page's time range like every other section; the limit caps the
+        // list for wide ranges, so this is the newest 200 events *within* the range.
         cmd.CommandText = """
             SELECT occurred_at, event_type, from_addr, to_addrs, message_id, subject, size_bytes, duration_ms, error_detail,
                    attachment_count, listener_port, tls, authenticated, auth_user
             FROM email_events
+            WHERE occurred_at >= $c
             ORDER BY occurred_at DESC
             LIMIT 200
             """;
+        cmd.Parameters.AddWithValue("$c", cutoff);
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
@@ -580,14 +646,64 @@ public partial class MetricsPage : UserControl
                 Subject: subject,
                 Attachments: isReceived || evt == "sent" ? attCount.ToString() : "—",
                 Listener: isReceived && port > 0 ? port.ToString() : "—",
-                Tls: isReceived ? (tls ? "✔" : "—") : "",
-                Auth: isReceived ? (authed ? authUser : "—") : "",
+                // Plain words rather than a ✔ glyph: the details panel lines these values
+                // up in fixed-height rows, and a glyph from a fallback font changes the
+                // line height. They are searchable this way, too.
+                Tls: isReceived ? (tls ? "Yes" : "No") : "—",
+                Auth: isReceived ? (authed ? authUser : "—") : "—",
                 Size: sizeB > 0 ? FormatBytes(sizeB) : "—",
                 Duration: durMs > 0 ? $"{durMs} ms" : "—",
-                Detail: !string.IsNullOrEmpty(error) ? error : msgId));
+                Detail: !string.IsNullOrEmpty(error) ? error : msgId,
+                IsError: !string.IsNullOrEmpty(error)));
         }
 
+        _activityRows = rows;
+        ApplyActivityFilter();
+    }
+
+    /// <summary>
+    /// Pushes the loaded rows through the live search into the grid. Replacing the
+    /// ItemsSource makes the DataGrid re-apply the column widths declared in XAML and
+    /// drops the selection — both are captured and written back around the assignment
+    /// so the 5 s auto-refresh does not disturb the user (same pattern as the Logs and
+    /// Messages pages).
+    /// </summary>
+    private void ApplyActivityFilter()
+    {
+        // Guard: TextChanged can fire during InitializeComponent(), before the grid exists
+        if (ActivityGrid is null) return;
+
+        var search = ActivitySearchBox.Text.Trim();
+        var rows = search.Length == 0
+            ? _activityRows
+            : _activityRows.Where(r => r.Matches(search)).ToList();
+
+        var widths = ActivityGrid.Columns.Select(c => c.Width).ToList();
+        var selected = ActivityGrid.SelectedItem as ActivityRow;
+
         ActivityGrid.ItemsSource = rows;
+
+        for (int i = 0; i < widths.Count; i++)
+            ActivityGrid.Columns[i].Width = widths[i];
+
+        // Rows are records, so the reloaded instance of the same event compares equal
+        if (selected is not null)
+        {
+            var restored = rows.FirstOrDefault(r => r == selected);
+            if (restored is not null)
+                ActivityGrid.SelectedItem = restored;
+        }
+
+        ActivityCountText.Text = search.Length == 0
+            ? ""
+            : $"{rows.Count} of {_activityRows.Count}";
+
+        NoDataText.Text = (_activityRows.Count, rows.Count, _metricsDbAvailable) switch
+        {
+            ( > 0, 0, _) => "No events match the search.",
+            (0, _, true) => "No events in the selected time range.",
+            _ => _noActivityText,
+        };
         NoDataText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -902,7 +1018,26 @@ public record ActivityRow(
     string Auth,
     string Size,
     string Duration,
-    string Detail);
+    string Detail,
+    bool IsError = false)
+{
+    /// <summary>
+    /// Live-search predicate for the Recent Activity grid: case-insensitive substring
+    /// match across every displayed field. Blank search matches everything.
+    /// </summary>
+    public bool Matches(string search)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return true;
+
+        var term = search.Trim();
+        return Contains(Timestamp) || Contains(Event) || Contains(From) || Contains(To)
+            || Contains(Subject) || Contains(Attachments) || Contains(Listener)
+            || Contains(Tls) || Contains(Auth) || Contains(Size) || Contains(Duration)
+            || Contains(Detail);
+
+        bool Contains(string value) => value.Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
+}
 
 public record NameCount(string Name, long Count);
 

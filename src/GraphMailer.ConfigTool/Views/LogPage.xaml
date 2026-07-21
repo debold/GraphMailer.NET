@@ -2,263 +2,342 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="{StaticResource BackgroundBrush}">
-    <Grid Margin="24,20,24,24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"
-                    MinHeight="120"/>
-            <RowDefinition x:Name="SplitterRow"
-                    Height="0"/>
-            <RowDefinition x:Name="DetailsRow"
-                    Height="0"/>
-        </Grid.RowDefinitions>
+    <!-- One card holding toolbar, list and details — the details panel is part of the
+         same surface as the list (same layout as the Messages page and the Metrics
+         page's Activity tab). -->
+    <!-- Bottom padding = the card's corner radius: the grid paints an opaque background
+         and would otherwise cover the rounded bottom corners (the header solves the same
+         problem with its own CornerRadius, which a DataGrid cannot carry). -->
+    <Border Margin="24,20,24,24"
+            Padding="0,0,0,8"
+            Style="{StaticResource Card}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"
+                               MinHeight="120"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-        <!-- ── Toolbar ─────────────────────────────────────────────────── -->
-        <Border Grid.Row="0"
-                Style="{StaticResource Card}"
-                Padding="12,10"
-                Margin="0,0,0,12">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="12"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="12"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="12"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="8"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+            <!-- ── Toolbar ─────────────────────────────────────────────────── -->
+            <Border Grid.Row="0"
+                    Style="{StaticResource CardHeader}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                <!-- Level filter -->
-                <StackPanel Grid.Column="0"
-                            Orientation="Horizontal"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="Level"
-                               Style="{StaticResource LabelText}"
-                               VerticalAlignment="Center"
-                               Margin="0,0,8,0"/>
-                    <ComboBox x:Name="LevelFilter"
-                              Width="110"
-                              SelectedIndex="0"
-                              ToolTip="Shows entries of the selected level and above&#x0a;(e.g. Debug+ includes Information, Warning, Error and Fatal)."
-                              SelectionChanged="Filter_Changed">
-                        <ComboBoxItem Content="All"/>
-                        <ComboBoxItem Content="Debug+"/>
-                        <ComboBoxItem Content="Information+"/>
-                        <ComboBoxItem Content="Warning+"/>
-                        <ComboBoxItem Content="Error+"/>
-                        <ComboBoxItem Content="Fatal"/>
-                    </ComboBox>
-                </StackPanel>
-
-                <!-- Component filter -->
-                <StackPanel Grid.Column="2"
-                            Orientation="Horizontal"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="Component"
-                               Style="{StaticResource LabelText}"
-                               VerticalAlignment="Center"
-                               Margin="0,0,8,0"/>
-                    <ComboBox x:Name="ComponentFilter"
-                              Width="160"
-                              SelectedIndex="0"
-                              SelectionChanged="Filter_Changed"/>
-                </StackPanel>
-
-                <!-- Text search -->
-                <Grid Grid.Column="4">
-                    <TextBox x:Name="SearchBox"
-                             VerticalAlignment="Center"
-                             TextChanged="Filter_Changed"/>
-                    <TextBlock Text="Search…"
-                               Foreground="#FF888888"
-                               Margin="6,0,0,0"
-                               VerticalAlignment="Center"
-                               IsHitTestVisible="False">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Visibility"
-                                        Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Text, ElementName=SearchBox}"
-                                                 Value="">
-                                        <Setter Property="Visibility"
-                                                Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                </Grid>
-
-                <!-- Auto-refresh toggle (live tail) -->
-                <StackPanel Grid.Column="6"
-                            Orientation="Horizontal"
-                            VerticalAlignment="Center"
-                            ToolTip="Reload the log every 5 seconds and jump to the newest entry.&#x0a;Disable to freeze the view while reading or searching — the Refresh button still works.">
-                    <CheckBox x:Name="AutoScrollCheck"
-                              IsChecked="True"
-                              VerticalAlignment="Center"
-                              Margin="0,0,6,0"
-                              Checked="AutoScroll_Changed"
-                              Unchecked="AutoScroll_Changed"/>
-                    <TextBlock Text="Auto-refresh"
-                               Style="{StaticResource LabelText}"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-
-                <!-- Refresh now -->
-                <Button Grid.Column="8"
-                        Content="⟳ Refresh"
-                        Style="{StaticResource SecondaryButton}"
-                        Padding="10,4"
-                        Click="BtnRefresh_Click"/>
-            </Grid>
-        </Border>
-
-        <!-- ── Log grid ──────────────────────────────────────────────────── -->
-        <Border Grid.Row="1"
-                Style="{StaticResource Card}"
-                Padding="0"
-                Margin="0,0,0,0">
-            <DockPanel>
-                <Border DockPanel.Dock="Top"
-                        BorderBrush="{StaticResource BorderBrush}"
-                        BorderThickness="0,0,0,1"
-                        Padding="12,8">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Log Entries"
-                                   Style="{StaticResource SectionHeader}"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock x:Name="EntryCountText"
-                                   Text=""
+                    <!-- Level filter -->
+                    <StackPanel Grid.Column="0"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="Level"
                                    Style="{StaticResource LabelText}"
                                    VerticalAlignment="Center"
-                                   Margin="12,0,0,0"/>
-                        <Button x:Name="BtnToggleDetails"
-                                Content="▼ Details"
-                                Style="{StaticResource SecondaryButton}"
-                                Padding="8,2"
-                                FontSize="11"
-                                Margin="12,0,0,0"
+                                   Margin="0,0,8,0"/>
+                        <ComboBox x:Name="LevelFilter"
+                                  Width="110"
+                                  SelectedIndex="0"
+                                  ToolTip="Shows entries of the selected level and above&#x0a;(e.g. Debug+ includes Information, Warning, Error and Fatal)."
+                                  SelectionChanged="Filter_Changed">
+                            <ComboBoxItem Content="All"/>
+                            <ComboBoxItem Content="Debug+"/>
+                            <ComboBoxItem Content="Information+"/>
+                            <ComboBoxItem Content="Warning+"/>
+                            <ComboBoxItem Content="Error+"/>
+                            <ComboBoxItem Content="Fatal"/>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Component filter -->
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="Component"
+                                   Style="{StaticResource LabelText}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"/>
+                        <ComboBox x:Name="ComponentFilter"
+                                  Width="160"
+                                  SelectedIndex="0"
+                                  SelectionChanged="Filter_Changed"/>
+                    </StackPanel>
+
+                    <!-- Text search -->
+                    <Grid Grid.Column="4">
+                        <TextBox x:Name="SearchBox"
+                                 VerticalAlignment="Center"
+                                 Padding="6,4,26,4"
+                                 TextChanged="Filter_Changed"/>
+                        <TextBlock Text="Search…"
+                                   Foreground="#FF888888"
+                                   Margin="6,0,0,0"
+                                   VerticalAlignment="Center"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility"
+                                            Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=SearchBox}"
+                                                     Value="">
+                                            <Setter Property="Visibility"
+                                                    Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <!-- Clear button, shown only while the box has content -->
+                        <Button x:Name="SearchClear"
+                                HorizontalAlignment="Right"
                                 VerticalAlignment="Center"
-                                Click="BtnToggleDetails_Click"/>
-                    </StackPanel>
-                </Border>
+                                Width="22"
+                                Margin="0,0,3,0"
+                                Padding="0"
+                                Content="&#x2715;"
+                                FontSize="10"
+                                Foreground="{StaticResource TextSecondaryBrush}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Focusable="False"
+                                ToolTip="Clear search"
+                                Click="SearchClear_Click">
+                            <Button.Style>
+                                <!-- No BasedOn: the app has no implicit Button style, only keyed ones -->
+                                <Style TargetType="Button">
+                                    <Setter Property="Visibility"
+                                            Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=SearchBox}"
+                                                     Value="">
+                                            <Setter Property="Visibility"
+                                                    Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </Grid>
 
-                <DataGrid x:Name="LogGrid"
-                          IsReadOnly="True"
-                          SelectionMode="Single"
-                          GridLinesVisibility="Horizontal"
-                          HeadersVisibility="Column"
-                          AutoGenerateColumns="False"
-                          VirtualizingPanel.IsVirtualizing="True"
-                          VirtualizingPanel.VirtualizationMode="Recycling"
-                          FontFamily="Consolas"
-                          FontSize="12"
-                          SelectionChanged="LogGrid_SelectionChanged">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Time"
-                                            Binding="{Binding TimeLocal}"
-                                            Width="160"/>
-                        <DataGridTemplateColumn Header="Level"
-                                                Width="90">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Border CornerRadius="3"
-                                            Padding="6,1"
-                                            Background="{Binding LevelBg}"
-                                            HorizontalAlignment="Left"
-                                            Margin="2,1">
-                                        <TextBlock Text="{Binding LevelShort}"
-                                                   Foreground="{Binding LevelFg}"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"/>
-                                    </Border>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Component"
-                                            Binding="{Binding Component}"
-                                            Width="160"/>
-                        <DataGridTextColumn Header="Message"
-                                            Binding="{Binding Message}"
-                                            Width="*"/>
-                    </DataGrid.Columns>
-                </DataGrid>
-            </DockPanel>
-        </Border>
+                    <TextBlock x:Name="EntryCountText"
+                               Grid.Column="6"
+                               Style="{StaticResource HintText}"
+                               VerticalAlignment="Center"/>
 
-        <!-- ── Splitter ───────────────────────────────────────────────────── -->
-        <GridSplitter Grid.Row="2"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch"
-                      Background="{StaticResource BorderBrush}"
-                      Margin="0,1"/>
-
-        <!-- ── Details panel ──────────────────────────────────────────────── -->
-        <Border Grid.Row="3"
-                Style="{StaticResource Card}"
-                Padding="0"
-                Margin="0,4,0,0">
-            <DockPanel>
-                <Border DockPanel.Dock="Top"
-                        BorderBrush="{StaticResource BorderBrush}"
-                        BorderThickness="0,0,0,1"
-                        Padding="12,7">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Details"
-                                   Style="{StaticResource SectionHeader}"
+                    <!-- Auto-refresh toggle (live tail) -->
+                    <StackPanel Grid.Column="8"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                ToolTip="Reload the log every 5 seconds and jump to the newest entry.&#x0a;Disable to freeze the view while reading or searching — the Refresh button still works.">
+                        <CheckBox x:Name="AutoScrollCheck"
+                                  IsChecked="True"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,6,0"
+                                  Checked="AutoScroll_Changed"
+                                  Unchecked="AutoScroll_Changed"/>
+                        <TextBlock Text="Auto-refresh"
+                                   Style="{StaticResource LabelText}"
                                    VerticalAlignment="Center"/>
-                        <TextBlock x:Name="DetailLevelBadge"
-                                   Visibility="Collapsed"
-                                   Margin="10,0,0,0"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                FontWeight="SemiBold"
-                                   FontFamily="Consolas"/>
-                        <TextBlock x:Name="DetailTimestamp"
-                                   Visibility="Collapsed"
-                                   Style="{StaticResource LabelText}"
-                                   VerticalAlignment="Center"
-                                   Margin="10,0,0,0"/>
-                        <TextBlock x:Name="DetailComponent"
-                                   Visibility="Collapsed"
-                                   Style="{StaticResource LabelText}"
-                                   VerticalAlignment="Center"
-                                   Margin="10,0,0,0"
-                                   FontWeight="SemiBold"/>
                     </StackPanel>
-                </Border>
-                <TextBox x:Name="DetailText"
-                         IsReadOnly="True"
-                         TextWrapping="Wrap"
-                         FontFamily="Consolas"
-                         FontSize="12"
-                         BorderThickness="0"
-                         Padding="12,6"
-                         VerticalContentAlignment="Top"
-                         VerticalScrollBarVisibility="Auto"
-                         HorizontalScrollBarVisibility="Disabled"
-                         Text="Select a log entry to see details."
-                         Foreground="#FF888888">
-                    <TextBox.Style>
-                        <Style TargetType="TextBox"
-                                BasedOn="{StaticResource {x:Type TextBox}}">
-                            <Style.Triggers>
-                                <Trigger Property="IsReadOnly"
-                                        Value="True">
-                                    <Setter Property="Background"
-                                            Value="Transparent"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBox.Style>
-                </TextBox>
-            </DockPanel>
-        </Border>
 
-    </Grid>
+                    <!-- Refresh now — meaningful here because auto-refresh can be switched off -->
+                    <Button Grid.Column="10"
+                            Content="&#x27F3; Refresh"
+                            Style="{StaticResource SmallButton}"
+                            Click="BtnRefresh_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- ── Log grid ──────────────────────────────────────────────────── -->
+            <DataGrid x:Name="LogGrid"
+                      Grid.Row="1"
+                      IsReadOnly="True"
+                      SelectionMode="Single"
+                      GridLinesVisibility="Horizontal"
+                      HeadersVisibility="Column"
+                      AutoGenerateColumns="False"
+                      VirtualizingPanel.IsVirtualizing="True"
+                      VirtualizingPanel.VirtualizationMode="Recycling"
+                      SelectionChanged="LogGrid_SelectionChanged">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Time"
+                                        Binding="{Binding TimeLocal}"
+                                        Width="160"/>
+                    <DataGridTemplateColumn Header="Level"
+                                            Width="90">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="3"
+                                        Padding="6,1"
+                                        Background="{Binding LevelBg}"
+                                        HorizontalAlignment="Left"
+                                        Margin="2,1">
+                                    <TextBlock Text="{Binding LevelShort}"
+                                               Foreground="{Binding LevelFg}"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"/>
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Component"
+                                        Binding="{Binding Component}"
+                                        Width="160"/>
+                    <DataGridTextColumn Header="Message"
+                                        Binding="{Binding Message}"
+                                        Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- ── Details panel ──────────────────────────────────────────────── -->
+            <Border x:Name="LogDetails"
+                    Grid.Row="2"
+                    Visibility="Collapsed"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,1,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Text="Details"
+                               Style="{StaticResource SectionHeader}"
+                               VerticalAlignment="Center"
+                               Margin="16,10,0,0"/>
+
+                    <!-- Closes the panel by dropping the grid selection -->
+                    <Button x:Name="LogDetailsClose"
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            VerticalAlignment="Top"
+                            Width="22"
+                            Height="22"
+                            Margin="0,8,10,0"
+                            Padding="0"
+                            Content="&#x2715;"
+                            FontSize="10"
+                            Foreground="{StaticResource TextSecondaryBrush}"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Focusable="False"
+                            ToolTip="Close details"
+                            Click="LogDetailsClose_Click"/>
+
+                    <!-- Label/value raster with fixed label columns and fixed row heights,
+                         identical to the Messages page and the Activity tab. -->
+                    <Grid Grid.Row="1"
+                          Grid.Column="0"
+                          Grid.ColumnSpan="2"
+                          Margin="16,8,16,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="96"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="96"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="22"/>
+                            <RowDefinition Height="22"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.Resources>
+                            <Style x:Key="DetailLabel"
+                                   TargetType="TextBlock"
+                                   BasedOn="{StaticResource LabelText}">
+                                <Setter Property="Margin"
+                                        Value="0,0,10,0"/>
+                                <Setter Property="VerticalAlignment"
+                                        Value="Center"/>
+                            </Style>
+                            <Style x:Key="DetailValue"
+                                   TargetType="TextBlock">
+                                <Setter Property="Margin"
+                                        Value="0,0,24,0"/>
+                                <Setter Property="FontSize"
+                                        Value="12.5"/>
+                                <Setter Property="VerticalAlignment"
+                                        Value="Center"/>
+                                <Setter Property="TextTrimming"
+                                        Value="CharacterEllipsis"/>
+                            </Style>
+                            <ContextMenu x:Key="CopyMenu">
+                                <MenuItem Header="Copy"
+                                          Click="DetailCopy_Click"/>
+                            </ContextMenu>
+                        </Grid.Resources>
+
+                        <TextBlock Grid.Row="0"
+                                   Grid.Column="0"
+                                   Text="Time"
+                                   Style="{StaticResource DetailLabel}"/>
+                        <TextBlock x:Name="DetailTimestamp"
+                                   Grid.Row="0"
+                                   Grid.Column="1"
+                                   Style="{StaticResource DetailValue}"/>
+                        <TextBlock Grid.Row="0"
+                                   Grid.Column="2"
+                                   Text="Level"
+                                   Style="{StaticResource DetailLabel}"/>
+                        <TextBlock x:Name="DetailLevel"
+                                   Grid.Row="0"
+                                   Grid.Column="3"
+                                   Style="{StaticResource DetailValue}"/>
+
+                        <TextBlock Grid.Row="1"
+                                   Grid.Column="0"
+                                   Text="Component"
+                                   Style="{StaticResource DetailLabel}"/>
+                        <TextBlock x:Name="DetailComponent"
+                                   Grid.Row="1"
+                                   Grid.Column="1"
+                                   Grid.ColumnSpan="3"
+                                   Style="{StaticResource DetailValue}"/>
+
+                        <!-- Last row grows with the text (stack traces), so its label sits at the top -->
+                        <TextBlock Grid.Row="2"
+                                   Grid.Column="0"
+                                   Text="Message"
+                                   Style="{StaticResource DetailLabel}"
+                                   VerticalAlignment="Top"
+                                   Margin="0,4,10,0"/>
+                        <ScrollViewer Grid.Row="2"
+                                      Grid.Column="1"
+                                      Grid.ColumnSpan="3"
+                                      MaxHeight="180"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <TextBlock x:Name="DetailText"
+                                       Style="{StaticResource DetailValue}"
+                                       VerticalAlignment="Top"
+                                       Margin="0,3,24,0"
+                                       TextTrimming="None"
+                                       TextWrapping="Wrap"
+                                       ContextMenu="{StaticResource CopyMenu}"
+                                       ToolTip="Right-click to copy"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
 </UserControl>

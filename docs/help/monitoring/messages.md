@@ -1,7 +1,8 @@
 # Messages
 
 This is the **Messages** page. It lets you browse the actual mail files GraphMailer keeps on disk —
-the **queue**, **sent**, and **failed** folders — and inspect any individual message.
+the **queue**, **sent**, and **failed** folders, individually or merged — and inspect any individual
+message.
 
 Each message is stored as a `.eml` file with a matching `.meta.json` sidecar under the mail directory
 (see [Mail Queue](../configuration/mail-queue.html)).
@@ -15,17 +16,21 @@ The **Folder** selector switches between:
 
 | Folder | Contents |
 |---|---|
+| All | All three folders merged into one list, newest first — the default view. An extra **Status** column marks each message as *Queued* (amber), *Sent* (blue) or *Failed* (red). |
 | Queue | Messages accepted and waiting to be delivered. |
-| Sent | Successfully delivered messages (only present when archiving is enabled). |
 | Failed | Messages that exhausted the retry window and were given up on. |
+| Sent | Successfully delivered messages (only present when archiving is enabled). |
 
-A count shows how many messages are in the selected folder; **↻ Refresh** reloads it.
+A count shows how many messages are in the selected folder. The list reloads itself every few seconds
+while the page is open.
 
 ## The message list
 
-Each row shows **Received**, **From**, **To**, **Subject**, and the number of delivery **Attempts**.
-Select a row and open the **▼ Details** panel to see the full message metadata (headers, addresses,
-delivery history, and the last error for failed items).
+Each row shows **Received**, **From**, **To**, **Subject**, and the number of delivery **Attempts**
+(plus **Status** in the **All** folder).
+Select a row to open the details panel below the list, showing the full message metadata (headers,
+addresses, delivery history, and the last error for failed items). The **✕** in the top right corner
+of the panel closes it again.
 
 > [!TIP]
 > The **Failed** folder is the one to watch. Messages here will not be retried automatically — they

@@ -13,6 +13,27 @@ public sealed class MessageRow
     public string To { get; init; } = string.Empty;
     public string Subject { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
+
+    /// <summary>Status pill in the "All" view — capitalised label plus its colours.</summary>
+    public string StatusLabel => string.IsNullOrEmpty(Status)
+        ? "—"
+        : char.ToUpperInvariant(Status[0]) + Status[1..];
+
+    public string StatusBg => Status switch
+    {
+        "sent" => "#FFDCEEFB",      // delivered — blue, matching the metrics charts
+        "failed" => "#FFFDE7E9",    // danger
+        "queued" => "#FFFFF4CE",    // waiting
+        _ => "#FFF0F0F0",
+    };
+
+    public string StatusFg => Status switch
+    {
+        "sent" => "#FF0F5A9C",
+        "failed" => "#FFC42B1C",
+        "queued" => "#FF7A5700",
+        _ => "#FF616161",
+    };
     /// <summary>
     /// Number of delivery attempts so far. For queued/failed messages this is the failed-attempt
     /// count; for sent messages the successful attempt is included (first-try = "1"). Retries are
@@ -36,6 +57,21 @@ internal static class MailFolderReader
 {
     /// <summary>Upper bound so a huge archive folder cannot freeze the UI.</summary>
     internal const int MaxEntries = 500;
+
+    /// <summary>
+    /// Merges several folders into one newest-first list for the "All" view. The cap is
+    /// applied to the merged result, so the newest messages win no matter which folder
+    /// they sit in — capping per folder first would drop newer entries of a busy folder
+    /// in favour of older ones from a quiet one.
+    /// </summary>
+    internal static List<MessageRow> ReadFolders(params string[] directories)
+    {
+        var rows = new List<MessageRow>();
+        foreach (var directory in directories)
+            rows.AddRange(ReadFolder(directory));
+
+        return [.. rows.OrderByDescending(r => r.ReceivedAt).Take(MaxEntries)];
+    }
 
     internal static List<MessageRow> ReadFolder(string directory)
     {

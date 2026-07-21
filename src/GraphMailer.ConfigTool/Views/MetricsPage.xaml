@@ -151,15 +151,13 @@
                                         Margin="0,0,4,0"
                                         Tag="30"
                                         Click="Range_Click"/>
+                                <!-- No refresh button: the page reloads itself every 5 seconds while
+                                     it is visible, and there is no way to pause that. -->
                                 <Button x:Name="Range90d"
                                         Content="90d"
                                         Style="{StaticResource SmallButton}"
-                                        Margin="0,0,12,0"
                                         Tag="90"
                                         Click="Range_Click"/>
-                                <Button Content="↺ Refresh"
-                                        Style="{StaticResource SmallButton}"
-                                        Click="Refresh_Click"/>
                         </StackPanel>
                 </Grid>
 
@@ -349,64 +347,330 @@
                                                         </Border>
                                                 </Grid>
 
-                                                <Border Style="{StaticResource Card}">
-                                                        <StackPanel>
-                                                                <Border Style="{StaticResource CardHeader}">
-                                                                        <TextBlock Text="Recent Activity"
-                                                                                   Style="{StaticResource SectionHeader}"/>
-                                                                </Border>
-                                                                <DataGrid x:Name="ActivityGrid"
-                                                                          Margin="0"
-                                                                          MinHeight="120"
-                                                                          MaxHeight="420"
-                                                                          CanUserAddRows="False"
-                                                                          CanUserDeleteRows="False"
-                                                                          AutoGenerateColumns="False"
-                                                                          IsReadOnly="True">
-                                                                        <DataGrid.Columns>
-                                                                                <DataGridTextColumn Header="Timestamp"
-                                                                                                    Binding="{Binding Timestamp}"
-                                                                                                    Width="150"/>
-                                                                                <DataGridTextColumn Header="Event"
-                                                                                                    Binding="{Binding Event}"
-                                                                                                    Width="75"/>
-                                                                                <DataGridTextColumn Header="From"
-                                                                                                    Binding="{Binding From}"
-                                                                                                    Width="160"/>
-                                                                                <DataGridTextColumn Header="To"
-                                                                                                    Binding="{Binding To}"
-                                                                                                    Width="160"/>
-                                                                                <DataGridTextColumn Header="Subject"
-                                                                                                    Binding="{Binding Subject}"
-                                                                                                    Width="*"/>
-                                                                                <DataGridTextColumn Header="Attach."
-                                                                                                    Binding="{Binding Attachments}"
-                                                                                                    Width="60"/>
-                                                                                <DataGridTextColumn Header="Listener"
-                                                                                                    Binding="{Binding Listener}"
-                                                                                                    Width="65"/>
-                                                                                <DataGridTextColumn Header="TLS"
-                                                                                                    Binding="{Binding Tls}"
-                                                                                                    Width="45"/>
-                                                                                <DataGridTextColumn Header="Auth"
-                                                                                                    Binding="{Binding Auth}"
-                                                                                                    Width="90"/>
-                                                                                <DataGridTextColumn Header="Size"
-                                                                                                    Binding="{Binding Size}"
-                                                                                                    Width="70"/>
-                                                                                <DataGridTextColumn Header="Detail"
-                                                                                                    Binding="{Binding Detail}"
-                                                                                                    Width="170"/>
-                                                                        </DataGrid.Columns>
-                                                                </DataGrid>
-                                                                <TextBlock x:Name="NoDataText"
-                                                                           Text="No metrics data available. The service must have processed at least one message."
-                                                                           Style="{StaticResource HintText}"
-                                                                           Margin="16,10,16,12"/>
-                                                        </StackPanel>
-                                                </Border>
                                         </StackPanel>
                                 </ScrollViewer>
+                        </TabItem>
+
+                        <!-- ══════════ ACTIVITY ══════════ -->
+                        <!-- Own tab rather than the tail of Overview: the grid fills the height,
+                             so the details panel is always visible without scrolling. -->
+                        <TabItem Header="Activity"
+                                 Style="{StaticResource StatsTabItem}">
+                                <!-- Bottom padding = the card's corner radius: the grid paints an opaque
+                                     background and would otherwise cover the rounded bottom corners
+                                     (the header solves this with its own CornerRadius, which a
+                                     DataGrid cannot carry). -->
+                                <Border Style="{StaticResource Card}"
+                                        Margin="0,14,0,4"
+                                        Padding="0,0,0,8">
+                                        <Grid>
+                                                <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="*"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+
+                                                <Border Grid.Row="0"
+                                                        Style="{StaticResource CardHeader}">
+                                                        <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0"
+                                                                           Text="Recent Activity"
+                                                                           Style="{StaticResource SectionHeader}"
+                                                                           VerticalAlignment="Center"/>
+                                                                <TextBlock x:Name="ActivityCountText"
+                                                                           Grid.Column="1"
+                                                                           Style="{StaticResource HintText}"
+                                                                           Margin="0,0,10,0"
+                                                                           VerticalAlignment="Center"/>
+                                                                <!-- Live search over the loaded rows (same pattern as the log viewer) -->
+                                                                <Grid Grid.Column="2"
+                                                                      Width="220">
+                                                                        <TextBox x:Name="ActivitySearchBox"
+                                                                                 VerticalAlignment="Center"
+                                                                                 Padding="6,4,26,4"
+                                                                                 ToolTip="Filters the events below on every field, including the ones shown only in the details panel."
+                                                                                 TextChanged="ActivitySearch_Changed"/>
+                                                                        <TextBlock Text="Search…"
+                                                                                   Foreground="#FF888888"
+                                                                                   Margin="6,0,0,0"
+                                                                                   VerticalAlignment="Center"
+                                                                                   IsHitTestVisible="False">
+                                                                                <TextBlock.Style>
+                                                                                        <Style TargetType="TextBlock">
+                                                                                                <Setter Property="Visibility"
+                                                                                                        Value="Collapsed"/>
+                                                                                                <Style.Triggers>
+                                                                                                        <DataTrigger Binding="{Binding Text, ElementName=ActivitySearchBox}"
+                                                                                                                     Value="">
+                                                                                                                <Setter Property="Visibility"
+                                                                                                                        Value="Visible"/>
+                                                                                                        </DataTrigger>
+                                                                                                </Style.Triggers>
+                                                                                        </Style>
+                                                                                </TextBlock.Style>
+                                                                        </TextBlock>
+                                                                        <!-- Clear button, shown only while the box has content
+                                                                             (mirrors the reveal button in the user dialog) -->
+                                                                        <Button x:Name="ActivitySearchClear"
+                                                                                HorizontalAlignment="Right"
+                                                                                VerticalAlignment="Center"
+                                                                                Width="22"
+                                                                                Margin="0,0,3,0"
+                                                                                Padding="0"
+                                                                                Content="&#x2715;"
+                                                                                FontSize="10"
+                                                                                Foreground="{StaticResource TextSecondaryBrush}"
+                                                                                Background="Transparent"
+                                                                                BorderThickness="0"
+                                                                                Cursor="Hand"
+                                                                                Focusable="False"
+                                                                                ToolTip="Clear search"
+                                                                                Click="ActivitySearchClear_Click">
+                                                                                <Button.Style>
+                                                                                        <!-- No BasedOn: the app has no implicit Button style,
+                                                                                             only keyed ones (same as the reveal button) -->
+                                                                                        <Style TargetType="Button">
+                                                                                                <Setter Property="Visibility"
+                                                                                                        Value="Visible"/>
+                                                                                                <Style.Triggers>
+                                                                                                        <DataTrigger Binding="{Binding Text, ElementName=ActivitySearchBox}"
+                                                                                                                     Value="">
+                                                                                                                <Setter Property="Visibility"
+                                                                                                                        Value="Collapsed"/>
+                                                                                                        </DataTrigger>
+                                                                                                </Style.Triggers>
+                                                                                        </Style>
+                                                                                </Button.Style>
+                                                                        </Button>
+                                                                </Grid>
+                                                        </Grid>
+                                                </Border>
+
+                                                <!-- Few columns, the flexible one last (same layout as the Logs grid):
+                                                     a star column between pixel columns is re-measured to "whatever is
+                                                     left" on every layout pass, which undoes any width the user drags.
+                                                     Everything else moved into the details panel. -->
+                                                <DataGrid x:Name="ActivityGrid"
+                                                          Grid.Row="1"
+                                                          Margin="0"
+                                                          MinHeight="120"
+                                                          CanUserAddRows="False"
+                                                          CanUserDeleteRows="False"
+                                                          AutoGenerateColumns="False"
+                                                          SelectionMode="Single"
+                                                          IsReadOnly="True"
+                                                          SelectionChanged="ActivityGrid_SelectionChanged">
+                                                        <DataGrid.Columns>
+                                                                <DataGridTextColumn Header="Timestamp"
+                                                                                    Binding="{Binding Timestamp}"
+                                                                                    Width="150"/>
+                                                                <DataGridTextColumn Header="Event"
+                                                                                    Binding="{Binding Event}"
+                                                                                    Width="75"/>
+                                                                <DataGridTextColumn Header="From"
+                                                                                    Binding="{Binding From}"
+                                                                                    Width="200"/>
+                                                                <DataGridTextColumn Header="To"
+                                                                                    Binding="{Binding To}"
+                                                                                    Width="200"/>
+                                                                <DataGridTextColumn Header="Subject"
+                                                                                    Binding="{Binding Subject}"
+                                                                                    Width="*"/>
+                                                        </DataGrid.Columns>
+                                                </DataGrid>
+
+                                                <!-- Details of the selected event. Fixed label columns and fixed row
+                                                     heights keep every label/value pair on the same grid, whatever the
+                                                     text is — a taller glyph must not shift its row. -->
+                                                <Border x:Name="ActivityDetails"
+                                                        Grid.Row="2"
+                                                        Visibility="Collapsed"
+                                                        BorderBrush="{StaticResource BorderBrush}"
+                                                        BorderThickness="0,1,0,0"
+                                                        Padding="16,12,16,6">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <!-- Closes the panel by dropping the grid selection -->
+                                                        <Button x:Name="ActivityDetailsClose"
+                                                                Grid.Column="1"
+                                                                VerticalAlignment="Top"
+                                                                Width="22"
+                                                                Height="22"
+                                                                Padding="0"
+                                                                Content="&#x2715;"
+                                                                FontSize="10"
+                                                                Foreground="{StaticResource TextSecondaryBrush}"
+                                                                Background="Transparent"
+                                                                BorderThickness="0"
+                                                                Cursor="Hand"
+                                                                Focusable="False"
+                                                                ToolTip="Close details"
+                                                                Click="ActivityDetailsClose_Click"/>
+                                                        <Grid Grid.Column="0">
+                                                                <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="96"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="96"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="22"/>
+                                                                        <RowDefinition Height="22"/>
+                                                                        <RowDefinition Height="22"/>
+                                                                        <RowDefinition Height="22"/>
+                                                                        <RowDefinition Height="22"/>
+                                                                        <RowDefinition Height="Auto"/>
+                                                                </Grid.RowDefinitions>
+                                                                <Grid.Resources>
+                                                                        <Style x:Key="DetailLabel"
+                                                                               TargetType="TextBlock"
+                                                                               BasedOn="{StaticResource LabelText}">
+                                                                                <Setter Property="Margin"
+                                                                                        Value="0,0,10,0"/>
+                                                                                <Setter Property="VerticalAlignment"
+                                                                                        Value="Center"/>
+                                                                        </Style>
+                                                                        <Style x:Key="DetailValue"
+                                                                               TargetType="TextBlock">
+                                                                                <Setter Property="Margin"
+                                                                                        Value="0,0,24,0"/>
+                                                                                <Setter Property="FontSize"
+                                                                                        Value="12.5"/>
+                                                                                <Setter Property="VerticalAlignment"
+                                                                                        Value="Center"/>
+                                                                                <Setter Property="TextTrimming"
+                                                                                        Value="CharacterEllipsis"/>
+                                                                        </Style>
+                                                                </Grid.Resources>
+
+                                                                <TextBlock Grid.Row="0"
+                                                                           Grid.Column="0"
+                                                                           Text="Subject"
+                                                                           Style="{StaticResource DetailLabel}"/>
+                                                                <TextBlock x:Name="DetailSubject"
+                                                                           Grid.Row="0"
+                                                                           Grid.Column="1"
+                                                                           Grid.ColumnSpan="3"
+                                                                           Style="{StaticResource DetailValue}"
+                                                                           FontWeight="SemiBold"/>
+
+                                                                <TextBlock Grid.Row="1"
+                                                                           Grid.Column="0"
+                                                                           Text="From"
+                                                                           Style="{StaticResource DetailLabel}"/>
+                                                                <TextBlock x:Name="DetailFrom"
+                                                                           Grid.Row="1"
+                                                                           Grid.Column="1"
+                                                                           Style="{StaticResource DetailValue}"/>
+                                                                <TextBlock Grid.Row="1"
+                                                                           Grid.Column="2"
+                                                                           Text="To"
+                                                                           Style="{StaticResource DetailLabel}"/>
+                                                                <TextBlock x:Name="DetailTo"
+                                                                           Grid.Row="1"
+                                                                           Grid.Column="3"
+                                                                           Style="{StaticResource DetailValue}"/>
+
+                                                                <TextBlock Grid.Row="2"
+                                                                           Grid.Column="0"
+                                                                           Text="Size"
+                                                                           Style="{StaticResource DetailLabel}"/>
+                                                                <TextBlock x:Name="DetailSize"
+                                                                           Grid.Row="2"
+                                                                           Grid.Column="1"
+                                                                           Style="{StaticResource DetailValue}"/>
+                                                                <TextBlock Grid.Row="2"
+                                                                           Grid.Column="2"
+                                                                           Text="Attachments"
+                                                                           Style="{StaticResource DetailLabel}"/>
+                                                                <TextBlock x:Name="DetailAttachments"
+                                                                           Grid.Row="2"
+                                                                           Grid.Column="3"
+                                                                           Style="{StaticResource DetailValue}"/>
+
+                                                                <TextBlock Grid.Row="3"
+                                                                           Grid.Column="0"
+                                                                           Text="Listener"
+                                                                           Style="{StaticResource DetailLabel}"/>
+                                                                <TextBlock x:Name="DetailListener"
+                                                                           Grid.Row="3"
+                                                                           Grid.Column="1"
+                                                                           Style="{StaticResource DetailValue}"/>
+                                                                <TextBlock Grid.Row="3"
+                                                                           Grid.Column="2"
+                                                                           Text="TLS"
+                                                                           Style="{StaticResource DetailLabel}"/>
+                                                                <TextBlock x:Name="DetailTls"
+                                                                           Grid.Row="3"
+                                                                           Grid.Column="3"
+                                                                           Style="{StaticResource DetailValue}"/>
+
+                                                                <TextBlock Grid.Row="4"
+                                                                           Grid.Column="0"
+                                                                           Text="Auth"
+                                                                           Style="{StaticResource DetailLabel}"/>
+                                                                <TextBlock x:Name="DetailAuth"
+                                                                           Grid.Row="4"
+                                                                           Grid.Column="1"
+                                                                           Style="{StaticResource DetailValue}"/>
+                                                                <TextBlock Grid.Row="4"
+                                                                           Grid.Column="2"
+                                                                           Text="Duration"
+                                                                           Style="{StaticResource DetailLabel}"/>
+                                                                <TextBlock x:Name="DetailDuration"
+                                                                           Grid.Row="4"
+                                                                           Grid.Column="3"
+                                                                           Style="{StaticResource DetailValue}"/>
+
+                                                                <!-- Last row grows with the text, so its label sits at the top -->
+                                                                <TextBlock x:Name="DetailDetailLabel"
+                                                                           Grid.Row="5"
+                                                                           Grid.Column="0"
+                                                                           Text="Message ID"
+                                                                           Style="{StaticResource DetailLabel}"
+                                                                           VerticalAlignment="Top"
+                                                                           Margin="0,4,10,0"/>
+                                                                <!-- A TextBlock, not a read-only TextBox: a TextBox indents its text by
+                                                                     its content host's gutter and greys it out via the IsReadOnly
+                                                                     trigger, so the row would not line up with the values above.
+                                                                     Copying is offered through the context menu instead. -->
+                                                                <TextBlock x:Name="DetailDetail"
+                                                                           Grid.Row="5"
+                                                                           Grid.Column="1"
+                                                                           Grid.ColumnSpan="3"
+                                                                           Style="{StaticResource DetailValue}"
+                                                                           VerticalAlignment="Top"
+                                                                           Margin="0,3,24,0"
+                                                                           TextTrimming="None"
+                                                                           TextWrapping="Wrap"
+                                                                           ToolTip="Right-click to copy">
+                                                                        <TextBlock.ContextMenu>
+                                                                                <ContextMenu>
+                                                                                        <MenuItem Header="Copy"
+                                                                                                  Click="DetailDetail_Copy"/>
+                                                                                </ContextMenu>
+                                                                        </TextBlock.ContextMenu>
+                                                                </TextBlock>
+                                                        </Grid>
+                                                    </Grid>
+                                                </Border>
+
+                                                <TextBlock x:Name="NoDataText"
+                                                           Grid.Row="3"
+                                                           Text="No metrics data available. The service must have processed at least one message."
+                                                           Style="{StaticResource HintText}"
+                                                           Margin="16,10,16,4"/>
+                                        </Grid>
+                                </Border>
                         </TabItem>
 
                         <!-- ══════════ RECEPTION ══════════ -->

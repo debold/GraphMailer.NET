@@ -1,8 +1,8 @@
 using System.IO;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.ConfigTool.Services;
 using GraphMailer.Service.Infrastructure;
 
@@ -11,18 +11,22 @@ namespace GraphMailer.ConfigTool.Views;
 /// <summary>
 /// Read-only browser for the mail directories (queue / failed / sent).
 /// Reads the *.meta.json files directly from disk; refreshes every 5 seconds
-/// while visible. Retry details live in the collapsible details panel
-/// (same pattern as the log viewer). Not part of the config load/save cycle.
+/// while visible. Retry details live in the details panel below the list, which
+/// follows the selection. Not part of the config load/save cycle.
 /// </summary>
 public partial class MessagesPage : UserControl
 {
-    private static readonly string[] Folders = ["Queue", "Failed", "Sent"];
+    // "All" first and preselected: the merged view is the useful default, the single
+    // folders are the drill-down.
+    private static readonly string[] Folders = ["All", "Queue", "Failed", "Sent"];
+
+    private const int AllIndex = 0;
+    private const int SentIndex = 3;
 
     // Live view of the relevant Mail Queue settings (MailDir, ArchiveSentEmails)
     private readonly Func<(string? MailDir, bool ArchiveSent)> _queueSettings;
     private readonly DispatcherTimer _timer;
     private bool _loadInProgress;
-    private bool _detailsVisible;
 
     internal MessagesPage(Func<(string? MailDir, bool ArchiveSent)> queueSettings)
     {
@@ -47,8 +51,6 @@ public partial class MessagesPage : UserControl
         LoadData();
     }
 
-    private void Refresh_Click(object sender, RoutedEventArgs e) => LoadData();
-
     private async void LoadData()
     {
         // Prevent overlapping refreshes (a slow disk can outlast the 5 s interval)
@@ -58,11 +60,20 @@ public partial class MessagesPage : UserControl
         {
             var (mailDir, archiveSent) = _queueSettings();
             var folderIndex = FolderSelect.SelectedIndex;
-            var folderName = folderIndex switch { 1 => "failed", 2 => "sent", _ => "queue" };
             var baseDir = string.IsNullOrEmpty(mailDir) ? AppPaths.MailDir : mailDir;
-            var directory = Path.Combine(baseDir, folderName);
+            var isAll = folderIndex == AllIndex;
 
-            var rows = await Task.Run(() => MailFolderReader.ReadFolder(directory));
+            // The status only tells the folders apart in the merged view
+            StatusColumn.Visibility = isAll ? Visibility.Visible : Visibility.Collapsed;
+
+            var rows = await Task.Run(() => isAll
+                ? MailFolderReader.ReadFolders(
+                    Path.Combine(baseDir, "queue"),
+                    Path.Combine(baseDir, "failed"),
+                    Path.Combine(baseDir, "sent"))
+                : MailFolderReader.ReadFolder(Path.Combine(
+                    baseDir,
+                    folderIndex switch { 2 => "failed", SentIndex => "sent", _ => "queue" })));
 
             // Replacing the ItemsSource must not throw away user-resized column
             // widths or the current selection (the details panel depends on it).
@@ -85,8 +96,7 @@ public partial class MessagesPage : UserControl
                 ? $"newest {MailFolderReader.MaxEntries} messages"
                 : $"{rows.Count} message(s)";
 
-            bool isSent = folderIndex == 2;
-            if (isSent && rows.Count == 0 && !archiveSent)
+            if (folderIndex == SentIndex && rows.Count == 0 && !archiveSent)
             {
                 EmptyHint.Text = "Sent archiving is disabled — delivered messages are deleted immediately. " +
                                  "Enable “Archive sent emails” on the Mail Queue page to keep them here. " +
@@ -104,54 +114,53 @@ public partial class MessagesPage : UserControl
         }
     }
 
-    // ── Details panel (same pattern as the log viewer) ────────────────────────
+    // ── Details panel (same pattern as the Metrics page's Activity tab) ───────
 
-    private void BtnToggleDetails_Click(object sender, RoutedEventArgs e)
-    {
-        _detailsVisible = !_detailsVisible;
-        SplitterRow.Height = _detailsVisible ? new GridLength(5) : new GridLength(0);
-        DetailsRow.Height = _detailsVisible ? new GridLength(190) : new GridLength(0);
-        BtnToggleDetails.Content = _detailsVisible ? "▲ Details" : "▼ Details";
-    }
+    /// <summary>
+    /// Closes the details panel. Dropping the selection is what hides it — keeping the
+    /// row selected while the panel is gone would re-open it on the next refresh.
+    /// </summary>
+    private void MessageDetailsClose_Click(object sender, RoutedEventArgs e) => MessagesGrid.UnselectAll();
 
     private void MessagesGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (MessagesGrid.SelectedItem is not MessageRow row)
         {
-            DetailText.Text = "Select a message to see details.";
-            DetailSubject.Visibility = Visibility.Collapsed;
+            MessageDetails.Visibility = Visibility.Collapsed;
             return;
         }
 
-        // Auto-expand details panel on first selection
-        if (!_detailsVisible)
-            BtnToggleDetails_Click(this, null!);
+        MessageDetails.Visibility = Visibility.Visible;
 
-        DetailSubject.Text = row.Subject;
-        DetailSubject.Visibility = string.IsNullOrEmpty(row.Subject)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-
-        var sb = new StringBuilder();
-        Append(sb, "Received", row.ReceivedAt.ToString("yyyy-MM-dd HH:mm:ss"));
-        Append(sb, "From", row.From);
-        Append(sb, "To", row.To);
-        Append(sb, "Subject", row.Subject);
-        Append(sb, "Status", row.Status);
-        Append(sb, "Sent", row.SentAt?.ToString("yyyy-MM-dd HH:mm:ss"));
-        Append(sb, "Client IP", row.ClientIp);
-        Append(sb, "Attempts", row.Attempts);
-        Append(sb, "Last attempt", row.LastAttemptAt?.ToString("yyyy-MM-dd HH:mm:ss"));
-        Append(sb, "Last error", row.LastError);
-        Append(sb, "Next retry", row.NextRetryAt?.ToString("yyyy-MM-dd HH:mm:ss"));
-        Append(sb, "Message-ID", row.SmtpMessageId);
-        Append(sb, "Queue ID", row.MessageId);
-        DetailText.Text = sb.ToString().TrimEnd();
+        DetailSubjectValue.Text = Show(row.Subject);
+        DetailReceived.Text = row.ReceivedAt.ToString("yyyy-MM-dd HH:mm:ss");
+        DetailStatus.Text = Show(row.Status);
+        DetailFrom.Text = Show(row.From);
+        DetailTo.Text = Show(row.To);
+        DetailSent.Text = Show(row.SentAt?.ToString("yyyy-MM-dd HH:mm:ss"));
+        DetailClientIp.Text = Show(row.ClientIp);
+        DetailAttempts.Text = Show(row.Attempts);
+        DetailLastAttempt.Text = Show(row.LastAttemptAt?.ToString("yyyy-MM-dd HH:mm:ss"));
+        DetailNextRetry.Text = Show(row.NextRetryAt?.ToString("yyyy-MM-dd HH:mm:ss"));
+        DetailMessageId.Text = Show(row.SmtpMessageId);
+        DetailQueueId.Text = Show(row.MessageId);
+        DetailLastError.Text = Show(row.LastError);
     }
 
-    private static void Append(StringBuilder sb, string label, string? value)
+    /// <summary>Empty fields become an em dash, so every row keeps its place in the raster.</summary>
+    private static string Show(string? value) => string.IsNullOrEmpty(value) ? "—" : value;
+
+    /// <summary>Context-menu copy, shared by the values worth pasting elsewhere.</summary>
+    private void DetailCopy_Click(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrEmpty(value))
-            sb.Append(label.PadRight(14)).AppendLine(value);
+        if (sender is not MenuItem { Parent: ContextMenu { PlacementTarget: TextBlock target } }) return;
+        if (string.IsNullOrEmpty(target.Text) || target.Text == "—") return;
+
+        try { Clipboard.SetText(target.Text); }
+        catch (Exception ex)
+        {
+            // The clipboard can be locked by another process — never take down the page for it
+            ConfigToolLog.ErrorOnChange("MessagesPage", ex, "Could not copy the message detail to the clipboard");
+        }
     }
 }

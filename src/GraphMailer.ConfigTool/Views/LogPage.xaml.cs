@@ -2,8 +2,8 @@ using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using System.Windows.Threading;
+using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Infrastructure;
 
 namespace GraphMailer.ConfigTool.Views;
@@ -218,10 +218,17 @@ public partial class LogPage : UserControl
 
         var result = filtered.ToList();
 
-        // Replacing the ItemsSource drops the selection — restore it so the
-        // details panel survives an auto-refresh.
+        // Replacing the ItemsSource drops the selection and re-applies the column
+        // widths declared in XAML — restore both so the details panel and any
+        // user-dragged column width survive an auto-refresh.
         var selected = LogGrid.SelectedItem as LogEntry;
+        var widths = LogGrid.Columns.Select(c => c.Width).ToList();
+
         LogGrid.ItemsSource = result;
+
+        for (int i = 0; i < widths.Count; i++)
+            LogGrid.Columns[i].Width = widths[i];
+
         if (selected is not null)
         {
             var restored = result.FirstOrDefault(e =>
@@ -251,6 +258,12 @@ public partial class LogPage : UserControl
 
     private void Filter_Changed(object sender, EventArgs e) => ApplyFilter();
 
+    private void SearchClear_Click(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Clear();      // TextChanged re-applies the (now empty) filter
+        SearchBox.Focus();
+    }
+
     private void AutoScroll_Changed(object sender, RoutedEventArgs e)
     {
         // Re-enabling auto-refresh catches up immediately instead of waiting for the next tick
@@ -260,64 +273,50 @@ public partial class LogPage : UserControl
 
     private void BtnRefresh_Click(object sender, RoutedEventArgs e) => LoadData();
 
-    private bool _detailsVisible;
-
-    private void BtnToggleDetails_Click(object sender, RoutedEventArgs e)
-    {
-        _detailsVisible = !_detailsVisible;
-        SplitterRow.Height = _detailsVisible ? new GridLength(5) : new GridLength(0);
-        DetailsRow.Height = _detailsVisible ? new GridLength(180) : new GridLength(0);
-        BtnToggleDetails.Content = _detailsVisible ? "▲ Details" : "▼ Details";
-    }
+    /// <summary>
+    /// Closes the details panel. Dropping the selection is what hides it — keeping the
+    /// row selected while the panel is gone would re-open it on the next refresh.
+    /// </summary>
+    private void LogDetailsClose_Click(object sender, RoutedEventArgs e) => LogGrid.UnselectAll();
 
     private void LogGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (LogGrid.SelectedItem is not LogEntry row)
         {
-            DetailText.Text = "Select a log entry to see details.";
-            DetailText.Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88));
-            DetailLevelBadge.Visibility = Visibility.Collapsed;
-            DetailTimestamp.Visibility = Visibility.Collapsed;
-            DetailComponent.Visibility = Visibility.Collapsed;
+            LogDetails.Visibility = Visibility.Collapsed;
             return;
         }
 
-        // Auto-expand details panel on first selection
-        if (!_detailsVisible)
-            BtnToggleDetails_Click(this, null!);
-
-        // Header badges
-        DetailLevelBadge.Text = row.LevelShort;
-        DetailLevelBadge.Foreground = new System.Windows.Media.SolidColorBrush(
-            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(row.LevelFg));
-        DetailLevelBadge.Visibility = Visibility.Visible;
-
-        if (!string.IsNullOrEmpty(row.TimeLocal))
-        {
-            DetailTimestamp.Text = row.TimeLocal;
-            DetailTimestamp.Visibility = Visibility.Visible;
-        }
-        else
-            DetailTimestamp.Visibility = Visibility.Collapsed;
-
-        if (!string.IsNullOrEmpty(row.Component))
-        {
-            DetailComponent.Text = $"[{row.Component}]";
-            DetailComponent.Visibility = Visibility.Visible;
-        }
-        else
-            DetailComponent.Visibility = Visibility.Collapsed;
+        LogDetails.Visibility = Visibility.Visible;
+        DetailTimestamp.Text = Show(row.TimeLocal);
+        DetailLevel.Text = Show(row.Level);
+        DetailComponent.Text = Show(row.Component);
 
         // Body: message + any continuation lines (stack traces)
-        var body = row.Message;
         var extra = row.RawLine;
         // Strip the first log line from RawLine to get only continuation lines
         var firstNewline = extra.IndexOf('\n');
         var continuation = firstNewline >= 0 ? extra[(firstNewline + 1)..].Trim() : "";
         DetailText.Text = string.IsNullOrEmpty(continuation)
-            ? body
-            : body + "\n\n" + continuation;
-        DetailText.Foreground = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
+            ? Show(row.Message)
+            : row.Message + "\n\n" + continuation;
+    }
+
+    /// <summary>Empty fields become an em dash, so every row keeps its place in the raster.</summary>
+    private static string Show(string? value) => string.IsNullOrEmpty(value) ? "—" : value;
+
+    /// <summary>Context-menu copy for the message body (stack traces are worth pasting).</summary>
+    private void DetailCopy_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Parent: ContextMenu { PlacementTarget: TextBlock target } }) return;
+        if (string.IsNullOrEmpty(target.Text) || target.Text == "—") return;
+
+        try { Clipboard.SetText(target.Text); }
+        catch (Exception ex)
+        {
+            // The clipboard can be locked by another process — never take down the page for it
+            ConfigToolLog.ErrorOnChange("LogPage", ex, "Could not copy the log message to the clipboard");
+        }
     }
 
     // ── Model ────────────────────────────────────────────────────────────────

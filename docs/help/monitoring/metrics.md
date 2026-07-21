@@ -6,9 +6,10 @@ logs, such as clients that connect and disconnect without sending mail. The data
 statistics database (SQLite) and is the same data the scheduled
 [report](../configuration/notifications.html) is built from.
 
-The page is split into five tabs — **Overview**, **Reception**, **Delivery**, **End-to-End** and
-**Server** — with a global **time range** selector (**24h / 7d / 30d / 90d**) and a **↺ Refresh**
-button that apply to all tabs.
+The page is split into six tabs — **Overview**, **Activity**, **Reception**, **Delivery**,
+**End-to-End** and **Server** — with a global **time range** selector (**24h / 7d / 30d / 90d**) that
+applies to all tabs. The page reloads itself every few seconds while it is open, so there is nothing
+to refresh by hand.
 
 > [!NOTE]
 > This page is **read-only**. What is recorded (and for how long) is controlled by *Metrics Storage*
@@ -31,8 +32,18 @@ The combined picture of the selected time range:
 
 **Mail Flow per Day** charts delivered and failed messages per day (per hour in the 24h range).
 
-**Recent Activity** lists the latest per-message events — timestamp, event type, From, To, subject,
-attachment count, receiving listener, TLS, authenticated user, size, and a detail/error column.
+## Activity
+
+**Recent Activity** lists the newest per-message events in the selected time range (at most 200)
+with timestamp, event type, From, To and subject. **Click an event** to open a details panel below the list showing the rest: size, attachment
+count, receiving listener, TLS, authenticated user, duration, and the message id — or the failure
+reason for a failed event. Right-click that last line to copy it, for example to paste an error into
+a search or a ticket. The **✕** in the top right corner of the panel closes it again.
+
+The **Search** box in the card header filters the list as you type. It matches all of those values,
+not just the visible columns, so you can narrow the list down to one sender, one subject or one error
+message; the counter next to the box shows how many of the loaded events match. Column widths you
+drag and the selected event are kept when the list refreshes itself.
 
 > [!TIP]
 > Recent Activity is the fastest way to confirm a specific message went through and how long it took.

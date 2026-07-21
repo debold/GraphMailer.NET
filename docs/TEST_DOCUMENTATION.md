@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 767 tests** (709 unit · 58 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-21
+**Total: 787 tests** (729 unit · 58 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-21
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -757,6 +757,24 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `ReadFolder_SentMessage_AttemptsIncludeTheSuccessfulTry` | Sent with `RetryCount` 0 / 2 | Attempts `"1"` / `"3"` (successful try counted) |
 | `ReadFolder_CorruptFile_IsSkipped` | One valid + one invalid JSON file | Valid entry returned, corrupt file ignored |
 | `ReadFolder_MoreThanMaxEntries_ReturnsNewestCapped` | MaxEntries + 5 files | Capped at MaxEntries, newest kept, oldest dropped |
+| `ReadFolders_MergesAllFoldersNewestFirst` | "All" view: one entry each in queue/failed/sent | Single list ordered by receipt time across folders; each row keeps its own status |
+| `ReadFolders_MissingFolder_IsSkipped` | "All" view where sent/failed do not exist yet | Only the existing folder's entries, no exception |
+| `ReadFolders_CapsTheMergedResult_NotEachFolder` | Full queue (MaxEntries) plus one much newer sent message | MaxEntries rows with the newer sent message first — the cap applies after merging |
+| `StatusPill_LabelIsCapitalised` (Theory) | Status `queued` / `sent` / `failed` / empty | `Queued` / `Sent` / `Failed` / `—` |
+| `StatusPill_EachStatusHasItsOwnColours` | The three known statuses plus an unknown one | Distinct fore/background per status; unknown falls back to the neutral pill |
+
+---
+
+### ActivityRow search — ConfigTool Metrics page (`ConfigTool/ActivityRowSearchTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Matches_EmptySearch_MatchesEveryRow` | Empty and whitespace-only search term | `true` — an empty box filters nothing |
+| `Matches_TermInAnyDisplayedColumn_ReturnsTrue` (Theory) | Term found in subject / sender / recipient / event / auth user / listener port / detail | `true` for each column |
+| `Matches_IsCaseInsensitive` | `"NIGHTLY"` against subject `"Nightly Backup Report"` | `true` |
+| `Matches_SurroundingWhitespaceIsIgnored` | `"  backup  "` | `true` — the user's search input is trimmed |
+| `Matches_TermInNoColumn_ReturnsFalse` | Term appearing in no column | `false` |
+| `Matches_ErrorDetail_FindsFailedDeliveries` | Error string in the detail column, searched lowercase | `true` — filtering for an error is the main use of the search box |
 
 ---
 
