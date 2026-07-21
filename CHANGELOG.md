@@ -10,6 +10,11 @@
   GHSA-g8r8-53c2-pm3f, GHSA-8q5v-6pqq-x66h, GHSA-cvvh-rhrc-wg4q, GHSA-23rf-6693-g89p).
   Data Protection encrypts every `ENC[...]` secret in `graphmailer.json`; the key ring format
   is unchanged, so existing secrets keep decrypting.
+- **Pinned `SQLitePCLRaw.bundle_e_sqlite3` to 2.1.12**, closing CVE-2025-6965 /
+  GHSA-2m69-gcr7-jv3q (High, memory corruption in the bundled SQLite). `Microsoft.Data.Sqlite`
+  8.0.29 — the highest version available for .NET 8 — still resolves SQLitePCLRaw 2.1.6, so no
+  parent update fixes this and an explicit pin was required. `metrics.db` now runs on SQLite
+  3.53.3; the file format is unchanged.
 
 ## 1.2.4.1014 — 2026-07-21
 

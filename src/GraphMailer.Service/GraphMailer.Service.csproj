@@ -39,6 +39,11 @@
     <PackageReference Include="Microsoft.ApplicationInsights" Version="2.23.0" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="8.0.29" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.29" />
+    <!-- Security pin: Microsoft.Data.Sqlite 8.0.29 (highest 8.0.x) still pulls
+         SQLitePCLRaw 2.1.6, whose bundled SQLite is affected by CVE-2025-6965
+         (GHSA-2m69-gcr7-jv3q, memory corruption). Fixed in 2.1.12. Drop this pin
+         once Microsoft.Data.Sqlite itself resolves to 2.1.12 or newer. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
     <PackageReference Include="Microsoft.Graph" Version="5.105.0" />
     <PackageReference Include="MimeKit" Version="4.17.0" />
