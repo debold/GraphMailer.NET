@@ -17,6 +17,10 @@
 - **Certificate loading moved to the current .NET API.** Self-signed SMTP certificate creation
   and the Entra setup wizard now use `X509CertificateLoader`; the constructors they used before
   are obsolete as of .NET 9. No change in behaviour or in the certificates produced.
+- **Updated SkiaSharp 2.88.9 → 4.150.1**, which renders the daily-volume chart in the scheduled
+  operations report. SkiaSharp 4 moved text state out of the paint object, so the chart drawing
+  code was rewritten against `SKFont` and `SKPathBuilder`. The chart looks the same — same
+  layout, same axis labels, same colours.
 - **All framework dependencies moved onto the .NET 10 line** alongside the runtime:
   `Microsoft.AspNetCore.DataProtection`, `Microsoft.Extensions.Configuration.*`,
   `Microsoft.Extensions.Hosting.WindowsServices` and `Microsoft.Data.Sqlite` to 10.0.10,
