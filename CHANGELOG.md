@@ -27,6 +27,13 @@
   `Serilog.Extensions.Hosting` to 10.0.0 and `Serilog.Settings.Configuration` to 10.0.1. No
   8.0.x package remains. Behaviour is unchanged throughout: the Data Protection key ring format
   still reads existing `ENC[...]` secrets, and `metrics.db` keeps its format and migrations.
+- **Opt-in telemetry: no more location data, and one wire-format change.** GraphMailer now tells
+  the telemetry endpoint to skip the IP geo-lookup, so no country, region or city is recorded —
+  bringing the transmitted data back in line with what the help page promises. (This applies only
+  when telemetry is switched on, which it is not by default.) As a side effect of the underlying
+  Application Insights SDK upgrade (2 → 3), the daily heartbeat's numeric counters now travel as
+  event properties rather than measurements; this only matters for anyone running Kusto queries
+  against their own telemetry instance (see `internal/TELEMETRY.md`).
 
 ## 1.2.4.1031 — 2026-07-21
 
