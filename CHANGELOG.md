@@ -21,6 +21,11 @@
   `Proxy-Authorization` and all custom headers. `Microsoft.Graph` 5.105.0 resolves Graph.Core
   3.2.5 with the affected Kiota 1.21.1; 3.2.6 pulls the fixed 1.22.1. `Microsoft.Graph` itself
   is unchanged.
+- **Updated MailKit 4.11.0 → 4.17.0 in the integration test suite**, closing
+  GHSA-9j88-vvj5-vhgr (Moderate, STARTTLS response injection allowing a SASL downgrade). MailKit
+  is the SMTP *client* the tests drive the relay with — it is not part of the shipped product,
+  so no deployed version of GraphMailer was ever exposed to this. The `NoWarn="NU1902"` that
+  suppressed the advisory has been removed, so future MailKit advisories surface again.
 
 ## 1.2.4.1014 — 2026-07-21
 
