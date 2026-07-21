@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.3.0.1051 — 2026-07-22
+
+A platform release: GraphMailer moves from .NET 8 to .NET 10, and every dependency follows onto
+the .NET 10 line. Nothing about relaying mail changes — but **existing installations need the new
+runtime**, so read the upgrade note below before updating.
 
 ### Changed
 
