@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+Dependency maintenance round — every third-party component was reviewed against
+`internal/DEPENDENCY_UPDATE_PLAYBOOK.md`. All eleven security advisories that affected the
+project are closed; both the service and the ConfigTool now report no vulnerable packages at
+all. No functional change is intended anywhere in this round.
+
 ### Security
 
 - **Updated `Microsoft.AspNetCore.DataProtection` 8.0.0 → 8.0.29**, which pulls in
@@ -32,6 +37,11 @@
   permission self-check all use the same SDK surface as before, and the upgrade required no code
   changes. Operators should see identical behaviour; the install grows by the
   `Microsoft.IdentityModel.*` assemblies that Graph.Core 4 brings along.
+- **Kept the remaining runtime dependencies current**: Serilog 4.4.0, Serilog.Sinks.File 7.0.0,
+  Serilog.Sinks.Console 6.1.1 and Microsoft.Extensions.Hosting.WindowsServices 8.0.1. Logging,
+  service lifecycle and configuration behave as before. Test tooling (xunit, NSubstitute,
+  coverlet, FluentAssertions, the test SDK) was updated in the same round without touching the
+  shipped product.
 
 ## 1.2.4.1014 — 2026-07-21
 
