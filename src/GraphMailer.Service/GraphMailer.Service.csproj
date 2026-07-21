@@ -44,7 +44,7 @@
          (GHSA-2m69-gcr7-jv3q, memory corruption). Fixed in 2.1.12. Drop this pin
          once Microsoft.Data.Sqlite itself resolves to 2.1.12 or newer. -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
     <PackageReference Include="Microsoft.Graph" Version="5.105.0" />
     <!-- Security pin: Microsoft.Graph 5.105.0 (last of the 5.x line) resolves
          Microsoft.Graph.Core 3.2.5, which pulls Kiota 1.21.1 — affected by
