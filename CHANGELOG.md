@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **GraphMailer now runs on .NET 10 instead of .NET 8.** .NET 8 support ends in November 2026;
+  .NET 10 is the current LTS and is supported into November 2028. Nothing about how GraphMailer
+  behaves changes — this is a platform move.
+
+  > **Upgrading an existing installation:** the target machine now needs the **.NET 10 Desktop
+  > Runtime (x64)**. Use `GraphMailerSetup-<version>.exe`, which installs it for you. The bare
+  > `GraphMailer-<version>.msi` now **refuses to install** when that runtime is missing, instead
+  > of leaving behind a registered service that cannot start. Your configuration, secrets, queue
+  > and metrics in `C:\ProgramData\GraphMailer\` are untouched by the upgrade.
+
+- **Certificate loading moved to the current .NET API.** Self-signed SMTP certificate creation
+  and the Entra setup wizard now use `X509CertificateLoader`; the constructors they used before
+  are obsolete as of .NET 9. No change in behaviour or in the certificates produced.
+- **Updated `Microsoft.AspNetCore.DataProtection` 8.0.29 → 10.0.10** to match the new runtime.
+  The key ring format is unchanged, so existing `ENC[...]` secrets keep decrypting.
+
 ## 1.2.4.1031 — 2026-07-21
 
 Reworked list and details layout across Logs, Messages and the new Activity tab, plus a full
