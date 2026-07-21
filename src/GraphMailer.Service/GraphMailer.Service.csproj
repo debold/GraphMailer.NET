@@ -61,7 +61,7 @@
          Embedded as a CID inline image so it renders in Outlook Classic + new Outlook
          (both strip inline SVG). Platform-neutral (no System.Drawing/CA1416 on the
          Service's platform-agnostic net10.0 target). -->
-    <PackageReference Include="SkiaSharp" Version="2.88.9" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp" Version="4.150.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="4.150.1" />
   </ItemGroup>
 </Project>

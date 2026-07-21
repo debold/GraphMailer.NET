@@ -78,22 +78,26 @@ internal static class DailyChartImage
     {
         int n = days.Count;
 
-        // Filled area under the line (semi-transparent)
-        using var area = new SKPath();
-        area.MoveTo(x(0), Baseline);
-        for (int i = 0; i < n; i++) area.LineTo(x(i), y(value(days[i])));
-        area.LineTo(x(n - 1), Baseline);
-        area.Close();
+        // Filled area under the line (semi-transparent).
+        // SkiaSharp 4 made SKPath itself immutable-by-convention: the mutating MoveTo/LineTo/
+        // Close members are obsolete and paths are assembled through SKPathBuilder.
+        using var areaBuilder = new SKPathBuilder();
+        areaBuilder.MoveTo(x(0), Baseline);
+        for (int i = 0; i < n; i++) areaBuilder.LineTo(x(i), y(value(days[i])));
+        areaBuilder.LineTo(x(n - 1), Baseline);
+        areaBuilder.Close();
+        using var area = areaBuilder.Detach();
         using (var fill = new SKPaint { Color = color.WithAlpha(41), Style = SKPaintStyle.Fill, IsAntialias = true })
             canvas.DrawPath(area, fill);
 
         // Line on top
-        using var line = new SKPath();
+        using var lineBuilder = new SKPathBuilder();
         for (int i = 0; i < n; i++)
         {
-            if (i == 0) line.MoveTo(x(i), y(value(days[i])));
-            else line.LineTo(x(i), y(value(days[i])));
+            if (i == 0) lineBuilder.MoveTo(x(i), y(value(days[i])));
+            else lineBuilder.LineTo(x(i), y(value(days[i])));
         }
+        using var line = lineBuilder.Detach();
         using (var stroke = new SKPaint { Color = color, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, StrokeJoin = SKStrokeJoin.Round, StrokeCap = SKStrokeCap.Round, IsAntialias = true })
             canvas.DrawPath(line, stroke);
 
@@ -104,18 +108,19 @@ internal static class DailyChartImage
             canvas.DrawCircle(x(i), y(value(days[i])), r, dot);
     }
 
+    // SkiaSharp 4 removed the text properties from SKPaint (they moved to SKFont years ago
+    // upstream): size, typeface and alignment are no longer paint state. The typeface is
+    // resolved once — SKTypeface.FromFamilyName hits the system font cache on every call.
+    private static readonly SKTypeface LabelTypeface =
+        SKTypeface.FromFamilyName("Consolas")
+        ?? SKTypeface.FromFamilyName("Courier New")
+        ?? SKTypeface.Default;
+
+    private static readonly SKFont LabelFont = new(LabelTypeface, size: 9);
+
     private static void DrawText(SKCanvas canvas, string text, float x, float y, SKTextAlign align, SKColor color)
     {
-        using var paint = new SKPaint
-        {
-            Color = color,
-            TextSize = 9,
-            IsAntialias = true,
-            TextAlign = align,
-            Typeface = SKTypeface.FromFamilyName("Consolas")
-                       ?? SKTypeface.FromFamilyName("Courier New")
-                       ?? SKTypeface.Default,
-        };
-        canvas.DrawText(text, x, y, paint);
+        using var paint = new SKPaint { Color = color, IsAntialias = true };
+        canvas.DrawText(text, x, y, align, LabelFont, paint);
     }
 }
