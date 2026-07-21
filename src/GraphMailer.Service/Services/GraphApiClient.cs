@@ -61,7 +61,7 @@ internal sealed class GraphApiClient : IGraphApiClient
     // Public API
     // -------------------------------------------------------------------------
 
-    public async Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, CancellationToken ct = default)
+    public async Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, bool saveToSentItems, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
         if (!opts.IsConfigured)
@@ -109,7 +109,7 @@ internal sealed class GraphApiClient : IGraphApiClient
         try
         {
             if (largeAttachments.Count == 0)
-                await SendDirectAsync(client, sendAs, mime, smallAttachments, envelopeRecipients, messageId, ct);
+                await SendDirectAsync(client, sendAs, mime, smallAttachments, envelopeRecipients, messageId, saveToSentItems, ct);
             else
                 await SendViaDraftAsync(client, sendAs, mime, smallAttachments, largeAttachments, envelopeRecipients, messageId, ct);
 
@@ -190,12 +190,13 @@ internal sealed class GraphApiClient : IGraphApiClient
         List<FileAttachment> attachments,
         IReadOnlyList<string> envelopeRecipients,
         string messageId,
+        bool saveToSentItems,
         CancellationToken ct)
     {
         var requestBody = new SendMailPostRequestBody
         {
             Message = BuildMessage(mime, attachments, envelopeRecipients),
-            SaveToSentItems = false
+            SaveToSentItems = saveToSentItems
         };
 
         await client.Users[sendAs].SendMail.PostAsync(requestBody, cancellationToken: ct);
@@ -208,6 +209,10 @@ internal sealed class GraphApiClient : IGraphApiClient
     /// Draft + upload-session delivery for messages with large attachments.
     /// Creates a draft, uploads each large attachment via a dedicated upload session,
     /// then sends the draft. Deletes the draft if anything fails.
+    ///
+    /// This path always leaves a copy in Sent Items: POST /messages/{id}/send has no
+    /// saveToSentItems switch. That matches what relayed SMTP mail wants anyway, and
+    /// service-generated mail (NDRs, notifications) never carries large attachments.
     /// </summary>
     private async Task SendViaDraftAsync(
         GraphServiceClient client,

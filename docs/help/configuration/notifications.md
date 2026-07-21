@@ -90,6 +90,11 @@ failures — to the Admin Recipients on a schedule.
 > same report design used throughout GraphMailer's emails, sent automatically on your chosen
 > schedule.
 
+If the weekly [update check](monitoring.html) or the anonymous [usage telemetry](monitoring.html)
+is switched off, the report closes with a short **Recommendations** box explaining what each one
+does. It is a hint, not a warning — it never affects the report's health status, and it disappears
+once both are enabled.
+
 ## Related
 
 - [Graph API](graph-api.html) — the connection used to send notifications

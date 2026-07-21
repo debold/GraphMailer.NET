@@ -27,9 +27,12 @@ internal interface IGraphApiClient
     /// <param name="envelopeRecipients">All SMTP RCPT TO addresses (To + Cc + Bcc). Used to reconstruct Bcc recipients
     /// that are stripped from the EML headers by the sending client.</param>
     /// <param name="messageId">Queue message ID – used only for log correlation.</param>
+    /// <param name="saveToSentItems">Keep a copy in the sender's Sent Items folder. <see langword="true"/> for
+    /// mail relayed from an SMTP client (the sender expects to find it there), <see langword="false"/> for
+    /// service-generated mail (NDRs, admin notifications) that would only clutter the mailbox.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Delivery statistics (variant, attachment counts) for the metrics store.</returns>
-    Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, CancellationToken ct = default);
+    Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, bool saveToSentItems, CancellationToken ct = default);
 
     /// <summary>
     /// Sends an HTML notification email (admin notifications, the periodic operations report)

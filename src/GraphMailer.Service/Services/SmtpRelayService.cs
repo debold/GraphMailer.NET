@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SmtpServer;
 using SmtpServer.Authentication;
+using SmtpServer.Protocol;
 using SmtpServer.Storage;
 
 namespace GraphMailer.Service.Services;
@@ -277,6 +278,10 @@ internal sealed class SmtpRelayService : BackgroundService
     private const string TrackerKey = "Metrics:SessionTracker";
     private const int MaxLoggedCommands = 20;
 
+    /// <summary>The HELO/EHLO argument is client-controlled — cap it so a client cannot
+    /// pad the summary line arbitrarily. RFC 5321 limits a domain to 255 characters.</summary>
+    private const int MaxLoggedGreetingName = 255;
+
     private sealed class SessionTracker
     {
         public readonly Stopwatch Stopwatch = Stopwatch.StartNew();
@@ -285,6 +290,8 @@ internal sealed class SmtpRelayService : BackgroundService
         public bool Finalized;
         public int TotalCommands;
         public readonly List<string> Commands = [];
+        /// <summary>Name the client announced in HELO/EHLO; empty until it greets.</summary>
+        public string GreetingName = "";
     }
 
     /// <summary>Advances the tracker after a command has executed. RSET/NOOP/PROXY are
@@ -314,6 +321,19 @@ internal sealed class SmtpRelayService : BackgroundService
             tracker.LastStage = stage;
         if (name == "QUIT")
             tracker.QuitSeen = true;
+
+        // Remember the announced client name — a second EHLO (after STARTTLS) overwrites
+        // the first, which is what an operator wants to see.
+        var greeting = e.Command switch
+        {
+            EhloCommand ehlo => ehlo.DomainOrAddress,
+            HeloCommand helo => helo.DomainOrAddress,
+            _ => null,
+        };
+        if (!string.IsNullOrWhiteSpace(greeting))
+            tracker.GreetingName = greeting.Length > MaxLoggedGreetingName
+                ? greeting[..MaxLoggedGreetingName]
+                : greeting;
     }
 
     /// <summary>
@@ -353,9 +373,11 @@ internal sealed class SmtpRelayService : BackgroundService
                 ? $"{string.Join(",", tracker.Commands)},+{tracker.TotalCommands - MaxLoggedCommands} more"
                 : tracker.Commands.Count > 0 ? string.Join(",", tracker.Commands) : "(none)";
             _logger.LogInformation(
-                "[SmtpRelay] Session ended for {Ip} on port {Port}: outcome={Outcome}, last stage={Stage}, tls={Tls}, auth={AuthUser}, commands={Commands}, duration={DurationMs}ms",
+                "[SmtpRelay] Session ended for {Ip} on port {Port}: outcome={Outcome}, helo={Greeting}, last stage={Stage}, tls={Tls}, auth={AuthUser}, commands={Commands}, duration={DurationMs}ms",
                 ip, entry.Port,
-                outcome.ToString().ToLowerInvariant(), tracker.LastStage,
+                outcome.ToString().ToLowerInvariant(),
+                tracker.GreetingName.Length > 0 ? tracker.GreetingName : "(none)",
+                tracker.LastStage,
                 tls ? "yes" : "no",
                 authenticated ? authUser : "no",
                 commands, tracker.Stopwatch.ElapsedMilliseconds);

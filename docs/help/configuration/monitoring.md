@@ -13,46 +13,6 @@ the [Status](../monitoring/status.html) page.
 > Changes on this page apply to the running service **without a restart**. The log level in
 > particular takes effect immediately.
 
-## Certificate Monitoring
-
-Warns before a certificate (the TLS listener certificate or the Entra authentication certificate)
-expires, so you can renew in time.
-
-| Setting | Default | Range | Meaning |
-|---|---|---|---|
-| Warning threshold (days) | `14` | 1–60 | Raise a notification when a certificate expires within this many days. |
-
-## Disk Space Monitoring
-
-Warns when the drive holding GraphMailer's data is running low — important because accepted mail is
-queued to disk.
-
-| Setting | Default | Range | Meaning |
-|---|---|---|---|
-| Warning threshold (%) | `10` | 1–100 | Notify when free disk space falls below this percentage. |
-
-## Port Connectivity Checks
-
-Periodically opens a TCP connection to each configured SMTP listener port to confirm it is actually
-accepting connections.
-
-| Setting | Default | Range | Meaning |
-|---|---|---|---|
-| Check interval (minutes) | `5` | 1–1440 | How often each listener port is probed. A failed probe raises an alert. |
-
-## Graph API Monitoring
-
-Periodically authenticates against the Graph API to confirm the credentials still work and the
-required permissions are present.
-
-| Setting | Default | Range | Meaning |
-|---|---|---|---|
-| Check interval (minutes) | `15` | 1–1440 | How often the Graph connection is verified. A failure raises an alert. |
-
-> [!TIP]
-> This check is what warns you when admin consent was revoked, a client secret expired, or a
-> permission is missing — long before users notice mail failing. Keep it enabled.
-
 ## Update Check
 
 Once a week, queries the GraphMailer releases on GitHub (`api.github.com`) and reports whether a
@@ -105,6 +65,46 @@ could contain such data — only type names and code locations are kept.
 > [!NOTE]
 > The data is sent to the developer's Microsoft Azure telemetry endpoint (Application Insights,
 > EU region) over HTTPS. A failed transmission is retried hourly and never affects mail delivery.
+
+## Certificate Monitoring
+
+Warns before a certificate (the TLS listener certificate or the Entra authentication certificate)
+expires, so you can renew in time.
+
+| Setting | Default | Range | Meaning |
+|---|---|---|---|
+| Warning threshold (days) | `14` | 1–60 | Raise a notification when a certificate expires within this many days. |
+
+## Disk Space Monitoring
+
+Warns when the drive holding GraphMailer's data is running low — important because accepted mail is
+queued to disk.
+
+| Setting | Default | Range | Meaning |
+|---|---|---|---|
+| Warning threshold (%) | `10` | 1–100 | Notify when free disk space falls below this percentage. |
+
+## Port Connectivity Checks
+
+Periodically opens a TCP connection to each configured SMTP listener port to confirm it is actually
+accepting connections.
+
+| Setting | Default | Range | Meaning |
+|---|---|---|---|
+| Check interval (minutes) | `5` | 1–1440 | How often each listener port is probed. A failed probe raises an alert. |
+
+## Graph API Monitoring
+
+Periodically authenticates against the Graph API to confirm the credentials still work and the
+required permissions are present.
+
+| Setting | Default | Range | Meaning |
+|---|---|---|---|
+| Check interval (minutes) | `15` | 1–1440 | How often the Graph connection is verified. A failure raises an alert. |
+
+> [!TIP]
+> This check is what warns you when admin consent was revoked, a client secret expired, or a
+> permission is missing — long before users notice mail failing. Keep it enabled.
 
 ## Metrics Storage
 

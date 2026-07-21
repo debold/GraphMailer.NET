@@ -82,6 +82,47 @@ public sealed class HtmlReportRendererTests
     }
 
     [Fact]
+    public void Render_WithoutRecommendations_OmitsTheBoxEntirely()
+    {
+        var html = HtmlReportRenderer.Render(Sample()).Html;
+
+        html.Should().NotContain("Recommendations",
+            "an install with every opt-in feature enabled must not see the hint box at all");
+    }
+
+    [Fact]
+    public void Render_WithRecommendations_ShowsThemWithoutWarningStyling()
+    {
+        var data = Sample() with
+        {
+            Recommendations = [new Recommendation("Turn on the update check", "Security fixes go unnoticed.")],
+        };
+
+        var html = HtmlReportRenderer.Render(data).Html;
+
+        html.Should().Contain("Recommendations");
+        html.Should().Contain("Turn on the update check");
+        html.Should().Contain("Security fixes go unnoticed.");
+        html.Should().Contain(EmailTheme.InfoBg, "hints use the neutral info palette, never the warning colours");
+        html.Should().Contain("This is switched on", "the singular wording is used for a single hint");
+    }
+
+    [Fact]
+    public void Render_WithTwoRecommendations_UsesPluralWording()
+    {
+        var data = Sample() with
+        {
+            Recommendations =
+            [
+                new Recommendation("Turn on the update check", "…"),
+                new Recommendation("Consider sharing anonymous usage telemetry", "…"),
+            ],
+        };
+
+        HtmlReportRenderer.Render(data).Html.Should().Contain("Both are switched on");
+    }
+
+    [Fact]
     public void Render_HtmlEncodesUserControlledText()
     {
         var failed = new[]

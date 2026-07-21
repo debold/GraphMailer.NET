@@ -30,6 +30,7 @@ public sealed class ScheduledReportServiceTests
             Monitor(new DiskSpaceMonitoringOptions()),
             Monitor(new List<SmtpServerEntry>()),
             Monitor(new UpdateCheckOptions()),
+            Monitor(new TelemetryOptions()),
             new EphemeralDataProtectionProvider(),
             NullLogger<ReportDataCollector>.Instance);
 

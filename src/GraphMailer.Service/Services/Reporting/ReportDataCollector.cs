@@ -28,6 +28,7 @@ internal sealed class ReportDataCollector
     private readonly IOptionsMonitor<DiskSpaceMonitoringOptions> _diskMon;
     private readonly IOptionsMonitor<List<SmtpServerEntry>> _servers;
     private readonly IOptionsMonitor<UpdateCheckOptions> _updateCheck;
+    private readonly IOptionsMonitor<TelemetryOptions> _telemetry;
     private readonly IDataProtector _configProtector;
     private readonly ILogger<ReportDataCollector> _logger;
 
@@ -42,6 +43,7 @@ internal sealed class ReportDataCollector
         IOptionsMonitor<DiskSpaceMonitoringOptions> diskMon,
         IOptionsMonitor<List<SmtpServerEntry>> servers,
         IOptionsMonitor<UpdateCheckOptions> updateCheck,
+        IOptionsMonitor<TelemetryOptions> telemetry,
         IDataProtectionProvider dpProvider,
         ILogger<ReportDataCollector> logger)
     {
@@ -52,6 +54,7 @@ internal sealed class ReportDataCollector
         _diskMon = diskMon;
         _servers = servers;
         _updateCheck = updateCheck;
+        _telemetry = telemetry;
         _configProtector = dpProvider.CreateProtector(DataProtectionExtensions.ConfigPurpose);
         _logger = logger;
     }
@@ -101,6 +104,7 @@ internal sealed class ReportDataCollector
             FailedQueueCount = failedCount,
             FailedQueueItems = failedItems,
             Health = BuildHealth(queuedNow, failedCount, now),
+            Recommendations = BuildRecommendations(),
         };
 
         if (!File.Exists(DbPath))
@@ -328,6 +332,34 @@ internal sealed class ReportDataCollector
             CheckGraphApi(now),
             CheckSoftwareUpdate(),
         ];
+    }
+
+    // ── Recommendations ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Collects the opt-in features that are currently switched off. Both are deliberate
+    /// choices, not defects — they are surfaced once per report as a friendly hint and never
+    /// as a health warning, and the box disappears entirely once they are enabled.
+    /// </summary>
+    private List<Recommendation> BuildRecommendations()
+    {
+        var items = new List<Recommendation>();
+
+        if (!_updateCheck.CurrentValue.Enabled)
+            items.Add(new Recommendation(
+                "Turn on the update check",
+                "Security fixes and new releases currently go unnoticed on this machine. Once a week the "
+                + "service asks github.com whether a newer GraphMailer version exists and shows the result "
+                + "on the Status page — nothing else is transmitted."));
+
+        if (!_telemetry.CurrentValue.Enabled)
+            items.Add(new Recommendation(
+                "Consider sharing anonymous usage telemetry",
+                "One daily heartbeat (random install id, version, OS/runtime, aggregated mail counters) and "
+                + "PII-free error reports help make GraphMailer better for real-world installations. Email "
+                + "addresses, IP addresses, hostnames and message content are never transmitted."));
+
+        return items;
     }
 
     private HealthItem CheckSoftwareUpdate()

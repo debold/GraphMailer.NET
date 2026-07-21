@@ -34,6 +34,13 @@ Up to **150 MB**, the Microsoft 365 ceiling. The default accepted size is 25 MB;
 [Servers & TLS](../configuration/servers-tls.html) if needed. Messages above 150 MB cannot be
 delivered via Graph.
 
+## Do relayed messages appear in the sender's “Sent Items”?
+
+Yes. Every message GraphMailer accepts over SMTP is delivered with a copy kept in the sender
+mailbox's **Sent Items** folder in Exchange Online, exactly as if the user had sent it from
+Outlook. Mail the service generates itself — non-delivery reports, admin notifications, the
+operations report — deliberately leaves no copy, so it does not clutter the mailbox.
+
 ## What happens to mail if Microsoft 365 is down?
 
 Nothing is lost. Accepted mail is written to the queue on disk and retried on a schedule until it

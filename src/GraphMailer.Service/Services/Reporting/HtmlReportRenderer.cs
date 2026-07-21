@@ -69,6 +69,7 @@ internal static class HtmlReportRenderer
         AppendTopTable(sb, "Top Senders", "by sender address", d.TopSenders, Accent);
         AppendTopTable(sb, "Top Sending Hosts", "by SMTP client (IP)", d.TopHosts, Dark);
         AppendSystem(sb, d);
+        AppendRecommendations(sb, d);
         AppendFooter(sb, d);
 
         sb.Append("""
@@ -322,6 +323,39 @@ internal static class HtmlReportRenderer
             <td style="border-right:1px solid {Hair};padding:10px 14px;font-family:{SansFont};font-size:12px;color:{Muted};">CPU (avg / peak)<br><span class="mono" style="font-family:{MonoFont};font-size:14px;color:{Text};">{cpu}</span></td>
             <td style="padding:10px 14px;font-family:{SansFont};font-size:12px;color:{Muted};">Disk free<br><span class="mono" style="font-family:{MonoFont};font-size:14px;color:{Text};">{disk}</span></td>
             </tr></table></td></tr>
+            """);
+    }
+
+    /// <summary>
+    /// Friendly, low-key hints about opt-in features that are off (update check, telemetry).
+    /// Rendered in the neutral info palette — never a warning chip — and omitted completely
+    /// when there is nothing to suggest, so an all-enabled install never sees this box.
+    /// </summary>
+    private static void AppendRecommendations(StringBuilder sb, ReportData d)
+    {
+        if (d.Recommendations.Count == 0)
+            return;
+
+        SectionTitle(sb, "Recommendations", "optional features that are currently off", "24px 28px 8px 28px");
+        sb.Append($"""
+            <tr><td style="padding:0 28px 20px 28px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{EmailTheme.InfoBg}" style="background-color:{EmailTheme.InfoBg};border:1px solid {EmailTheme.InfoBorder};">
+            <tr><td style="padding:12px 14px;font-family:{SansFont};font-size:12px;color:{Text};line-height:18px;">
+            """);
+
+        for (int i = 0; i < d.Recommendations.Count; i++)
+        {
+            var r = d.Recommendations[i];
+            var spacing = i == 0 ? "" : "padding-top:10px;";
+            sb.Append($"""
+                <div style="{spacing}"><span style="font-weight:600;color:{EmailTheme.InfoFg};">{Enc(r.Title)}</span><br>{Enc(r.Detail)}</div>
+                """);
+        }
+
+        var subject = d.Recommendations.Count == 1 ? "This is switched on" : "Both are switched on";
+        sb.Append($"""
+            <div style="padding-top:10px;color:{Muted};">{subject} in the ConfigTool → Monitoring page. This box disappears once done.</div>
+            </td></tr></table></td></tr>
             """);
     }
 

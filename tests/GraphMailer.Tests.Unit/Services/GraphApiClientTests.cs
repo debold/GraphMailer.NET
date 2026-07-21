@@ -134,7 +134,7 @@ public sealed class GraphApiClientTests
         var recipients = Enumerable.Range(0, GraphApiClient.MaxRecipients + 1)
             .Select(i => $"rcpt{i}@example.com").ToList();
 
-        var act = () => sut.SendAsync([1, 2, 3], "sender@example.com", recipients, "msg-too-many");
+        var act = () => sut.SendAsync([1, 2, 3], "sender@example.com", recipients, "msg-too-many", saveToSentItems: true);
 
         (await act.Should().ThrowAsync<GraphDeliveryException>(
                 "over-limit messages must fail fast instead of a doomed Graph call"))

@@ -290,7 +290,10 @@ internal sealed class QueueProcessor : BackgroundService
             GraphDeliveryResult delivery;
             try
             {
-                delivery = await _graphClient.SendAsync(emlBytes, sendAs, meta.To, meta.MessageId, sendCts.Token);
+                // Relayed SMTP mail gets a Sent Items copy so the sender finds it in their
+                // mailbox; service-generated mail (NDRs, admin notifications) does not.
+                delivery = await _graphClient.SendAsync(
+                    emlBytes, sendAs, meta.To, meta.MessageId, !meta.IsNotification, sendCts.Token);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {

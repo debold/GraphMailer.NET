@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.2.3.1013 — 2026-07-21
+
+### Added
+
+- The scheduled **operations report** now ends with a **Recommendations** box listing the
+  optional features that are switched off on this machine — the weekly **update check** and
+  the anonymous **usage telemetry** — with one sentence each on what they do and what is (not)
+  transmitted. Purely informational: neutral styling, no health warning, and the box is
+  omitted entirely once both are enabled.
+
+### Changed
+
+- The ConfigTool's **Monitoring** page now starts with the **Update Check** and **Anonymous
+  Usage Telemetry** cards (previously in the middle of the page, below the self-checks).
+  Both are off by default and easy to miss when they sit further down. The help page mirrors
+  the new order.
+- **Relayed mail now appears in the sender's "Sent Items"** in Exchange Online. Messages
+  delivered via `sendMail` were previously sent with `saveToSentItems=false`, so nothing was
+  left in the sender's mailbox — only mail with attachments ≥ 3 MB (draft + upload session)
+  showed up there. Every message received over SMTP now keeps a copy, matching what users
+  expect from a mailbox they send as. No additional Graph permission is required
+  (`Mail.Send` already covers it). Service-generated mail (NDRs, admin notifications, the
+  operations report, the ConfigTool test mail) is unchanged and still leaves no copy.
+- The SMTP **session summary log line** now includes the name the client announced in
+  `HELO`/`EHLO` (`helo=…`, `helo=(none)` if the client never greeted). This makes individual
+  clients distinguishable when several sit behind the same source IP (NAT, load balancer,
+  application server). The value is client-controlled and therefore capped at 255 characters.
+
 ## 1.2.2.1012 — 2026-07-20
 
 ### Changed

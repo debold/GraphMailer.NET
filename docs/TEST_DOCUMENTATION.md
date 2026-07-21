@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 756 tests** (700 unit · 56 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-20
+**Total: 767 tests** (709 unit · 58 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-21
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -311,6 +311,9 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Render_ProducesWellFormedHtmlDocument_WithCidChartImage` | Render a sample report | Full HTML doc with title, host, thousands-formatted KPIs; chart referenced via `cid:` (no `<svg>`); `ChartPng` PNG bytes produced for attachment |
 | `Render_NoFailedQueue_OmitsActionRequiredSection` | `FailedQueueCount = 0` | No "Action Required" section |
 | `Render_WithFailedQueue_ShowsActionRequiredSection` | One failed-queue item | "Action Required" section with the item's error |
+| `Render_WithoutRecommendations_OmitsTheBoxEntirely` | `Recommendations` empty (every opt-in feature enabled) | No "Recommendations" box at all — an all-enabled install is never nagged |
+| `Render_WithRecommendations_ShowsThemWithoutWarningStyling` | One recommendation | Title + detail rendered in the neutral info palette (`EmailTheme.InfoBg`), singular wording "This is switched on" |
+| `Render_WithTwoRecommendations_UsesPluralWording` | Two recommendations | Plural wording "Both are switched on" |
 | `Render_HtmlEncodesUserControlledText` | Subject/sender/top-sender contain `<script>` and other markup | Raw tags are HTML-encoded (`&lt;script&gt;…`); no live markup in the output |
 
 ---
@@ -344,6 +347,10 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Collect_UpToDate_ReportsSoftwareUpdateOk` | `update-status.json` with `UpdateAvailable = false` | Health row "Software Update" is `Ok` with "Up to date" and the last-check date |
 | `Collect_NoUpdateStatusFile_ReportsSoftwareUpdateUnknown` | No status file; update check disabled vs. enabled | `Unknown` with "Update check disabled" (off) / "No check has run yet" (on) |
 | `Collect_UpdateCheckFailedWithoutResult_ReportsSoftwareUpdateUnknown` | Status file has only `LastError`, no version | `Unknown` with the error text surfaced in the detail |
+| `Collect_BothOptInFeaturesDisabled_RecommendsUpdateCheckAndTelemetry` | Update check and telemetry both off | Two recommendations — one per feature |
+| `Collect_OnlyTelemetryDisabled_RecommendsTelemetryOnly` | Update check on, telemetry off | Exactly one recommendation (telemetry) |
+| `Collect_BothOptInFeaturesEnabled_RecommendsNothing` | Both features on | `Recommendations` empty |
+| `Collect_DisabledOptInFeatures_DoNotAffectHealthSeverity` | Both features off | No "Telemetry" health row; "Software Update" stays `Unknown`, not `Warning` — a deliberate opt-out must never cry wolf in the severity banner |
 
 ---
 
@@ -446,6 +453,8 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `ProcessBatch_CorruptMetaFile_NotifiesAdmin` | Corrupt meta quarantined | `NotifyEmailDeliveryFailedAsync` called (regression: quarantine used to be log-only — silent mail loss) |
 | `ProcessMessage_EmlMissing_SendsNdrAndNotifiesAdmin` | Meta readable, `.eml` missing | Admin notification AND NDR to the known sender |
 | `ProcessBatch_DeliversMessagesInArrivalOrder_NotFilenameOrder` | "zzz" queued before "aaa" (creation times set) | Delivered in arrival order (FIFO), not GUID-filename order |
+| `ProcessMessage_RelayedMail_IsSavedToSentItems` | Ordinary queued message (`IsNotification = false`) | `SendAsync` called with `saveToSentItems: true` — the sender finds the mail in their Exchange Online "Sent Items" |
+| `ProcessMessage_NotificationMail_IsNotSavedToSentItems` | Queued message with `IsNotification = true` (NDR / admin notification) | `SendAsync` called with `saveToSentItems: false` — service mail must not clutter the mailbox |
 | `CleanupFailedEmails_ExpiredFile_DeletesBothFiles` | `mtime` older than `FailedEmailRetentionDays` | `.eml` + `.meta.json` deleted from `mail/failed/` |
 | `CleanupFailedEmails_FileWithinRetention_IsKept` | `mtime` within retention window | File remains in `mail/failed/` |
 | `CleanupFailedEmails_RetentionZero_KeepsEverything` | `FailedEmailRetentionDays = 0`, year-old file | File kept (0 = keep forever) |
@@ -773,7 +782,7 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 
 | Test | Scenario | Expected result |
 |---|---|---|
-| `SmallMessage_IsDelivered_ViaSendMail` | Message without large attachment | Delivered via `sendMail` (Mail.Send) |
+| `SmallMessage_IsDelivered_ViaSendMail` | Message without large attachment, `saveToSentItems: true` (as for relayed SMTP mail) | Delivered via `sendMail` (Mail.Send) — verifies that the Sent Items copy needs no extra permission |
 | `LargeAttachment_IsDelivered_ViaUploadSession` | 3.5 MB attachment | Delivered via draft + upload session (Mail.ReadWrite) |
 | `FidelityMessage_WithHeadersImportanceAndInlineImage_IsDelivered` | Message-ID, In-Reply-To/References (MAPI 0x1042/0x1039), custom x-header, high importance, inline CID image | Graph accepts the full fidelity payload (a rejection would break every relayed message carrying these) |
 | `UnknownSender_IsRejected_ByGraph` | Nonexistent sender mailbox | `GraphDeliveryException` with 404/ErrorInvalidUser and `IsPermanent == true` (fail-fast classification verified against real Graph) |
@@ -905,6 +914,8 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `BlockedRecipient_RecordsBlockedRecipientRejection` | RCPT TO a blocked recipient | `RecordRejectionAsync("blocked_recipient", …)` exactly once |
 | `ReceivedMail_RecordsListenerAuthAndTlsContext` | Authenticated mail on a plain listener | `ReceivedEmailEvent` carries listener port, client IP, `Authenticated=true`, the auth user and `Tls=false` |
 | `AbortedSession_LogsSummaryWithOutcomeAndStage` | Authenticated client drops without QUIT | One Information log line `Session ended … outcome=aborted … last stage=auth` (the operator's in-log abort signal) |
+| `Session_LogsSummaryWithClientAnnouncedHeloName` | Client greets with `LocalDomain = legacy-app.example.local` | Summary line contains `helo=legacy-app.example.local` (distinguishes clients behind one IP) |
+| `Session_ClientNeverGreets_LogsSummaryWithHeloNone` | Raw client sends QUIT without HELO/EHLO | Summary line contains `helo=(none)` instead of an empty field |
 
 ---
 

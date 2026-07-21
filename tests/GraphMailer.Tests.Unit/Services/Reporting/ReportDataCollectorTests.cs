@@ -40,7 +40,7 @@ public sealed class ReportDataCollectorTests : IDisposable
         return svc;
     }
 
-    private ReportDataCollector CreateCollector(bool updateCheckEnabled = false)
+    private ReportDataCollector CreateCollector(bool updateCheckEnabled = false, bool telemetryEnabled = false)
         => new(
             Monitor(new MailQueueOptions { MailDir = Path.Combine(_temp, "mail") }),
             Monitor(new MetricsOptions { Enabled = true, BasePath = _temp }),
@@ -49,6 +49,7 @@ public sealed class ReportDataCollectorTests : IDisposable
             Monitor(new DiskSpaceMonitoringOptions()),
             Monitor(new List<SmtpServerEntry>()),
             Monitor(new UpdateCheckOptions { Enabled = updateCheckEnabled }),
+            Monitor(new TelemetryOptions { Enabled = telemetryEnabled }),
             new EphemeralDataProtectionProvider(),
             NullLogger<ReportDataCollector>.Instance)
         {
@@ -189,6 +190,48 @@ public sealed class ReportDataCollectorTests : IDisposable
         var row = data.Health.Should().ContainSingle(h => h.Component == "Software Update").Subject;
         row.Status.Should().Be(HealthStatus.Unknown);
         row.Detail.Should().Contain("GitHub unreachable");
+    }
+
+    [Fact]
+    public void Collect_BothOptInFeaturesDisabled_RecommendsUpdateCheckAndTelemetry()
+    {
+        var data = CreateCollector(updateCheckEnabled: false, telemetryEnabled: false)
+            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        data.Recommendations.Should().HaveCount(2);
+        data.Recommendations.Should().Contain(r => r.Title.Contains("update check"));
+        data.Recommendations.Should().Contain(r => r.Title.Contains("telemetry"));
+    }
+
+    [Fact]
+    public void Collect_OnlyTelemetryDisabled_RecommendsTelemetryOnly()
+    {
+        var data = CreateCollector(updateCheckEnabled: true, telemetryEnabled: false)
+            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        data.Recommendations.Should().ContainSingle().Which.Title.Should().Contain("telemetry");
+    }
+
+    [Fact]
+    public void Collect_BothOptInFeaturesEnabled_RecommendsNothing()
+    {
+        var data = CreateCollector(updateCheckEnabled: true, telemetryEnabled: true)
+            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        data.Recommendations.Should().BeEmpty("an install with everything enabled must never be nagged");
+    }
+
+    [Fact]
+    public void Collect_DisabledOptInFeatures_DoNotAffectHealthSeverity()
+    {
+        // Recommendations are informational: they must not push the report into a
+        // warning/error state, or the severity banner would cry wolf every single time.
+        var data = CreateCollector(updateCheckEnabled: false, telemetryEnabled: false)
+            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        data.Health.Should().NotContain(h => h.Component == "Telemetry");
+        data.Health.Should().ContainSingle(h => h.Component == "Software Update")
+            .Which.Status.Should().Be(HealthStatus.Unknown, "a disabled update check is a choice, not a warning");
     }
 
     [Fact]

@@ -46,8 +46,10 @@ public class GraphDeliveryLiveTests
         var eml = BuildEml(s.SenderAddress!, s.RecipientAddress!,
             $"[LiveTest] sendMail {DateTime.UtcNow:HH:mm:ss}");
 
+        // saveToSentItems: true mirrors what the queue does for relayed SMTP mail — this is
+        // the only place the Sent Items copy is exercised against a real tenant.
         var act = () => BuildClient().SendAsync(
-            eml, s.SenderAddress!, [s.RecipientAddress!], Guid.NewGuid().ToString("N"));
+            eml, s.SenderAddress!, [s.RecipientAddress!], Guid.NewGuid().ToString("N"), saveToSentItems: true);
 
         await act.Should().NotThrowAsync("a small message must be delivered via the sendMail path");
     }
@@ -64,7 +66,7 @@ public class GraphDeliveryLiveTests
             $"[LiveTest] upload session {DateTime.UtcNow:HH:mm:ss}", attachment);
 
         var act = () => BuildClient().SendAsync(
-            eml, s.SenderAddress!, [s.RecipientAddress!], Guid.NewGuid().ToString("N"));
+            eml, s.SenderAddress!, [s.RecipientAddress!], Guid.NewGuid().ToString("N"), saveToSentItems: false);
 
         await act.Should().NotThrowAsync(
             "a ≥3 MB attachment must be delivered via draft + upload session " +
@@ -105,7 +107,7 @@ public class GraphDeliveryLiveTests
         message.WriteTo(ms);
 
         var act = () => BuildClient().SendAsync(
-            ms.ToArray(), s.SenderAddress!, [s.RecipientAddress!], Guid.NewGuid().ToString("N"));
+            ms.ToArray(), s.SenderAddress!, [s.RecipientAddress!], Guid.NewGuid().ToString("N"), saveToSentItems: false);
 
         await act.Should().NotThrowAsync(
             "Graph must accept internetMessageId, threading extended properties, x-headers, importance and inline CID attachments");
@@ -120,7 +122,7 @@ public class GraphDeliveryLiveTests
         var eml = BuildEml(ghost, s.RecipientAddress!, "[LiveTest] unknown sender");
 
         var act = () => BuildClient().SendAsync(
-            eml, ghost, [s.RecipientAddress!], Guid.NewGuid().ToString("N"));
+            eml, ghost, [s.RecipientAddress!], Guid.NewGuid().ToString("N"), saveToSentItems: false);
 
         (await act.Should().ThrowAsync<GraphDeliveryException>(
                 "Graph must reject a sender that does not exist in the tenant"))
@@ -147,7 +149,7 @@ public class GraphDeliveryLiveTests
             $"[LiveTest] alias sender {DateTime.UtcNow:HH:mm:ss}");
 
         var act = () => BuildClient().SendAsync(
-            eml, owner!.Id, [s.RecipientAddress!], Guid.NewGuid().ToString("N"));
+            eml, owner!.Id, [s.RecipientAddress!], Guid.NewGuid().ToString("N"), saveToSentItems: false);
 
         await act.Should().NotThrowAsync("sending as the resolved object id must work for aliases");
     }

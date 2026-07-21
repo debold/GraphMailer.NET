@@ -185,6 +185,50 @@ public class SmtpSessionTrackingTests
             e.Message.Contains("last stage=auth")));
     }
 
+    [Fact]
+    public async Task Session_LogsSummaryWithClientAnnouncedHeloName()
+    {
+        // The HELO/EHLO name is often the only way to tell apart several clients
+        // behind the same source IP (NAT, load balancer, app server).
+        var logs = new CapturingLoggerProvider();
+        await using var host = await SmtpTestHost.StartAsync(loggerProvider: logs);
+
+        using var client = new SmtpClient { LocalDomain = "legacy-app.example.local" };
+        await client.ConnectAsync("127.0.0.1", host.Port, SecureSocketOptions.None);
+        await client.SendAsync(BuildMessage());
+        await client.DisconnectAsync(quit: true);
+
+        await WaitUntilAsync(() => logs.Entries.Any(e =>
+            e.Level == LogLevel.Information &&
+            e.Message.Contains("Session ended") &&
+            e.Message.Contains("helo=legacy-app.example.local")));
+    }
+
+    [Fact]
+    public async Task Session_ClientNeverGreets_LogsSummaryWithHeloNone()
+    {
+        // A client that quits without ever greeting — the summary must stay readable
+        // instead of showing an empty helo= field.
+        var logs = new CapturingLoggerProvider();
+        await using var host = await SmtpTestHost.StartAsync(loggerProvider: logs);
+
+        using (var tcp = new System.Net.Sockets.TcpClient())
+        {
+            await tcp.ConnectAsync("127.0.0.1", host.Port);
+            await using var stream = tcp.GetStream();
+            using var reader = new StreamReader(stream);
+            await reader.ReadLineAsync();                       // 220 banner
+            var quit = "QUIT\r\n"u8.ToArray();
+            await stream.WriteAsync(quit);
+            await reader.ReadLineAsync();                       // 221 bye
+        }
+
+        await WaitUntilAsync(() => logs.Entries.Any(e =>
+            e.Level == LogLevel.Information &&
+            e.Message.Contains("Session ended") &&
+            e.Message.Contains("helo=(none)")));
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
