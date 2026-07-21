@@ -122,7 +122,7 @@ public sealed class GraphApiMonitoringServiceTests
         await sut.CheckConnectivityAsync(CancellationToken.None);   // same gap → no repeat
 
         await notify.Received(1).NotifyGraphApiErrorAsync(
-            Arg.Is<string>(m => m.Contains("Mail.ReadWrite")), Arg.Any<CancellationToken>());
+            Arg.Is<string>(m => m != null && m.Contains("Mail.ReadWrite")), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public sealed class GraphApiMonitoringServiceTests
             senderValidationEnabled: true);
         await enabled.CheckConnectivityAsync(CancellationToken.None);
         await notifyEnabled.Received(1).NotifyGraphApiErrorAsync(
-            Arg.Is<string>(m => m.Contains("User.Read.All")), Arg.Any<CancellationToken>());
+            Arg.Is<string>(m => m != null && m.Contains("User.Read.All")), Arg.Any<CancellationToken>());
     }
 
     [Fact]

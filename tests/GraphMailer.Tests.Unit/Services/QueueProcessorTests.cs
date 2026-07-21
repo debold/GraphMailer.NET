@@ -202,7 +202,7 @@ public sealed class QueueProcessorTests : IDisposable
         // … while the back-off messages were skipped, not attempted.
         await client.DidNotReceive().SendAsync(
             Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-            Arg.Is<string>(id => id.StartsWith("aaa-backoff")), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            Arg.Is<string>(id => id != null && id.StartsWith("aaa-backoff")), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     // =========================================================================
@@ -711,7 +711,7 @@ public sealed class QueueProcessorTests : IDisposable
         await sut.ProcessBatchAsync();
 
         await notify.Received(1).NotifyEmailDeliveryFailedAsync(
-            "msg-corrupt-notify", Arg.Is<string>(s => s.Contains("Corrupt")), Arg.Any<CancellationToken>());
+            "msg-corrupt-notify", Arg.Is<string>(s => s != null && s.Contains("Corrupt")), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -727,7 +727,7 @@ public sealed class QueueProcessorTests : IDisposable
         await notify.Received(1).NotifyEmailDeliveryFailedAsync(
             "msg-noeml-notify", Arg.Any<string>(), Arg.Any<CancellationToken>());
         await notify.Received(1).SendNdrAsync(
-            Arg.Is<MailMetadata>(m => m.MessageId == "msg-noeml-notify"), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            Arg.Is<MailMetadata>(m => m != null && m.MessageId == "msg-noeml-notify"), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // =========================================================================

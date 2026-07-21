@@ -152,6 +152,7 @@ public class SmtpSessionTrackingTests
 
         await host.Metrics.Received(1).RecordEmailReceivedAsync(
             Arg.Is<ReceivedEmailEvent>(e =>
+                e != null &&
                 e.ListenerPort == host.Port &&
                 e.ClientIp == "127.0.0.1" &&
                 e.Authenticated &&
@@ -253,7 +254,9 @@ public class SmtpSessionTrackingTests
         var sessions = new ConcurrentQueue<SmtpSessionRecord>();
         host.Metrics
             .When(m => m.RecordSmtpSessionAsync(Arg.Any<SmtpSessionRecord>(), Arg.Any<CancellationToken>()))
-            .Do(ci => sessions.Enqueue(ci.Arg<SmtpSessionRecord>()));
+            // NSubstitute 6 annotates CallInfo.Arg<T>() as possibly null; the parameter it
+            // stands for is non-nullable, so the record is always there.
+            .Do(ci => sessions.Enqueue(ci.Arg<SmtpSessionRecord>()!));
         return sessions;
     }
 

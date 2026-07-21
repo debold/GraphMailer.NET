@@ -84,7 +84,7 @@ public sealed class SecretIntegrityCheckServiceTests : IDisposable
 
         logger.HasEntry(LogLevel.Error, "cannot be decrypted").Should().BeTrue();
         await notify.Received(1).NotifyConfigDecryptionFailedAsync(
-            Arg.Is<IReadOnlyList<string>>(l => l.Count == 1 && l[0] == "GraphApi.ClientSecret"),
+            Arg.Is<IReadOnlyList<string>>(l => l != null && l.Count == 1 && l[0] == "GraphApi.ClientSecret"),
             Arg.Any<CancellationToken>());
     }
 

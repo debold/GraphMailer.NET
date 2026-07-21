@@ -106,9 +106,9 @@ public sealed class ScheduledReportServiceTests
 
         await graph.Received(1).SendHtmlNotificationAsync(
             "relay@corp.com",
-            Arg.Is<IEnumerable<string>>(r => r.Contains("ops@corp.com")),
-            Arg.Is<string>(s => s.Contains("Operations Report")),
-            Arg.Is<string>(html => html.Contains("<!DOCTYPE html>")),
+            Arg.Is<IEnumerable<string>>(r => r != null && r.Contains("ops@corp.com")),
+            Arg.Is<string>(s => s != null && s.Contains("Operations Report")),
+            Arg.Is<string>(html => html != null && html.Contains("<!DOCTYPE html>")),
             Arg.Any<GraphInlineImage?>(),
             Arg.Any<CancellationToken>());
     }

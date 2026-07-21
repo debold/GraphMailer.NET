@@ -118,6 +118,6 @@ public sealed class BackupBackgroundServiceTests
 
         backup.DidNotReceive().Rotate(Arg.Any<string>(), Arg.Any<int>());
         await notify.Received(1).NotifyBackupResultAsync(false,
-            Arg.Is<string>(s => s.Contains("disk full")), Arg.Any<CancellationToken>());
+            Arg.Is<string>(s => s != null && s.Contains("disk full")), Arg.Any<CancellationToken>());
     }
 }

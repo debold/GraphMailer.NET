@@ -170,7 +170,7 @@ public sealed class TelemetryServiceTests : IDisposable
         await CreateService().RunHeartbeatAsync(CancellationToken.None);
 
         _sender.Received(1).TrackErrorReport(Arg.Is<IReadOnlyDictionary<string, string>>(p =>
-            p["messageTemplate"] == "[Test] Broken {Id}" && p.ContainsKey("installId")));
+            p != null && p["messageTemplate"] == "[Test] Broken {Id}" && p.ContainsKey("installId")));
         _collector.Drain().Reports.Should().BeEmpty("sent reports must not be re-sent tomorrow");
     }
 

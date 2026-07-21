@@ -64,8 +64,8 @@ public sealed class AdminNotificationServiceTests : IDisposable
         await _graph.Received(1).SendHtmlNotificationAsync(
             "admin@contoso.com",
             Arg.Any<IEnumerable<string>>(),
-            Arg.Is<string>(s => s.Contains("expiring")),
-            Arg.Is<string>(b => b.Contains("<!DOCTYPE html>") && b.Contains("CN=test")),
+            Arg.Is<string>(s => s != null && s.Contains("expiring")),
+            Arg.Is<string>(b => b != null && b.Contains("<!DOCTYPE html>") && b.Contains("CN=test")),
             Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
@@ -77,8 +77,8 @@ public sealed class AdminNotificationServiceTests : IDisposable
         await _graph.Received(1).SendHtmlNotificationAsync(
             "admin@contoso.com",
             Arg.Any<IEnumerable<string>>(),
-            Arg.Is<string>(s => s.Contains("EXPIRED")),
-            Arg.Is<string>(b => b.Contains("CN=expired")),
+            Arg.Is<string>(s => s != null && s.Contains("EXPIRED")),
+            Arg.Is<string>(b => b != null && b.Contains("CN=expired")),
             Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
@@ -90,8 +90,8 @@ public sealed class AdminNotificationServiceTests : IDisposable
         // Percentage formatting is culture-dependent ("4.2" vs "4,2") — assert on the drive instead.
         await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
-            Arg.Is<string>(s => s.Contains("disk")),
-            Arg.Is<string>(b => b.Contains("C:\\")),
+            Arg.Is<string>(s => s != null && s.Contains("disk")),
+            Arg.Is<string>(b => b != null && b.Contains("C:\\")),
             Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
@@ -102,8 +102,8 @@ public sealed class AdminNotificationServiceTests : IDisposable
         await svc.NotifyGraphApiErrorAsync("Connection refused");
         await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
-            Arg.Is<string>(s => s.Contains("Graph API")),
-            Arg.Is<string>(b => b.Contains("Connection refused")),
+            Arg.Is<string>(s => s != null && s.Contains("Graph API")),
+            Arg.Is<string>(b => b != null && b.Contains("Connection refused")),
             Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
@@ -114,8 +114,8 @@ public sealed class AdminNotificationServiceTests : IDisposable
         await svc.NotifyBackupResultAsync(succeeded: true, "File: backup.gmbak (123 bytes)");
         await _graph.Received(1).SendHtmlNotificationAsync(
             "admin@contoso.com", Arg.Any<IEnumerable<string>>(),
-            Arg.Is<string>(s => s.Contains("backup succeeded")),
-            Arg.Is<string>(b => b.Contains("backup.gmbak")),
+            Arg.Is<string>(s => s != null && s.Contains("backup succeeded")),
+            Arg.Is<string>(b => b != null && b.Contains("backup.gmbak")),
             Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
@@ -126,8 +126,8 @@ public sealed class AdminNotificationServiceTests : IDisposable
         await svc.NotifyBackupResultAsync(succeeded: false, "Backup failed: disk full");
         await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
-            Arg.Is<string>(s => s.Contains("FAILED")),
-            Arg.Is<string>(b => b.Contains("disk full")),
+            Arg.Is<string>(s => s != null && s.Contains("FAILED")),
+            Arg.Is<string>(b => b != null && b.Contains("disk full")),
             Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
@@ -168,8 +168,8 @@ public sealed class AdminNotificationServiceTests : IDisposable
         await svc.NotifyUpdateAvailableAsync("1.2.0.196", "1.3.0.210", "https://github.com/x/releases/tag/v1.3.0.210");
         await _graph.Received(1).SendHtmlNotificationAsync(
             "admin@contoso.com", Arg.Any<IEnumerable<string>>(),
-            Arg.Is<string>(s => s.Contains("Update available") && s.Contains("1.3.0.210")),
-            Arg.Is<string>(b => b.Contains("1.2.0.196") && b.Contains("1.3.0.210") && b.Contains("https://github.com/x/releases/tag/v1.3.0.210")),
+            Arg.Is<string>(s => s != null && s.Contains("Update available") && s.Contains("1.3.0.210")),
+            Arg.Is<string>(b => b != null && b.Contains("1.2.0.196") && b.Contains("1.3.0.210") && b.Contains("https://github.com/x/releases/tag/v1.3.0.210")),
             Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
@@ -194,7 +194,7 @@ public sealed class AdminNotificationServiceTests : IDisposable
         await svc.NotifyGraphApiRestoredAsync();
         await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
-            Arg.Is<string>(s => s.Contains("restored")),
+            Arg.Is<string>(s => s != null && s.Contains("restored")),
             Arg.Any<string>(),
             Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
@@ -206,8 +206,8 @@ public sealed class AdminNotificationServiceTests : IDisposable
         await svc.NotifyPortOutageAsync(2525, "Unreachable");
         await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
-            Arg.Is<string>(s => s.Contains("2525")),
-            Arg.Is<string>(b => b.Contains("Unreachable")),
+            Arg.Is<string>(s => s != null && s.Contains("2525")),
+            Arg.Is<string>(b => b != null && b.Contains("Unreachable")),
             Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
 
@@ -218,7 +218,7 @@ public sealed class AdminNotificationServiceTests : IDisposable
         await svc.NotifyPortRestoredAsync(2525);
         await _graph.Received(1).SendHtmlNotificationAsync(
             Arg.Any<string>(), Arg.Any<IEnumerable<string>>(),
-            Arg.Is<string>(s => s.Contains("2525") && s.Contains("restored")),
+            Arg.Is<string>(s => s != null && s.Contains("2525") && s.Contains("restored")),
             Arg.Any<string>(),
             Arg.Any<GraphInlineImage?>(), Arg.Any<CancellationToken>());
     }
