@@ -17,8 +17,12 @@
 - **Certificate loading moved to the current .NET API.** Self-signed SMTP certificate creation
   and the Entra setup wizard now use `X509CertificateLoader`; the constructors they used before
   are obsolete as of .NET 9. No change in behaviour or in the certificates produced.
-- **Updated `Microsoft.AspNetCore.DataProtection` 8.0.29 → 10.0.10** to match the new runtime.
-  The key ring format is unchanged, so existing `ENC[...]` secrets keep decrypting.
+- **All framework dependencies moved onto the .NET 10 line** alongside the runtime:
+  `Microsoft.AspNetCore.DataProtection`, `Microsoft.Extensions.Configuration.*`,
+  `Microsoft.Extensions.Hosting.WindowsServices` and `Microsoft.Data.Sqlite` to 10.0.10,
+  `Serilog.Extensions.Hosting` to 10.0.0 and `Serilog.Settings.Configuration` to 10.0.1. No
+  8.0.x package remains. Behaviour is unchanged throughout: the Data Protection key ring format
+  still reads existing `ENC[...]` secrets, and `metrics.db` keeps its format and migrations.
 
 ## 1.2.4.1031 — 2026-07-21
 
