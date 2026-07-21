@@ -527,7 +527,7 @@ internal static class EntraSetupService
         var rawData = temp.RawData;
 
         var pfx = temp.Export(X509ContentType.Pfx, (string?)null);
-        using var persistent = new X509Certificate2(
+        using var persistent = X509CertificateLoader.LoadPkcs12(
             pfx, (string?)null,
             X509KeyStorageFlags.MachineKeySet |
             X509KeyStorageFlags.PersistKeySet |

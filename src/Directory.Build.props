@@ -61,7 +61,7 @@
 
   <!--
     Shared Release publish: framework-dependent win-x64, ReadyToRun, no single-file
-    bundle. The target machine needs the .NET Desktop Runtime 8 (x64) — it covers
+    bundle. The target machine needs the .NET Desktop Runtime 10 (x64) — it covers
     both apps (WPF ConfigTool needs Desktop; the service only the base runtime
     included in it). Pass /p:SelfContained=true (build-release.ps1 -SelfContained)
     for the old fully bundled package that needs no .NET on the target.

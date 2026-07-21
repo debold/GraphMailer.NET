@@ -26,14 +26,14 @@ deprecated Basic Auth / SMTP AUTH.
   for failures, certificate expiry, and disk space.
 - **Secrets stay encrypted** — passwords and client secrets are stored encrypted at
   rest (Windows Data Protection), never in plaintext.
-- **MSI installer** with a bootstrapper that brings the .NET 8 runtime along;
+- **MSI installer** with a bootstrapper that brings the .NET 10 runtime along;
   bundled offline HTML help for every screen.
 
 ## Requirements
 
 - Windows x64 (server or client), Windows Server 2016+ recommended
 - Microsoft 365 tenant with Exchange Online mailboxes
-- .NET 8 Desktop Runtime (installed automatically by the setup bundle)
+- .NET 10 Desktop Runtime (installed automatically by the setup bundle)
 
 ## Getting started
 

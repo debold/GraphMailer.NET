@@ -281,7 +281,7 @@ internal sealed class SmtpTestHost : IAsyncDisposable
         // The default key storage writes a temporary CNG container to the current
         // user's key store; it is cleaned up when the X509Certificate2 is disposed.
         var pfx = temp.Export(X509ContentType.Pfx);
-        return new X509Certificate2(pfx, (string?)null, X509KeyStorageFlags.Exportable);
+        return X509CertificateLoader.LoadPkcs12(pfx, (string?)null, X509KeyStorageFlags.Exportable);
     }
 
     // -------------------------------------------------------------------------

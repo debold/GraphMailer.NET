@@ -20,6 +20,7 @@
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:netfx="http://wixtoolset.org/schemas/v4/wxs/netfx"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <Package Name="GraphMailer"
@@ -37,6 +38,23 @@
     <!-- Branding: icon shown in Add/Remove Programs -->
     <Icon Id="GraphMailerIcon" SourceFile="$(var.IconFile)" />
     <Property Id="ARPPRODUCTICON" Value="GraphMailerIcon" />
+
+    <!-- Both apps are framework-dependent net10.0, so without the .NET 10 Desktop Runtime (x64)
+         neither the service nor the ConfigTool starts. The bootstrapper installs it, but the
+         bare MSI is also a supported path (see installer\README.md) — refuse there instead of
+         leaving a registered service that fails at every start.
+         DotNetCoreSearch is Burn-only (Bundle.wxs uses it); the MSI equivalent is
+         DotNetCompatibilityCheck, which sets its Property to "0" when a compatible runtime is
+         present. RollForward=latestMajor accepts any 10.x or newer, matching the bundle's
+         version-tolerant detection. Skipped on uninstall/repair via "Installed". -->
+    <netfx:DotNetCompatibilityCheck Id="Net10DesktopCheck"
+                                    RuntimeType="desktop"
+                                    Version="10.0.0"
+                                    RollForward="latestMajor"
+                                    Platform="x64"
+                                    Property="NET10DESKTOPCHECK" />
+    <Launch Condition="Installed OR NET10DESKTOPCHECK = &quot;0&quot;"
+            Message="[ProductName] requires the .NET Desktop Runtime 10 (x64), which is not installed on this machine. Install it from https://dotnet.microsoft.com/download/dotnet/10.0 — or run GraphMailerSetup-[ProductVersion].exe, which installs it for you." />
 
     <Feature Id="Main" Title="GraphMailer" Level="1">
       <ComponentGroupRef Id="AppFiles" />

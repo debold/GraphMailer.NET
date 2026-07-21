@@ -43,7 +43,7 @@ internal static class SelfSignedSmtpCertificate
         using var temp = CreateSelfSigned();
 
         var pfx = temp.Export(X509ContentType.Pfx, (string?)null);
-        using var persistent = new X509Certificate2(
+        using var persistent = X509CertificateLoader.LoadPkcs12(
             pfx, (string?)null,
             X509KeyStorageFlags.MachineKeySet |
             X509KeyStorageFlags.PersistKeySet |
@@ -90,7 +90,7 @@ internal static class SelfSignedSmtpCertificate
         // "untrusted root".
         using var rootStore = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
         rootStore.Open(OpenFlags.ReadWrite);
-        using var publicOnly = new X509Certificate2(persistent.RawData); // strips private key
+        using var publicOnly = X509CertificateLoader.LoadCertificate(persistent.RawData); // strips private key
         rootStore.Add(publicOnly);
 
         return new Result(persistent.GetNameInfo(X509NameType.SimpleName, false), aclGranted);

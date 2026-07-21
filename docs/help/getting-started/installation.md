@@ -12,8 +12,13 @@ You only need to run one installer; both are installed together.
 
 - A **64-bit Windows** machine (Windows 10/11 or Windows Server) that stays on to relay mail.
 - **Local administrator** rights — the installer registers a Windows service and a firewall rule.
-- The **.NET 8 Desktop Runtime (x64)**. You do not have to install this yourself: the default
+- The **.NET 10 Desktop Runtime (x64)**. You do not have to install this yourself: the default
   installer detects it and installs it for you if it is missing (see below).
+
+> [!IMPORTANT]
+> **Upgrading from a version before 1.3?** Those releases ran on the .NET **8** Desktop Runtime.
+> Use `GraphMailerSetup-<version>.exe` — it installs the .NET 10 runtime for you. The bare
+> `.msi` refuses to install without it rather than leaving a service that cannot start.
 
 > [!NOTE]
 > GraphMailer does **not** need to run on a domain controller or mail server, and it does not
@@ -28,7 +33,7 @@ The release contains more than one file. Pick the one that matches your situatio
 |---|---|
 | `GraphMailerSetup-<version>.exe` | **Default.** Installs the .NET runtime automatically (downloads it on demand if the machine does not already have it). |
 | `GraphMailerSetup-<version>.exe` shipped next to `windowsdesktop-runtime-*.exe` | The target machine has **no internet access** — the runtime is bundled alongside and installed offline. |
-| `GraphMailer-<version>.msi` | The **.NET 8 Desktop Runtime (x64) is already installed** and you want just the app, with no runtime handling. |
+| `GraphMailer-<version>.msi` | The **.NET 10 Desktop Runtime (x64) is already installed** and you want just the app, with no runtime handling. If it is missing, the MSI stops with a message instead of installing. |
 
 ## Interactive install
 

@@ -242,7 +242,7 @@ public sealed class CertificateStoreServiceTests
         // Export to PFX then reimport with PersistKeySet so the private key gets a real
         // KSP backing file.  Without this, HasPrivateKey = false in new store instances.
         var pfx = ephemeral.Export(X509ContentType.Pfx)!;
-        return new X509Certificate2(pfx, (string?)null,
+        return X509CertificateLoader.LoadPkcs12(pfx, (string?)null,
             X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable);
     }
 

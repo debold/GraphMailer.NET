@@ -1,6 +1,6 @@
 # GraphMailer installer (WiX)
 
-Builds a per-machine **MSI** plus a **setup.exe bootstrapper** that chains the .NET 8 Desktop
+Builds a per-machine **MSI** plus a **setup.exe bootstrapper** that chains the .NET 10 Desktop
 Runtime prerequisite. The MSI installs both apps to `C:\Program Files\GraphMailer\` (plus the
 bundled HTML help under `…\GraphMailer\help\`), registers the **`GraphMailer`** Windows service
 (auto-start, LocalSystem, restart-on-failure recovery actions), and adds Start-menu shortcuts for the (elevated) ConfigTool and the
@@ -35,7 +35,7 @@ It first runs `build-release.ps1` (framework-dependent publish), then `build-hel
 |---|---|
 | `GraphMailerSetup-<ver>.exe` | **default** — downloads the .NET runtime on demand if missing (small) |
 | `GraphMailerSetup-<ver>.exe` + `windowsdesktop-runtime-*.exe` (side by side) | fully offline install (runtime bundled as an external payload, matched by hash) |
-| `GraphMailer-<ver>.msi` | the .NET 8 Desktop Runtime x64 is already guaranteed on the target |
+| `GraphMailer-<ver>.msi` | the .NET 10 Desktop Runtime x64 is already guaranteed on the target (the MSI refuses to install without it) |
 
 ## Install / uninstall
 

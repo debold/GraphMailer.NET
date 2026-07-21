@@ -22,7 +22,7 @@ param(
     [string] $OutputRoot = 'C:\Build\GraphMailer.NET\Releases',
     # Bundle the .NET runtime into the output (no .NET needed on the target,
     # ~260 MB). Default: framework-dependent — requires the .NET Desktop
-    # Runtime 8 (x64) on the target machine, but is a fraction of the size.
+    # Runtime 10 (x64) on the target machine, but is a fraction of the size.
     [switch] $SelfContained
 )
 
@@ -52,7 +52,7 @@ Write-Host ""
 Write-Host "GraphMailer release build" -ForegroundColor Cyan
 Write-Host "  Version   : $semVer  (file: $fileVersion)" -ForegroundColor Cyan
 Write-Host "  Output    : $outDir" -ForegroundColor Cyan
-Write-Host ("  Runtime   : " + ($(if ($SelfContained) { 'self-contained (bundled .NET)' } else { 'framework-dependent (.NET Desktop Runtime 8 x64 required on target)' }))) -ForegroundColor Cyan
+Write-Host ("  Runtime   : " + ($(if ($SelfContained) { 'self-contained (bundled .NET)' } else { 'framework-dependent (.NET Desktop Runtime 10 x64 required on target)' }))) -ForegroundColor Cyan
 Write-Host ""
 
 # ── Clean ────────────────────────────────────────────────────────────────────
