@@ -55,11 +55,18 @@ internal sealed class AppInsightsTelemetrySender : ITelemetrySender, IDisposable
     /// PII guarantee: the SDK defaults the role instance to the machine's hostname.
     /// SDK 2.x additionally carried an internal context with a NodeName tag that had to be
     /// cleared; 3.x has no such context — CloudContext is the only place a hostname can surface.
+    ///
+    /// Location.Ip is set explicitly because the ingestion endpoint otherwise geo-resolves the
+    /// connection IP to city level and stores it as client_City/StateOrProvince/CountryOrRegion.
+    /// The IP itself is masked either way, but the derived location is not — and the help page
+    /// promises users an exhaustive list of what leaves their machine. Sending a placeholder
+    /// makes the endpoint use that instead of looking anything up.
     /// </summary>
     private static void Scrub(TelemetryContext context)
     {
         context.Cloud.RoleName = "GraphMailer";
         context.Cloud.RoleInstance = "-";
+        context.Location.Ip = "0.0.0.0";
     }
 
     public async Task<bool> FlushAsync(CancellationToken ct = default)

@@ -60,7 +60,9 @@ in the field.
 
 **Never transmitted**: email addresses, message content, subjects, IP addresses, hostnames, user
 or tenant names, or any configuration values. Error messages are deliberately dropped because they
-could contain such data — only type names and code locations are kept.
+could contain such data — only type names and code locations are kept. GraphMailer also suppresses
+the location lookup that the telemetry service would otherwise perform on the sending connection,
+so no country, region or city is recorded either.
 
 > [!NOTE]
 > The data is sent to the developer's Microsoft Azure telemetry endpoint (Application Insights,
