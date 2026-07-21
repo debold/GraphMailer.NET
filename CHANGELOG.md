@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.2.4.1031 — 2026-07-21
 
-Dependency maintenance round — every third-party component was reviewed against
-`internal/DEPENDENCY_UPDATE_PLAYBOOK.md`. All eleven security advisories that affected the
-project are closed; both the service and the ConfigTool now report no vulnerable packages at
-all. No functional change is intended anywhere in this round.
+Reworked list and details layout across Logs, Messages and the new Activity tab, plus a full
+dependency maintenance round: every third-party component was reviewed against
+`internal/DEPENDENCY_UPDATE_PLAYBOOK.md`, and all eleven security advisories that affected the
+project are closed — service and ConfigTool both report no vulnerable packages at all. The
+dependency work is not intended to change any behaviour.
 
 ### Security
 
@@ -29,21 +30,6 @@ all. No functional change is intended anywhere in this round.
   is the SMTP *client* the tests drive the relay with — it is not part of the shipped product,
   so no deployed version of GraphMailer was ever exposed to this. The `NoWarn="NU1902"` that
   suppressed the advisory has been removed, so future MailKit advisories surface again.
-
-### Changed
-
-- **Upgraded the Microsoft Graph SDK from 5.105.0 to 6.2.0** (Graph.Core 4.0.1, Kiota 2.0.0).
-  No functional change — mail delivery, sender directory lookups, the Entra setup wizard and the
-  permission self-check all use the same SDK surface as before, and the upgrade required no code
-  changes. Operators should see identical behaviour; the install grows by the
-  `Microsoft.IdentityModel.*` assemblies that Graph.Core 4 brings along.
-- **Kept the remaining runtime dependencies current**: Serilog 4.4.0, Serilog.Sinks.File 7.0.0,
-  Serilog.Sinks.Console 6.1.1 and Microsoft.Extensions.Hosting.WindowsServices 8.0.1. Logging,
-  service lifecycle and configuration behave as before. Test tooling (xunit, NSubstitute,
-  coverlet, FluentAssertions, the test SDK) was updated in the same round without touching the
-  shipped product.
-
-## 1.2.4.1014 — 2026-07-21
 
 ### Added
 
@@ -78,6 +64,16 @@ all. No functional change is intended anywhere in this round.
   themselves every five seconds and offer no way to pause that, which left the button without
   a job. The Logs page keeps its Refresh button — there it works together with the
   *Auto-refresh* checkbox, which can freeze the view.
+- **Upgraded the Microsoft Graph SDK from 5.105.0 to 6.2.0** (Graph.Core 4.0.1, Kiota 2.0.0).
+  No functional change — mail delivery, sender directory lookups, the Entra setup wizard and the
+  permission self-check all use the same SDK surface as before, and the upgrade required no code
+  changes. Operators should see identical behaviour; the install grows by the
+  `Microsoft.IdentityModel.*` assemblies that Graph.Core 4 brings along.
+- **Kept the remaining runtime dependencies current**: Serilog 4.4.0, Serilog.Sinks.File 7.0.0,
+  Serilog.Sinks.Console 6.1.1 and Microsoft.Extensions.Hosting.WindowsServices 8.0.1. Logging,
+  service lifecycle and configuration behave as before. Test tooling (xunit, NSubstitute,
+  coverlet, FluentAssertions, the test SDK) was updated in the same round without touching the
+  shipped product.
 
 ### Fixed
 
