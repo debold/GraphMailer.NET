@@ -45,7 +45,7 @@
          including 2.1.11. Fixed in 2.1.12. The net10.0 move did NOT make this pin redundant;
          drop it only once Microsoft.Data.Sqlite itself resolves 2.1.12 or newer. -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.10" />
     <PackageReference Include="Microsoft.Graph" Version="6.2.0" />
     <PackageReference Include="MimeKit" Version="4.17.0" />
     <!-- Explicit Serilog pin: keeps the shared DLL identical to the one the
