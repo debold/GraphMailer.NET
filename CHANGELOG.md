@@ -15,6 +15,12 @@
   8.0.29 — the highest version available for .NET 8 — still resolves SQLitePCLRaw 2.1.6, so no
   parent update fixes this and an explicit pin was required. `metrics.db` now runs on SQLite
   3.53.3; the file format is unchanged.
+- **Pinned `Microsoft.Graph.Core` to 3.2.6**, closing CVE-2026-44503 / GHSA-7j59-v9qr-6fq9
+  (High) in the Kiota libraries underneath the Graph SDK: their redirect handler stripped the
+  `Authorization` header when following a 3xx to a different host, but forwarded `Cookie`,
+  `Proxy-Authorization` and all custom headers. `Microsoft.Graph` 5.105.0 resolves Graph.Core
+  3.2.5 with the affected Kiota 1.21.1; 3.2.6 pulls the fixed 1.22.1. `Microsoft.Graph` itself
+  is unchanged.
 
 ## 1.2.4.1014 — 2026-07-21
 
