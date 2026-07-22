@@ -242,4 +242,184 @@ public sealed class GraphApiClientTests
             "without the ContentId the cid: reference in the HTML body breaks");
         att.IsInline.Should().BeTrue("inline images must not show up as visible attachments");
     }
+
+    [Fact]
+    public void CollectAttachments_CidImageWithoutDisposition_IsInlineAttachment()
+    {
+        // Some mailers omit Content-Disposition on cid-referenced resources entirely.
+        // The old filter (attachment or inline disposition required) silently dropped them.
+        var mime = BaseMime();
+        var image = new MimePart("image", "png")
+        {
+            Content = new MimeKit.MimeContent(new MemoryStream(new byte[64])),
+            ContentTransferEncoding = ContentEncoding.Base64,
+            ContentId = "chart@example.com",
+        };
+        var html = new TextPart("html") { Text = """<img src="cid:chart@example.com">""" };
+        mime.Body = new Multipart("related") { html, image };
+
+        var (small, large) = GraphApiClient.CollectAttachments(mime);
+
+        large.Should().BeEmpty();
+        var att = small.Should().ContainSingle().Subject;
+        att.ContentId.Should().Be("chart@example.com");
+        att.IsInline.Should().BeTrue("a cid-referenced part without disposition is an embedded resource");
+    }
+
+    // =========================================================================
+    // CollectAttachments — no silent drops (incident 2026-07-22)
+    // =========================================================================
+
+    [Fact]
+    public void CollectAttachments_MalformedDispositionToken_IsAttached()
+    {
+        // Regression for the 2026-07-22 incident: SecureBlackbox 16 writes the file
+        // name where RFC 2183 expects the disposition TYPE. §2.8 requires treating
+        // any unrecognized type as "attachment" — the part must never be dropped.
+        const string eml = """
+            From: sender@example.com
+            To: rcpt@example.com
+            Subject: Anhang Test
+            MIME-Version: 1.0
+            Content-Type: multipart/mixed; boundary="B"; charset=UTF-8
+
+            --B
+            Content-Type: text/html; charset=UTF-8
+
+            <html><body>Hi</body></html>
+            --B
+            Content-Type: application/octet-stream; name="scan.png"; charset=UTF-8
+            Content-Disposition: scan.png; filename="scan.png"
+            Content-Transfer-Encoding: base64
+
+            iVBORw0KGgo=
+            --B--
+            """;
+        var mime = MimeMessage.Load(new MemoryStream(System.Text.Encoding.ASCII.GetBytes(eml)));
+
+        var (small, large) = GraphApiClient.CollectAttachments(mime);
+
+        large.Should().BeEmpty();
+        var att = small.Should().ContainSingle().Subject;
+        att.Name.Should().Be("scan.png");
+        att.IsInline.Should().BeFalse();
+        att.ContentBytes.Should().NotBeEmpty();
+
+        // …and the body must stay the body: exactly one place per part.
+        var msg = GraphApiClient.BuildMessage(mime, small, ["rcpt@example.com"]);
+        msg.Body!.ContentType.Should().Be(BodyType.Html);
+        msg.Body.Content.Should().Contain("Hi");
+    }
+
+    [Fact]
+    public void CollectAttachments_TextPlainWithAttachmentDisposition_IsAttached()
+    {
+        // The old filter excluded text/plain and text/html by MIME type, dropping
+        // genuine .txt/.html file attachments regardless of their disposition.
+        var mime = BaseMime();
+        var notes = new TextPart("plain")
+        {
+            Text = "attached notes",
+            ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+        };
+        notes.ContentDisposition.FileName = "notes.txt";
+        mime.Body = new Multipart("mixed") { new TextPart("plain") { Text = "Body" }, notes };
+
+        var (small, large) = GraphApiClient.CollectAttachments(mime);
+
+        large.Should().BeEmpty();
+        var att = small.Should().ContainSingle().Subject;
+        att.Name.Should().Be("notes.txt");
+        att.ContentType.Should().Be("text/plain");
+    }
+
+    [Fact]
+    public void CollectAttachments_NamedTextPartWithoutDisposition_IsAttached()
+    {
+        // A text part announcing a file name (Content-Type name parameter) is a file,
+        // not a body candidate — even when the mailer sent no Content-Disposition.
+        var mime = BaseMime();
+        var csv = new TextPart("plain") { Text = "a;b;c" };
+        csv.ContentType.Name = "data.csv";
+        var html = new TextPart("html") { Text = "<p>Body</p>" };
+        mime.Body = new Multipart("mixed") { html, csv };
+
+        var (small, large) = GraphApiClient.CollectAttachments(mime);
+
+        large.Should().BeEmpty();
+        small.Should().ContainSingle().Which.Name.Should().Be("data.csv");
+
+        var msg = GraphApiClient.BuildMessage(mime, small, ["rcpt@example.com"]);
+        msg.Body!.Content.Should().Contain("Body").And.NotContain("a;b;c",
+            "a part must end up in exactly one place — attachment, not also body");
+    }
+
+    [Fact]
+    public void CollectAttachments_AttachedMessage_IsForwardedAsEmlFile()
+    {
+        // message/rfc822 parts are not MimeParts — the old OfType<MimePart>() filter
+        // dropped the attached mail and hoisted its inner parts instead.
+        var inner = BaseMime(m =>
+        {
+            m.Subject = "Inner mail";
+            var builder = new BodyBuilder { TextBody = "inner body" };
+            builder.Attachments.Add("inner.pdf", new byte[256]);
+            m.Body = builder.ToMessageBody();
+        });
+        var mime = BaseMime();
+        mime.Body = new Multipart("mixed")
+        {
+            new TextPart("plain") { Text = "see attached mail" },
+            new MessagePart("rfc822") { Message = inner },
+        };
+
+        var (small, large) = GraphApiClient.CollectAttachments(mime);
+
+        large.Should().BeEmpty();
+        var att = small.Should().ContainSingle(
+            "the attached mail is one unit; its inner parts must not be hoisted").Subject;
+        att.Name.Should().EndWith(".eml");
+        att.ContentType.Should().Be("message/rfc822");
+        var roundtrip = MimeMessage.Load(new MemoryStream(att.ContentBytes!));
+        roundtrip.Subject.Should().Be("Inner mail", "the forwarded .eml must be the byte-exact inner message");
+    }
+
+    [Fact]
+    public void CollectAttachments_AlternativeBodies_AreNotAttached()
+    {
+        var mime = BaseMime();
+        mime.Body = new MultipartAlternative
+        {
+            new TextPart("plain") { Text = "plain body" },
+            new TextPart("html") { Text = "<p>html body</p>" },
+        };
+
+        var (small, large) = GraphApiClient.CollectAttachments(mime);
+
+        small.Should().BeEmpty("alternative renderings of the body are not attachments");
+        large.Should().BeEmpty();
+
+        var msg = GraphApiClient.BuildMessage(mime, small, ["rcpt@example.com"]);
+        msg.Body!.ContentType.Should().Be(BodyType.Html, "the richest alternative wins, as in every mail client");
+        msg.Body.Content.Should().Contain("html body");
+    }
+
+    [Fact]
+    public void CollectAttachments_SecondTextPartInMixed_IsAttachedNotDropped()
+    {
+        // Outside multipart/alternative a second text part is content of its own
+        // (digest-style mail) — it must survive as an attachment.
+        var mime = BaseMime();
+        mime.Body = new Multipart("mixed")
+        {
+            new TextPart("plain") { Text = "first" },
+            new TextPart("plain") { Text = "second" },
+        };
+
+        var (small, large) = GraphApiClient.CollectAttachments(mime);
+
+        large.Should().BeEmpty();
+        var att = small.Should().ContainSingle().Subject;
+        System.Text.Encoding.UTF8.GetString(att.ContentBytes!).Should().Contain("second");
+    }
 }

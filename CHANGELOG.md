@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.3.1.1052 — 2026-07-22
+
+### Fixed
+
+- **Attachments with malformed or missing `Content-Disposition` headers are no longer silently
+  dropped.** Attachment detection was stricter than RFC 2183 allows: only parts whose disposition
+  type was literally `attachment` or `inline` were carried over to Graph. Everything else vanished
+  without a trace — the mail was logged as delivered, the archived copy contained the attachment,
+  but the recipient never got it. Seen in the wild with SecureBlackbox 16, which writes the file
+  name where the disposition type belongs (`Content-Disposition: scan.png; filename="scan.png"`).
+
+  Attachment classification is now shared between reception statistics and Graph delivery
+  (`MimeMessageSplitter`) and follows RFC 2183 §2.8: any disposition type other than `inline` —
+  including unknown or malformed tokens — is treated as an attachment. The same rework closes
+  three further silent-drop gaps:
+  - `.txt`/`.html` file attachments were dropped by MIME type, even with a correct
+    `Content-Disposition: attachment`.
+  - Attached e-mails (`message/rfc822`) were dropped, and their inner parts hoisted into the
+    outer mail instead. They are now forwarded byte-exact as a single `.eml` file attachment.
+  - `cid:`-referenced inline resources without any disposition header were dropped; they now
+    stay embedded (Content-ID and inline flag preserved).
+
+  By construction nothing is discarded anymore: every MIME part ends up either in the body or in
+  the attachment list. The only exception is surplus renderings inside `multipart/alternative`
+  (which no client displays either); those are counted and logged at Debug.
+
+### Changed
+
+- **The "Queued" and "Delivered" log lines now include the attachment count**, so operators can
+  verify from the default Information log that a message arrived and left with its attachments —
+  a mismatch between the two lines is visible without enabling Debug logging.
+- **Reception statistics count attachments the same way delivery does.** Inline images and parts
+  with malformed disposition headers are now included in `AttachmentCount`/`AttachmentBytes`
+  (meta files and metrics), so received and sent counts describe the same thing.
+
 ## 1.3.0.1051 — 2026-07-22
 
 A platform release: GraphMailer moves from .NET 8 to .NET 10, and every dependency follows onto

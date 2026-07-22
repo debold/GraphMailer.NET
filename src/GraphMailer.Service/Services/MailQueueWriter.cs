@@ -122,9 +122,11 @@ internal sealed class MailQueueWriter
             File.Move(tmpEml, finalEml, overwrite: false);
             File.Move(tmpMeta, finalMeta, overwrite: false);
 
+            // Attachment count at Information level, mirroring the "Delivered" line:
+            // a mismatch between the two is visible from the default log alone.
             _logger.LogInformation(
-                "[MailQueue] Queued {MessageId} | From: {From} | To: {Recipients} | Subject: {Subject} (IP: {Ip})",
-                messageId, from, string.Join(", ", recipients), info.Subject, clientIp);
+                "[MailQueue] Queued {MessageId} | From: {From} | To: {Recipients} | Subject: {Subject} | Attachments: {AttachmentCount} (IP: {Ip})",
+                messageId, from, string.Join(", ", recipients), info.Subject, info.AttachmentCount, clientIp);
 
             return meta;
         }
@@ -166,15 +168,18 @@ internal sealed class MailQueueWriter
             foreach (var mailbox in mime.Cc.Mailboxes) { ccCount++; headerAddresses.Add(mailbox.Address); }
             var bccCount = envelopeRecipients.Count(r => !headerAddresses.Contains(r));
 
-            var attachmentCount = 0;
+            // Same classification the Graph delivery uses (MimeMessageSplitter), so the
+            // recorded count always equals what actually leaves via Graph — including
+            // inline images and parts with malformed Content-Disposition headers that
+            // MimeKit's own Attachments view does not count.
+            var split = MimeMessageSplitter.Split(mime);
+            var attachmentCount = split.Attachments.Count;
             long attachmentBytes = 0;
-            foreach (var attachment in mime.Attachments)
+            foreach (var attachment in split.Attachments)
             {
-                attachmentCount++;
                 // Raw (still-encoded) content size — close enough for statistics and
                 // avoids decoding every attachment just to measure it.
-                if (attachment is MimeKit.MimePart { Content.Stream.CanSeek: true } part)
-                    attachmentBytes += part.Content.Stream.Length;
+                attachmentBytes += MimeMessageSplitter.MeasureEncodedSize(attachment.Entity);
             }
 
             return new MessageInfo(

@@ -83,12 +83,18 @@ internal sealed class GraphApiClient : IGraphApiClient
         using var stream = new MemoryStream(emlContent);
         var mime = await MimeMessage.LoadAsync(stream, ct);
 
-        var (smallAttachments, largeAttachments) = CollectAttachments(mime);
+        var split = MimeMessageSplitter.Split(mime);
+        if (split.DroppedAlternativeBodies > 0)
+            _logger.LogDebug(
+                "[GraphApi] {MessageId}: {Count} surplus multipart/alternative body rendering(s) not carried over (clients would not display them either)",
+                messageId, split.DroppedAlternativeBodies);
+
+        var (smallAttachments, largeAttachments) = CollectAttachments(split);
 
         // The 4 MB request cap applies to the TOTAL request, not per attachment:
         // several individually small attachments can still overflow a direct send.
         var moved = RebalanceForRequestCap(
-            (mime.HtmlBody ?? mime.TextBody ?? string.Empty).Length, smallAttachments, largeAttachments);
+            ((split.HtmlBody ?? split.TextBody)?.Text ?? string.Empty).Length, smallAttachments, largeAttachments);
         if (moved > 0)
             _logger.LogDebug(
                 "[GraphApi] {MessageId}: moved {Moved} attachment(s) to the upload-session path to stay under the 4 MB request cap",
@@ -201,8 +207,10 @@ internal sealed class GraphApiClient : IGraphApiClient
 
         await client.Users[sendAs].SendMail.PostAsync(requestBody, cancellationToken: ct);
 
-        _logger.LogInformation("[GraphApi] Delivered {MessageId} via sendMail (from: {From})",
-            messageId, mime.From.ToString());
+        // Attachment count at Information level: operators must be able to see from the
+        // default log alone whether a delivered message carried its attachments.
+        _logger.LogInformation("[GraphApi] Delivered {MessageId} via sendMail (from: {From}, attachments: {AttachmentCount})",
+            messageId, mime.From.ToString(), attachments.Count);
     }
 
     /// <summary>
@@ -243,8 +251,8 @@ internal sealed class GraphApiClient : IGraphApiClient
             await client.Users[sendAs].Messages[draft.Id].Send.PostAsync(cancellationToken: ct);
 
             _logger.LogInformation(
-                "[GraphApi] Delivered {MessageId} via draft + upload session (from: {From})",
-                messageId, mime.From.ToString());
+                "[GraphApi] Delivered {MessageId} via draft + upload session (from: {From}, attachments: {AttachmentCount})",
+                messageId, mime.From.ToString(), smallAttachments.Count + largeAttachments.Count);
         }
         catch
         {
@@ -345,13 +353,19 @@ internal sealed class GraphApiClient : IGraphApiClient
             .Select(addr => new Recipient { EmailAddress = new EmailAddress { Address = addr } })
             .ToList();
 
+        // Body selection must use the same classification as CollectAttachments —
+        // otherwise a part could end up in both places (duplicated) or neither (lost).
+        // MimeKit's HtmlBody/TextBody use a stricter attachment notion and disagree
+        // with the splitter for e.g. named text parts.
+        var split = MimeMessageSplitter.Split(mime);
+
         var message = new Message
         {
             Subject = mime.Subject,
             Body = new ItemBody
             {
-                ContentType = mime.HtmlBody is not null ? BodyType.Html : BodyType.Text,
-                Content = mime.HtmlBody ?? mime.TextBody ?? string.Empty
+                ContentType = split.HtmlBody is not null ? BodyType.Html : BodyType.Text,
+                Content = split.HtmlBody?.Text ?? split.TextBody?.Text ?? string.Empty
             },
             From = ConvertMailbox(mime.From.Mailboxes.FirstOrDefault()),
             ReplyTo = ConvertAddressList(mime.ReplyTo),
@@ -443,32 +457,64 @@ internal sealed class GraphApiClient : IGraphApiClient
 
     /// <summary>
     /// Splits message attachments into small (&lt; 3 MB) and large (≥ 3 MB) lists.
-    /// Inline parts (embedded images etc.) keep their ContentId and IsInline flag so
-    /// <c>&lt;img src="cid:…"&gt;</c> references in the HTML body keep working — without
-    /// them the image shows up as a visible attachment instead.
+    /// Classification comes from <see cref="MimeMessageSplitter"/> (RFC-2183-lenient:
+    /// no part is silently discarded). Inline parts (embedded images etc.) keep their
+    /// ContentId and IsInline flag so <c>&lt;img src="cid:…"&gt;</c> references in the
+    /// HTML body keep working — without them the image shows up as a visible attachment
+    /// instead. Attached messages (message/rfc822) are forwarded byte-exact as .eml files.
     /// </summary>
     internal static (List<FileAttachment> Small, List<LargeAttachment> Large)
         CollectAttachments(MimeMessage message)
+        => CollectAttachments(MimeMessageSplitter.Split(message));
+
+    internal static (List<FileAttachment> Small, List<LargeAttachment> Large)
+        CollectAttachments(MimeMessageSplitter.SplitResult split)
     {
         var small = new List<FileAttachment>();
         var large = new List<LargeAttachment>();
 
-        // Include both Attachments and inline MIME parts so embedded images are not dropped
-        var parts = message.BodyParts.OfType<MimePart>()
-            .Where(p => (p.IsAttachment || p.ContentDisposition?.Disposition == ContentDisposition.Inline)
-                     && p.ContentType.MimeType != "text/plain"
-                     && p.ContentType.MimeType != "text/html");
-
-        foreach (var part in parts)
+        foreach (var (entity, isInline) in split.Attachments)
         {
-            var name = part.FileName ?? "attachment";
-            var mediaType = part.ContentType.MimeType;
-            var isInline = part.ContentDisposition?.Disposition == ContentDisposition.Inline;
-            var contentId = string.IsNullOrWhiteSpace(part.ContentId) ? null : part.ContentId;
+            string name;
+            string mediaType;
+            string? contentId;
+            byte[] bytes;
 
-            using var ms = new MemoryStream();
-            part.Content?.DecodeTo(ms);
-            var bytes = ms.ToArray();
+            switch (entity)
+            {
+                case MimePart part:
+                {
+                    name = part.FileName ?? "attachment";
+                    mediaType = part.ContentType.MimeType;
+                    contentId = string.IsNullOrWhiteSpace(part.ContentId) ? null : part.ContentId;
+
+                    using var ms = new MemoryStream();
+                    part.Content?.DecodeTo(ms);
+                    bytes = ms.ToArray();
+                    break;
+                }
+                case MessagePart rfc822:
+                {
+                    // Attached e-mail → standard .eml file attachment: byte-exact, and
+                    // every mail client opens it as the original message.
+                    var dispositionName = rfc822.ContentDisposition?.FileName;
+                    name = !string.IsNullOrWhiteSpace(dispositionName)
+                        ? dispositionName
+                        : string.IsNullOrWhiteSpace(rfc822.Message?.Subject)
+                            ? "attached-message" : rfc822.Message.Subject;
+                    if (!name.EndsWith(".eml", StringComparison.OrdinalIgnoreCase))
+                        name += ".eml";
+                    mediaType = rfc822.ContentType.MimeType;
+                    contentId = null;
+
+                    using var ms = new MemoryStream();
+                    rfc822.Message?.WriteTo(ms);
+                    bytes = ms.ToArray();
+                    break;
+                }
+                default:
+                    continue; // unreachable: the splitter emits only MimePart/MessagePart
+            }
 
             if (bytes.Length <= LargeAttachmentThreshold)
                 small.Add(new FileAttachment

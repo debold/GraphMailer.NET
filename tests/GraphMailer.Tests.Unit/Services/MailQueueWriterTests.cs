@@ -226,6 +226,66 @@ public sealed class MailQueueWriterTests : IDisposable
     }
 
     [Fact]
+    public async Task WriteAsync_MalformedAttachmentDisposition_IsCounted()
+    {
+        // Regression for the 2026-07-22 incident: a Content-Disposition whose type is
+        // the file name instead of "attachment" (SecureBlackbox 16). MimeKit's own
+        // Attachments view does not count it — the shared splitter must.
+        var sut = CreateSut();
+        const string eml = """
+            From: sender@example.com
+            To: rcpt@example.com
+            Subject: Anhang Test
+            MIME-Version: 1.0
+            Content-Type: multipart/mixed; boundary="B"; charset=UTF-8
+
+            --B
+            Content-Type: text/html; charset=UTF-8
+
+            <html><body>Hi</body></html>
+            --B
+            Content-Type: application/octet-stream; name="scan.png"; charset=UTF-8
+            Content-Disposition: scan.png; filename="scan.png"
+            Content-Transfer-Encoding: base64
+
+            iVBORw0KGgo=
+            --B--
+            """;
+
+        var meta = await sut.WriteAsync("sender@example.com", ["rcpt@example.com"], "127.0.0.1",
+            System.Text.Encoding.ASCII.GetBytes(eml));
+
+        meta.AttachmentCount.Should().Be(1,
+            "the reception statistics must count what Graph delivery will actually send");
+        meta.AttachmentBytes.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task WriteAsync_InlineCidImage_IsCountedAsAttachment()
+    {
+        // Inline images travel in the Graph attachment list (IsInline), so the reception
+        // count includes them — keeping received == sent semantics.
+        var sut = CreateSut();
+        var message = new MimeKit.MimeMessage();
+        message.From.Add(MimeKit.MailboxAddress.Parse("sender@example.com"));
+        message.To.Add(MimeKit.MailboxAddress.Parse("rcpt@example.com"));
+        message.Subject = "Inline image";
+        var builder = new MimeKit.BodyBuilder();
+        var logo = builder.LinkedResources.Add("logo.png", new byte[128],
+            new MimeKit.ContentType("image", "png"));
+        logo.ContentId = MimeKit.Utils.MimeUtils.GenerateMessageId();
+        builder.HtmlBody = $"""<img src="cid:{logo.ContentId}">""";
+        message.Body = builder.ToMessageBody();
+        using var stream = new MemoryStream();
+        message.WriteTo(stream);
+
+        var meta = await sut.WriteAsync("sender@example.com", ["rcpt@example.com"], "127.0.0.1",
+            stream.ToArray());
+
+        meta.AttachmentCount.Should().Be(1);
+    }
+
+    [Fact]
     public async Task WriteAsync_NoAttachments_CountsZero()
     {
         var sut = CreateSut();

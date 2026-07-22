@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 787 tests** (729 unit · 58 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-21
+**Total: 796 tests** (738 unit · 58 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-22
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -398,6 +398,8 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `WriteAsync_SubjectAfterLargeHeaderBlock_IsStillExtracted` | ~12 KB of Received headers before Subject | Subject extracted (regression: the old 8 KB scan cutoff lost it) |
 | `WriteAsync_SubjectLookalikeInBody_IsNotExtracted` | No Subject header; body contains `Subject: …` | `meta.Subject` empty — parsing stops at the blank line |
 | `WriteAsync_CountsAttachmentsAndBytes` | MIME message with two attachments | `meta.AttachmentCount` = 2, `meta.AttachmentBytes` > 0 (reception statistics) |
+| `WriteAsync_MalformedAttachmentDisposition_IsCounted` | `Content-Disposition: <filename>; filename="…"` — file name where RFC 2183 expects the type (SecureBlackbox 16) | `AttachmentCount` = 1, `AttachmentBytes` > 0 (regression: MimeKit's `Attachments` view counted 0 — incident 2026-07-22) |
+| `WriteAsync_InlineCidImage_IsCountedAsAttachment` | HTML body with one `cid:`-referenced inline image | `AttachmentCount` = 1 — reception statistics use the same classification as Graph delivery (received == sent semantics) |
 | `WriteAsync_NoAttachments_CountsZero` | MIME message without attachments | `AttachmentCount` = 0, `AttachmentBytes` = 0 |
 | `WriteAsync_DerivesCcAndBccFromHeadersAndEnvelope` | To + Cc headers; envelope has one extra recipient | `CcCount` = 1; `BccCount` = 1 (envelope recipient in no header was blind-copied) |
 | `WriteAsync_BccDerivation_IsCaseInsensitive` | Envelope address differs from To header only by case | `BccCount` = 0 — matching ignores case |
@@ -477,6 +479,13 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `BuildMessage_MessageIdAndThreadingHeaders_AreForwarded` | Message-ID, In-Reply-To, References set | `internetMessageId` + MAPI extended properties `0x1042`/`0x1039` populated |
 | `BuildMessage_CustomXHeaders_AreForwarded_ReservedOnesAreNot` | `X-Legacy-App`, `X-MS-Exchange-*`, `X-Priority`, non-x header | Only `X-Legacy-App` forwarded (Graph allows x-* only; reserved/mapped ones skipped) |
 | `CollectAttachments_InlineCidImage_KeepsContentIdAndInlineFlag` | multipart/related with inline PNG (`cid:`) | Small attachment carries `ContentId` + `IsInline == true` (regression: inline images showed as visible attachments) |
+| `CollectAttachments_CidImageWithoutDisposition_IsInlineAttachment` | `cid:`-referenced image with a Content-ID but no Content-Disposition header at all | Attached with `IsInline == true` + `ContentId` kept (regression: the old filter required a disposition and silently dropped the part) |
+| `CollectAttachments_MalformedDispositionToken_IsAttached` | `Content-Disposition: scan.png; filename="scan.png"` — file name where RFC 2183 expects the type (SecureBlackbox 16, incident 2026-07-22) | Part is attached (RFC 2183 §2.8: unknown disposition type = attachment); body stays the body |
+| `CollectAttachments_TextPlainWithAttachmentDisposition_IsAttached` | `.txt` file with proper `Content-Disposition: attachment` next to a text body | Attached as `text/plain` (regression: the old MIME-type exclusion dropped every text/plain / text/html attachment) |
+| `CollectAttachments_NamedTextPartWithoutDisposition_IsAttached` | Text part with `Content-Type` `name=` parameter but no disposition header | Attached under its file name; NOT duplicated into the body (every part ends up in exactly one place) |
+| `CollectAttachments_AttachedMessage_IsForwardedAsEmlFile` | `message/rfc822` part (attached e-mail that itself contains an attachment) | One `message/rfc822` attachment named `*.eml`, byte-exact round-trip; inner parts NOT hoisted (regression: `OfType<MimePart>()` dropped the mail and hoisted its inner parts) |
+| `CollectAttachments_AlternativeBodies_AreNotAttached` | multipart/alternative with plain + HTML rendering | No attachments; Graph body is the HTML alternative (richest wins, as in every client) |
+| `CollectAttachments_SecondTextPartInMixed_IsAttachedNotDropped` | Two unnamed text/plain parts in multipart/mixed (digest-style) | First becomes the body, second becomes an attachment — content outside multipart/alternative is never discarded |
 
 ---
 
