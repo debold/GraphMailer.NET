@@ -39,6 +39,14 @@ internal sealed class GraphApiClient : IGraphApiClient
     // Exchange Online rejects messages with more envelope recipients than this.
     internal const int MaxRecipients = 500;
 
+    // Graph rejects a message carrying more custom internet headers than this with
+    // 400 InvalidInternetMessageHeaderCollection ("Maximum number of headers in one
+    // message should be less than or equal to 5"). Exchange limits it because every
+    // custom header burns a named property in the store ("X-haustion"). Real-world mail
+    // routinely carries more (X-Mailer, X-Originating-IP, X-Spam-*, X-Virus-Scanned, …),
+    // so the list must be capped here — sending more can never succeed.
+    internal const int MaxCustomHeaders = 5;
+
     /// <summary>An attachment routed to the draft + upload-session delivery path.</summary>
     internal readonly record struct LargeAttachment(
         string Name, string ContentType, byte[] Content, string? ContentId, bool IsInline);
@@ -89,12 +97,22 @@ internal sealed class GraphApiClient : IGraphApiClient
                 "[GraphApi] {MessageId}: {Count} surplus multipart/alternative body rendering(s) not carried over (clients would not display them either)",
                 messageId, split.DroppedAlternativeBodies);
 
+        WarnAboutUnrelayableContent(mime, messageId);
+
+        // Policy rejection with the concrete reason: these addresses stand in the To:/Cc:
+        // header but were never RCPT TO'd, so they are not delivered to.
+        var notInEnvelope = FindNonEnvelopeRecipients(mime, envelopeRecipients);
+        if (notInEnvelope.Count > 0)
+            _logger.LogWarning(
+                "[GraphApi] {MessageId}: {Count} header recipient(s) not in the SMTP envelope — not delivered to: {Recipients}",
+                messageId, notInEnvelope.Count, string.Join(", ", notInEnvelope));
+
         var (smallAttachments, largeAttachments) = CollectAttachments(split);
 
         // The 4 MB request cap applies to the TOTAL request, not per attachment:
         // several individually small attachments can still overflow a direct send.
         var moved = RebalanceForRequestCap(
-            ((split.HtmlBody ?? split.TextBody)?.Text ?? string.Empty).Length, smallAttachments, largeAttachments);
+            EstimateBodyBytes(split), smallAttachments, largeAttachments);
         if (moved > 0)
             _logger.LogDebug(
                 "[GraphApi] {MessageId}: moved {Moved} attachment(s) to the upload-session path to stay under the 4 MB request cap",
@@ -107,19 +125,15 @@ internal sealed class GraphApiClient : IGraphApiClient
         var attachmentBytes =
             smallAttachments.Sum(a => (long)(a.ContentBytes?.Length ?? 0)) +
             largeAttachments.Sum(a => (long)a.Content.Length);
-        var result = new GraphDeliveryResult(
-            largeAttachments.Count == 0 ? GraphDeliveryResult.VariantSendMail : GraphDeliveryResult.VariantDraftUpload,
-            smallAttachments.Count + largeAttachments.Count,
-            attachmentBytes);
+        var attachmentCount = smallAttachments.Count + largeAttachments.Count;
 
         try
         {
-            if (largeAttachments.Count == 0)
-                await SendDirectAsync(client, sendAs, mime, smallAttachments, envelopeRecipients, messageId, saveToSentItems, ct);
-            else
-                await SendViaDraftAsync(client, sendAs, mime, smallAttachments, largeAttachments, envelopeRecipients, messageId, ct);
+            var variant = await DeliverWithFallbacksAsync(
+                client, sendAs, mime, smallAttachments, largeAttachments,
+                envelopeRecipients, messageId, saveToSentItems, ct);
 
-            return result;
+            return new GraphDeliveryResult(variant, attachmentCount, attachmentBytes);
         }
         catch (ODataError ex)
         {
@@ -154,6 +168,113 @@ internal sealed class GraphApiClient : IGraphApiClient
     }
 
     /// <summary>
+    /// Runs the delivery, degrading rather than failing when Graph objects to something
+    /// that is not the message itself. Two rejections are recoverable and are retried once:
+    ///
+    ///   1. The optional fidelity extras (custom headers, <c>Sender</c>) — resent without
+    ///      them. A mail must never be lost over an <c>X-Spam-Level</c> header.
+    ///   2. Request too large on the direct path — resent through the draft + upload
+    ///      session, which moves the attachment bytes out of the request body. Only a
+    ///      message whose *body* alone busts the cap is genuinely undeliverable.
+    ///
+    /// Returns the <see cref="GraphDeliveryResult"/> variant that actually delivered.
+    /// </summary>
+    private async Task<string> DeliverWithFallbacksAsync(
+        GraphServiceClient client,
+        string sendAs,
+        MimeMessage mime,
+        List<FileAttachment> smallAttachments,
+        List<LargeAttachment> largeAttachments,
+        IReadOnlyList<string> envelopeRecipients,
+        string messageId,
+        bool saveToSentItems,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await DeliverAsync(
+                client, sendAs, mime, smallAttachments, largeAttachments,
+                envelopeRecipients, messageId, saveToSentItems, MessageFidelity.Full, ct);
+        }
+        catch (ODataError ex) when (IsOptionalPropertyRejection(ex.Error?.Code))
+        {
+            // The message is fine — Graph objects to the extras we added for fidelity.
+            // Warning with the concrete cause: the operator must be able to see that the
+            // delivered mail is missing headers the sender set.
+            _logger.LogWarning(
+                "[GraphApi] {MessageId}: Graph rejected the preserved headers/sender ({ErrorCode}) — " +
+                "resending without custom headers and the Sender header so the message still arrives",
+                messageId, ex.Error?.Code);
+
+            return await DeliverAsync(
+                client, sendAs, mime, smallAttachments, largeAttachments,
+                envelopeRecipients, messageId, saveToSentItems, MessageFidelity.WithoutOptionalExtras, ct);
+        }
+        catch (ODataError ex) when (IsRequestTooLarge(ex) && smallAttachments.Count > 0)
+        {
+            // Our size estimate was too optimistic. Rather than NDR a message that is
+            // deliverable, move every remaining attachment onto the upload-session path —
+            // that leaves only the body in the request.
+            _logger.LogWarning(
+                "[GraphApi] {MessageId}: direct send exceeded Graph's request cap ({ErrorCode}) — " +
+                "retrying via draft + upload session with all {Count} attachment(s) uploaded separately",
+                messageId, ex.Error?.Code, smallAttachments.Count);
+
+            foreach (var attachment in smallAttachments)
+                largeAttachments.Add(new LargeAttachment(
+                    attachment.Name ?? "attachment",
+                    attachment.ContentType ?? "application/octet-stream",
+                    attachment.ContentBytes ?? [],
+                    attachment.ContentId,
+                    attachment.IsInline ?? false));
+            smallAttachments.Clear();
+
+            return await DeliverAsync(
+                client, sendAs, mime, smallAttachments, largeAttachments,
+                envelopeRecipients, messageId, saveToSentItems, MessageFidelity.Full, ct);
+        }
+    }
+
+    private async Task<string> DeliverAsync(
+        GraphServiceClient client,
+        string sendAs,
+        MimeMessage mime,
+        List<FileAttachment> smallAttachments,
+        List<LargeAttachment> largeAttachments,
+        IReadOnlyList<string> envelopeRecipients,
+        string messageId,
+        bool saveToSentItems,
+        MessageFidelity fidelity,
+        CancellationToken ct)
+    {
+        if (largeAttachments.Count == 0)
+        {
+            await SendDirectAsync(client, sendAs, mime, smallAttachments, envelopeRecipients,
+                messageId, saveToSentItems, fidelity, ct);
+            return GraphDeliveryResult.VariantSendMail;
+        }
+
+        await SendViaDraftAsync(client, sendAs, mime, smallAttachments, largeAttachments,
+            envelopeRecipients, messageId, fidelity, ct);
+        return GraphDeliveryResult.VariantDraftUpload;
+    }
+
+    /// <summary>
+    /// Graph rejections that mean "the message is fine, one of the optional fidelity
+    /// extras is not": too many custom internet headers, or a <c>Sender</c> the mailbox
+    /// is not allowed to send as. Both are recoverable by dropping the extras.
+    /// </summary>
+    internal static bool IsOptionalPropertyRejection(string? code) =>
+        code is not null
+        && (code.Equals("InvalidInternetMessageHeaderCollection", StringComparison.OrdinalIgnoreCase)
+            || code.Equals("ErrorSendAsDenied", StringComparison.OrdinalIgnoreCase)
+            || code.Equals("ErrorInvalidSender", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsRequestTooLarge(ODataError ex) =>
+        ex.ResponseStatusCode == 413
+        || (ex.Error?.Code?.Equals("ErrorMessageSizeExceeded", StringComparison.OrdinalIgnoreCase) ?? false);
+
+    /// <summary>
     /// Classifies a Graph rejection as permanent (retrying the same message can never
     /// succeed) or transient. Conservative by design: only unambiguous cases are
     /// permanent — auth/permission problems (401/403) stay transient because an
@@ -168,6 +289,13 @@ internal sealed class GraphApiClient : IGraphApiClient
             || code.Equals("MailboxNotEnabledForRESTAPI", StringComparison.OrdinalIgnoreCase)
             || code.Equals("ErrorInvalidUser", StringComparison.OrdinalIgnoreCase))
             return true;
+
+        // Never permanent: these are recoverable by resending without the optional
+        // fidelity extras (see DeliverWithFallbacksAsync). Reaching the classifier at all
+        // means even the stripped-down retry failed — treat it as transient so the message
+        // keeps its retry window instead of being NDR'd over a header.
+        if (IsOptionalPropertyRejection(code))
+            return false;
 
         // 400 Bad Request: the request itself is malformed for Graph — resending the
         //     identical payload cannot succeed.
@@ -197,11 +325,12 @@ internal sealed class GraphApiClient : IGraphApiClient
         IReadOnlyList<string> envelopeRecipients,
         string messageId,
         bool saveToSentItems,
+        MessageFidelity fidelity,
         CancellationToken ct)
     {
         var requestBody = new SendMailPostRequestBody
         {
-            Message = BuildMessage(mime, attachments, envelopeRecipients),
+            Message = BuildMessage(mime, attachments, envelopeRecipients, fidelity),
             SaveToSentItems = saveToSentItems
         };
 
@@ -230,10 +359,11 @@ internal sealed class GraphApiClient : IGraphApiClient
         List<LargeAttachment> largeAttachments,
         IReadOnlyList<string> envelopeRecipients,
         string messageId,
+        MessageFidelity fidelity,
         CancellationToken ct)
     {
         var draft = await client.Users[sendAs].Messages.PostAsync(
-            BuildMessage(mime, smallAttachments, envelopeRecipients), cancellationToken: ct);
+            BuildMessage(mime, smallAttachments, envelopeRecipients, fidelity), cancellationToken: ct);
 
         if (draft?.Id is null)
             throw new InvalidOperationException("[GraphApi] Graph API did not return a draft ID.");
@@ -339,17 +469,40 @@ internal sealed class GraphApiClient : IGraphApiClient
     // Message / attachment builders
     // -------------------------------------------------------------------------
 
-    internal static Message BuildMessage(MimeMessage mime, List<FileAttachment> attachments, IReadOnlyList<string> envelopeRecipients)
+    /// <summary>How much of the original message is carried over.</summary>
+    internal enum MessageFidelity
     {
-        // Derive BCC recipients: envelope has all RCPT TO addresses (To + Cc + Bcc).
-        // Clients strip the Bcc header before sending, so mime.Bcc is always empty.
-        // BCC = envelope addresses that are NOT in the To: or Cc: headers.
-        var explicitAddresses = new HashSet<string>(
+        /// <summary>Everything Graph accepts, including custom headers and Sender.</summary>
+        Full,
+        /// <summary>
+        /// Without the extras Graph may reject (custom internet headers, Sender). Used for
+        /// the one retry after such a rejection — delivering the mail beats preserving a header.
+        /// </summary>
+        WithoutOptionalExtras,
+    }
+
+    internal static Message BuildMessage(
+        MimeMessage mime,
+        List<FileAttachment> attachments,
+        IReadOnlyList<string> envelopeRecipients,
+        MessageFidelity fidelity = MessageFidelity.Full)
+    {
+        // Delivery follows the SMTP envelope, never the headers. The envelope holds every
+        // RCPT TO address (To + Cc + Bcc); a To:/Cc: header may list addresses the client
+        // never sent RCPT TO for (per-domain splitting, selective relaying). Handing those
+        // to Graph would make the relay invent recipients, so header addresses are kept
+        // only where the envelope confirms them — and every envelope address still lands in
+        // exactly one of To/Cc/Bcc, so no recipient is lost either.
+        var envelope = new HashSet<string>(envelopeRecipients, StringComparer.OrdinalIgnoreCase);
+
+        // BCC = envelope addresses in neither header. Clients strip the Bcc header before
+        // sending, so mime.Bcc is always empty and BCC has to be derived.
+        var headerAddresses = new HashSet<string>(
             mime.To.Mailboxes.Concat(mime.Cc.Mailboxes).Select(m => m.Address),
             StringComparer.OrdinalIgnoreCase);
 
         var bccRecipients = envelopeRecipients
-            .Where(addr => !explicitAddresses.Contains(addr))
+            .Where(addr => !headerAddresses.Contains(addr))
             .Select(addr => new Recipient { EmailAddress = new EmailAddress { Address = addr } })
             .ToList();
 
@@ -369,38 +522,57 @@ internal sealed class GraphApiClient : IGraphApiClient
             },
             From = ConvertMailbox(mime.From.Mailboxes.FirstOrDefault()),
             ReplyTo = ConvertAddressList(mime.ReplyTo),
-            ToRecipients = ConvertAddressList(mime.To),
-            CcRecipients = ConvertAddressList(mime.Cc),
+            ToRecipients = ConvertAddressList(mime.To, envelope),
+            CcRecipients = ConvertAddressList(mime.Cc, envelope),
             BccRecipients = bccRecipients,
             Attachments = attachments.ConvertAll(a => (Attachment)a),
             Importance = MapImportance(mime),
         };
+
+        // Receipt requests: the sender asked to be told when the mail is delivered/read.
+        // Graph carries only the boolean — the receipt goes to the message sender, not to
+        // the address named in the header, so the routing is an approximation.
+        if (mime.Headers.Contains(HeaderId.DispositionNotificationTo)
+            || mime.Headers.Contains("X-Confirm-Reading-To"))
+            message.IsReadReceiptRequested = true;
+        if (mime.Headers.Contains(HeaderId.ReturnReceiptTo))
+            message.IsDeliveryReceiptRequested = true;
+
+        // Sender differs from From for shared mailboxes and "on behalf of" senders.
+        // Exchange may refuse a Sender the mailbox cannot send as — that rejection is
+        // caught and retried without it (see DeliverWithFallbacksAsync).
+        if (fidelity == MessageFidelity.Full && mime.Sender is not null)
+            message.Sender = ConvertMailbox(mime.Sender);
 
         // Original Message-ID: preserved so replies and threading on the recipient
         // side keep referencing the relayed message. Graph accepts it at creation.
         if (!string.IsNullOrWhiteSpace(mime.MessageId))
             message.InternetMessageId = $"<{mime.MessageId}>";
 
-        // Custom headers: Graph only permits custom internet headers whose name starts
-        // with "x-". Transport-reserved x-ms-exchange-* headers are skipped, and
-        // x-priority is skipped because it is already mapped to Importance above.
-        var xHeaders = mime.Headers
-            .Where(h => h.Field.StartsWith("x-", StringComparison.OrdinalIgnoreCase)
-                     && !h.Field.StartsWith("x-ms-exchange", StringComparison.OrdinalIgnoreCase)
-                     && !h.Field.Equals("x-priority", StringComparison.OrdinalIgnoreCase))
-            .Select(h => new InternetMessageHeader { Name = h.Field, Value = h.Value })
-            .ToList();
-        if (xHeaders.Count > 0)
-            message.InternetMessageHeaders = xHeaders;
+        if (fidelity == MessageFidelity.Full)
+        {
+            var xHeaders = CollectCustomHeaders(mime);
+            if (xHeaders.Count > 0)
+                message.InternetMessageHeaders = xHeaders;
+        }
+
+        // Properties without a first-class Graph equivalent, carried as the underlying
+        // MAPI properties — the same mechanism Outlook itself stores them in.
+        var extended = new List<SingleValueLegacyExtendedProperty>();
 
         // Threading: In-Reply-To / References cannot be set as internet headers (no
-        // x- prefix) — Graph exposes them through the underlying MAPI properties
-        // PidTagInReplyToId (0x1042) and PidTagInternetReferences (0x1039).
-        var extended = new List<SingleValueLegacyExtendedProperty>();
+        // x- prefix) — PidTagInReplyToId (0x1042) / PidTagInternetReferences (0x1039).
         if (!string.IsNullOrWhiteSpace(mime.InReplyTo))
             extended.Add(new() { Id = "String 0x1042", Value = $"<{mime.InReplyTo}>" });
         if (mime.References.Count > 0)
             extended.Add(new() { Id = "String 0x1039", Value = string.Join(" ", mime.References.Select(r => $"<{r}>")) });
+
+        // Private/confidential marking: Graph's message resource has no sensitivity
+        // property (only event does), so PidTagSensitivity (0x0036) is the only way to
+        // keep it. Without this the marking is silently lost on every relayed mail.
+        if (MapSensitivity(mime) is { } sensitivity)
+            extended.Add(new() { Id = "Integer 0x0036", Value = sensitivity.ToString() });
+
         if (extended.Count > 0)
             message.SingleValueExtendedProperties = extended;
 
@@ -408,9 +580,24 @@ internal sealed class GraphApiClient : IGraphApiClient
     }
 
     /// <summary>
+    /// Custom internet headers to carry over, capped at Graph's hard limit of
+    /// <see cref="MaxCustomHeaders"/>. Graph only permits names starting with "x-";
+    /// transport-reserved x-ms-exchange-* headers are skipped, and x-priority is skipped
+    /// because it is already mapped to Importance.
+    /// </summary>
+    internal static List<InternetMessageHeader> CollectCustomHeaders(MimeMessage mime) =>
+        mime.Headers
+            .Where(h => h.Field.StartsWith("x-", StringComparison.OrdinalIgnoreCase)
+                     && !h.Field.StartsWith("x-ms-exchange", StringComparison.OrdinalIgnoreCase)
+                     && !h.Field.Equals("x-priority", StringComparison.OrdinalIgnoreCase))
+            .Take(MaxCustomHeaders)
+            .Select(h => new InternetMessageHeader { Name = h.Field, Value = h.Value })
+            .ToList();
+
+    /// <summary>
     /// Maps the MIME priority signals to Graph's Importance. The Importance header wins;
-    /// X-Priority (mapped separately by many legacy senders) is the fallback. Returns
-    /// null for normal priority so the property is simply omitted.
+    /// X-Priority (used by many legacy senders) and the RFC 2156 Priority header are the
+    /// fallbacks. Returns null for normal priority so the property is simply omitted.
     /// </summary>
     private static Importance? MapImportance(MimeMessage mime) => mime.Importance switch
     {
@@ -420,9 +607,30 @@ internal sealed class GraphApiClient : IGraphApiClient
         {
             XMessagePriority.Highest or XMessagePriority.High => Importance.High,
             XMessagePriority.Lowest or XMessagePriority.Low => Importance.Low,
-            _ => null,
+            _ => mime.Priority switch
+            {
+                MessagePriority.Urgent => Importance.High,
+                MessagePriority.NonUrgent => Importance.Low,
+                _ => null,
+            },
         },
     };
+
+    /// <summary>
+    /// RFC 2156 <c>Sensitivity:</c> header → PidTagSensitivity value
+    /// (0 Normal · 1 Personal · 2 Private · 3 Company-Confidential). Returns null for
+    /// Normal, absent or unknown tokens so the property is omitted (Normal is the default).
+    /// </summary>
+    internal static int? MapSensitivity(MimeMessage mime)
+    {
+        var value = mime.Headers[HeaderId.Sensitivity]?.Trim();
+        if (string.IsNullOrEmpty(value)) return null;
+
+        if (value.Equals("Personal", StringComparison.OrdinalIgnoreCase)) return 1;
+        if (value.Equals("Private", StringComparison.OrdinalIgnoreCase)) return 2;
+        if (value.Equals("Company-Confidential", StringComparison.OrdinalIgnoreCase)) return 3;
+        return null;
+    }
 
     /// <summary>
     /// The 4 MB Graph request cap applies to the whole request, not to a single
@@ -437,7 +645,7 @@ internal sealed class GraphApiClient : IGraphApiClient
         List<FileAttachment> small,
         List<LargeAttachment> large)
     {
-        long Estimate() => bodyLength + small.Sum(a => (long)(a.ContentBytes?.Length ?? 0) * 4 / 3);
+        long Estimate() => bodyLength + small.Sum(a => Base64Length(a.ContentBytes?.Length ?? 0));
 
         var moved = 0;
         while (small.Count > 0 && Estimate() > MaxDirectRequestBytes)
@@ -454,6 +662,65 @@ internal sealed class GraphApiClient : IGraphApiClient
         }
         return moved;
     }
+
+    /// <summary>Exact base64 length of <paramref name="rawBytes"/> raw bytes, padding included.</summary>
+    internal static long Base64Length(long rawBytes) => (rawBytes + 2) / 3 * 4;
+
+    /// <summary>
+    /// Size the message body contributes to the request, in bytes on the wire: UTF-8 rather
+    /// than UTF-16 characters (the old estimate compared char counts against a byte budget).
+    /// Deliberately not padded with a safety factor — <see cref="MaxDirectRequestBytes"/>
+    /// already keeps 500 KB clear of Graph's 4 MB cap, and an over-cautious estimate would
+    /// push messages onto the slower upload path that the direct send handles fine. A real
+    /// 413 is recovered by retrying via the upload session (see DeliverWithFallbacksAsync).
+    /// </summary>
+    internal static long EstimateBodyBytes(MimeMessageSplitter.SplitResult split)
+    {
+        var body = split.HtmlBody?.Text ?? split.TextBody?.Text;
+        return string.IsNullOrEmpty(body) ? 0 : System.Text.Encoding.UTF8.GetByteCount(body);
+    }
+
+    /// <summary>
+    /// Logs the parts of a message that cannot survive the MIME → Graph translation, so the
+    /// degradation is visible instead of silent. S/MIME and PGP are a Warning: the relay
+    /// rebuilds the message, which invalidates the signature the sender relied on.
+    /// </summary>
+    private void WarnAboutUnrelayableContent(MimeMessage mime, string messageId)
+    {
+        if (mime.Body is MimeKit.Cryptography.MultipartSigned or MimeKit.Cryptography.MultipartEncrypted
+            || (mime.Body?.ContentType.IsMimeType("application", "pkcs7-mime") ?? false))
+            _logger.LogWarning(
+                "[GraphApi] {MessageId} is S/MIME/PGP protected — Graph delivery rebuilds the message, " +
+                "so the signature will not verify at the recipient (encrypted parts arrive as an attachment)",
+                messageId);
+
+        // Headers Graph has no place for: it accepts custom internet headers only with an
+        // "x-" prefix, so everything else (Date, Received, List-*, Auto-Submitted, …) is
+        // dropped. Per-message flow detail → Debug.
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            var dropped = mime.Headers
+                .Select(h => h.Field)
+                .Where(f => !f.StartsWith("x-", StringComparison.OrdinalIgnoreCase)
+                         && !RelayedHeaders.Contains(f))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (dropped.Count > 0)
+                _logger.LogDebug(
+                    "[GraphApi] {MessageId}: {Count} header(s) not carried over (Graph accepts custom headers only with an x- prefix): {Headers}",
+                    messageId, dropped.Count, string.Join(", ", dropped));
+        }
+    }
+
+    /// <summary>Headers that reach the recipient through a mapped Graph property rather than verbatim.</summary>
+    private static readonly HashSet<string> RelayedHeaders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Subject", "From", "To", "Cc", "Bcc", "Reply-To", "Sender", "Message-Id",
+        "In-Reply-To", "References", "Importance", "Priority", "Sensitivity",
+        "Disposition-Notification-To", "Return-Receipt-To",
+        "Content-Type", "Content-Transfer-Encoding", "Mime-Version",
+    };
 
     /// <summary>
     /// Splits message attachments into small (&lt; 3 MB) and large (≥ 3 MB) lists.
@@ -472,6 +739,7 @@ internal sealed class GraphApiClient : IGraphApiClient
     {
         var small = new List<FileAttachment>();
         var large = new List<LargeAttachment>();
+        var unnamed = 0;
 
         foreach (var (entity, isInline) in split.Attachments)
         {
@@ -484,7 +752,7 @@ internal sealed class GraphApiClient : IGraphApiClient
             {
                 case MimePart part:
                 {
-                    name = part.FileName ?? "attachment";
+                    name = part.FileName ?? FallbackFileName(part.ContentType.MimeType, ++unnamed);
                     mediaType = part.ContentType.MimeType;
                     contentId = string.IsNullOrWhiteSpace(part.ContentId) ? null : part.ContentId;
 
@@ -532,10 +800,50 @@ internal sealed class GraphApiClient : IGraphApiClient
         return (small, large);
     }
 
-    private static List<Recipient> ConvertAddressList(InternetAddressList list)
+    /// <summary>
+    /// File name for a part that announces none. The extension is derived from the media
+    /// type, so an unnamed <c>text/calendar</c> alternative arrives as <c>invite-1.ics</c>
+    /// and is recognised as a meeting request instead of a nameless "attachment" blob.
+    /// The counter keeps several unnamed parts of one message apart.
+    /// </summary>
+    internal static string FallbackFileName(string mimeType, int index)
+    {
+        var stem = mimeType.Equals("text/calendar", StringComparison.OrdinalIgnoreCase)
+            ? "invite"
+            : "attachment";
+
+        var extension = MimeTypes.TryGetExtension(mimeType, out var ext) && !string.IsNullOrEmpty(ext)
+            ? "." + ext.TrimStart('.')
+            : string.Empty;
+
+        return $"{stem}-{index}{extension}";
+    }
+
+    /// <summary>
+    /// Converts a header address list to Graph recipients. When <paramref name="envelope"/>
+    /// is given, addresses missing from the SMTP envelope are left out — they were never
+    /// RCPT TO'd and must not be delivered to.
+    /// </summary>
+    private static List<Recipient> ConvertAddressList(InternetAddressList list, HashSet<string>? envelope = null)
     {
         return list.Mailboxes
+            .Where(m => envelope is null || envelope.Contains(m.Address))
             .Select(m => new Recipient { EmailAddress = new EmailAddress { Address = m.Address, Name = m.Name } })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Header addresses that are not in the SMTP envelope. Delivering to them would invent
+    /// recipients the sending client never asked for; the caller logs them.
+    /// </summary>
+    internal static List<string> FindNonEnvelopeRecipients(
+        MimeMessage mime, IReadOnlyList<string> envelopeRecipients)
+    {
+        var envelope = new HashSet<string>(envelopeRecipients, StringComparer.OrdinalIgnoreCase);
+        return mime.To.Mailboxes.Concat(mime.Cc.Mailboxes)
+            .Select(m => m.Address)
+            .Where(addr => !envelope.Contains(addr))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 

@@ -95,6 +95,40 @@
 
 ### Fixed
 
+- **Mail carrying more than five `X-` headers was rejected outright and never delivered.** Graph
+  accepts at most five custom internet headers per message and answers a sixth with HTTP 400
+  `InvalidInternetMessageHeaderCollection`. GraphMailer forwarded *every* `x-` header it found, and
+  because 400 counts as a permanent rejection the message was moved to `mail\failed\` with an NDR
+  on the first attempt — no retry, no second chance. Ordinary mail trips this easily: `X-Mailer`,
+  `X-Originating-IP`, `X-Spam-Status`, `X-Spam-Level`, `X-Virus-Scanned` and one more is enough.
+
+  The header list is now capped at Graph's limit, and should Graph still object, the message is
+  resent once without any custom headers — the mail arrives and a warning names the cause. A
+  message is never lost over a header again.
+
+- **Privacy markings, receipt requests and the `Sender` header were silently discarded.** Delivery
+  rebuilds the message as a Graph object, and anything without an explicit mapping simply vanished:
+
+  | Signal | Now carried as |
+  |---|---|
+  | `Sensitivity: Personal / Private / Company-Confidential` | MAPI property `0x0036` — Graph's message resource has no sensitivity field, so this is the only route |
+  | `Disposition-Notification-To` (read receipt) | `isReadReceiptRequested` |
+  | `Return-Receipt-To` (delivery receipt) | `isDeliveryReceiptRequested` |
+  | `Sender:` (shared mailbox / "on behalf of") | `Message.Sender` |
+  | `Priority: urgent` (RFC 2156) | Importance — the third signal after `Importance` and `X-Priority` |
+
+- **Meeting invitations arrived as a nameless file.** A `text/calendar` part inside
+  `multipart/alternative` carries no file name, and it was attached literally as `attachment` — no
+  extension, so no mail client recognised it as an invitation. Unnamed parts now get a file name
+  derived from their media type (`invite-1.ics`), and several unnamed parts in one message get
+  distinct names instead of colliding.
+
+- **Messages could be rejected as too large although they were deliverable.** The size estimate
+  compared UTF-16 character counts against a byte budget and understated base64 padding. It now
+  measures UTF-8 bytes and exact base64 length — and if Graph still answers 413, the message is
+  retried through the draft + upload session, which moves the attachment bytes out of the request
+  instead of giving up.
+
 - **The notification sender address could not be cleared while any recipient was configured**, even
   with every notification switched off. The cross-page rule that guards the address keyed off the
   recipient list alone, so an operator who had disabled all events, the NDR admin copy and emailed
@@ -102,6 +136,19 @@
   rid of it. It now keys off whether admin notifications will actually be sent.
 
 ### Changed
+
+- **Mail is now delivered strictly to the SMTP envelope recipients.** `To:` and `Cc:` headers were
+  handed to Graph as-is, so an address listed in a header but never sent as `RCPT TO` received the
+  message anyway — a client that splits recipients per domain would have its mail delivered to
+  everyone on the list by each of its sessions. Delivery now follows the envelope; header addresses
+  without a matching `RCPT TO` are logged with a warning and skipped. Every envelope recipient still
+  lands in exactly one of To/Cc/Bcc, so nobody is dropped.
+
+- **S/MIME and PGP-protected mail is now flagged in the log.** Relaying rebuilds the message, which
+  invalidates the sender's signature; encrypted parts arrive as an attachment. This was a silent
+  degradation and is now a warning naming the affected message. At Debug level, the headers that
+  cannot be carried over at all (`Date`, `Received`, `List-*`, `Auto-Submitted` — Graph accepts
+  custom headers only with an `x-` prefix) are listed per message.
 
 - **The Notifications page is reordered** to follow how the settings depend on each other:
   Notification Settings (the shared sender, also used by emailed backups) → Non-Delivery Reports →

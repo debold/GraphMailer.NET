@@ -215,6 +215,256 @@ public sealed class GraphApiClientTests
         msg.InternetMessageHeaders.Should().NotContain(h => h.Name == "Reply-By");
     }
 
+    [Fact]
+    public void BuildMessage_MoreThanFiveCustomHeaders_AreCappedAtGraphsLimit()
+    {
+        // Graph rejects a message carrying more than 5 custom headers with 400
+        // InvalidInternetMessageHeaderCollection, and 400 is classified permanent —
+        // uncapped, an ordinary mail with X-Mailer + X-Spam-* headers would be NDR'd.
+        var mime = BaseMime(m =>
+        {
+            for (var i = 1; i <= 9; i++)
+                m.Headers.Add($"X-Scanner-{i}", $"value-{i}");
+        });
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"]);
+
+        msg.InternetMessageHeaders.Should().HaveCount(GraphApiClient.MaxCustomHeaders);
+        msg.InternetMessageHeaders.Should().Contain(h => h.Name == "X-Scanner-1",
+            "the first headers in message order are the ones kept");
+        msg.InternetMessageHeaders.Should().NotContain(h => h.Name == "X-Scanner-9");
+    }
+
+    [Fact]
+    public void BuildMessage_WithoutOptionalExtras_OmitsHeadersAndSender()
+    {
+        var mime = BaseMime(m =>
+        {
+            m.Headers.Add("X-Legacy-App", "invoice-system");
+            m.Sender = MailboxAddress.Parse("shared@example.com");
+        });
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"],
+            GraphApiClient.MessageFidelity.WithoutOptionalExtras);
+
+        msg.InternetMessageHeaders.Should().BeNull("the retry after a header rejection must not resend them");
+        msg.Sender.Should().BeNull();
+        msg.Subject.Should().Be("Fidelity", "only the extras are dropped, never the message itself");
+        msg.ToRecipients.Should().ContainSingle();
+    }
+
+    // =========================================================================
+    // BuildMessage — sensitivity, receipts, sender, priority
+    // =========================================================================
+
+    [Theory]
+    [InlineData("Personal", "1")]
+    [InlineData("Private", "2")]
+    [InlineData("Company-Confidential", "3")]
+    public void BuildMessage_SensitivityHeader_IsMappedToMapiProperty(string header, string expected)
+    {
+        // Graph's message resource has no sensitivity property (only event does), so
+        // PidTagSensitivity is the only carrier for the private/confidential marking.
+        var mime = BaseMime(m => m.Headers.Add("Sensitivity", header));
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"]);
+
+        msg.SingleValueExtendedProperties.Should().Contain(p =>
+            p.Id == "Integer 0x0036" && p.Value == expected);
+    }
+
+    [Theory]
+    [InlineData("Normal")]
+    [InlineData("")]
+    public void BuildMessage_NormalOrEmptySensitivity_SetsNoMapiProperty(string header)
+    {
+        var mime = BaseMime(m => { if (header.Length > 0) m.Headers.Add("Sensitivity", header); });
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"]);
+
+        (msg.SingleValueExtendedProperties ?? []).Should().NotContain(p => p.Id == "Integer 0x0036",
+            "normal is Graph's default — the property is omitted rather than set to 0");
+    }
+
+    [Fact]
+    public void BuildMessage_DispositionNotificationTo_RequestsReadReceipt()
+    {
+        var mime = BaseMime(m => m.Headers.Add("Disposition-Notification-To", "sender@example.com"));
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"]);
+
+        msg.IsReadReceiptRequested.Should().BeTrue();
+        msg.IsDeliveryReceiptRequested.Should().BeNull("only a read receipt was requested");
+    }
+
+    [Fact]
+    public void BuildMessage_ReturnReceiptTo_RequestsDeliveryReceipt()
+    {
+        var mime = BaseMime(m => m.Headers.Add("Return-Receipt-To", "sender@example.com"));
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"]);
+
+        msg.IsDeliveryReceiptRequested.Should().BeTrue();
+    }
+
+    [Fact]
+    public void BuildMessage_NoReceiptHeaders_LeavesFlagsUnset()
+    {
+        var msg = GraphApiClient.BuildMessage(BaseMime(), [], ["rcpt@example.com"]);
+
+        msg.IsReadReceiptRequested.Should().BeNull();
+        msg.IsDeliveryReceiptRequested.Should().BeNull();
+    }
+
+    [Fact]
+    public void BuildMessage_SenderHeader_IsMapped()
+    {
+        var mime = BaseMime(m => m.Sender = MailboxAddress.Parse("shared@example.com"));
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"]);
+
+        msg.Sender!.EmailAddress!.Address.Should().Be("shared@example.com");
+        msg.From!.EmailAddress!.Address.Should().Be("sender@example.com",
+            "Sender and From are distinct for shared mailboxes and 'on behalf of' senders");
+    }
+
+    [Theory]
+    [InlineData(MessagePriority.Urgent, Importance.High)]
+    [InlineData(MessagePriority.NonUrgent, Importance.Low)]
+    public void BuildMessage_PriorityHeader_IsMappedToImportance(MessagePriority priority, Importance expected)
+    {
+        var mime = BaseMime(m => m.Priority = priority);
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"]);
+
+        msg.Importance.Should().Be(expected, "RFC 2156 Priority is the third priority signal after Importance and X-Priority");
+    }
+
+    // =========================================================================
+    // BuildMessage — envelope decides delivery, not the headers
+    // =========================================================================
+
+    [Fact]
+    public void BuildMessage_HeaderRecipientNotInEnvelope_IsNotDeliveredTo()
+    {
+        // A client that RCPT TO's only a subset of its To: header (per-domain splitting)
+        // must not make the relay invent recipients.
+        var mime = BaseMime(m => m.To.Add(MailboxAddress.Parse("never-rcpt@example.com")));
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"]);
+
+        msg.ToRecipients.Should().ContainSingle()
+            .Which.EmailAddress!.Address.Should().Be("rcpt@example.com");
+        msg.BccRecipients.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildMessage_EnvelopeRecipients_AreSplitAcrossToCcAndBcc_WithoutLoss()
+    {
+        var mime = BaseMime(m => m.Cc.Add(MailboxAddress.Parse("cc@example.com")));
+
+        var msg = GraphApiClient.BuildMessage(mime, [],
+            ["rcpt@example.com", "cc@example.com", "blind@example.com"]);
+
+        msg.ToRecipients.Should().ContainSingle(r => r.EmailAddress!.Address == "rcpt@example.com");
+        msg.CcRecipients.Should().ContainSingle(r => r.EmailAddress!.Address == "cc@example.com");
+        msg.BccRecipients.Should().ContainSingle(r => r.EmailAddress!.Address == "blind@example.com",
+            "an envelope address in neither header was blind-copied");
+    }
+
+    [Fact]
+    public void BuildMessage_ReplyTo_IsNotFilteredAgainstTheEnvelope()
+    {
+        // Reply-To is not a delivery target — filtering it against the envelope the way
+        // To:/Cc: are would break every reply. The two sit next to each other in
+        // BuildMessage, so this guards against "making it consistent".
+        var mime = BaseMime(m => m.ReplyTo.Add(new MailboxAddress("Support Desk", "support@example.com")));
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"]);
+
+        var replyTo = msg.ReplyTo.Should().ContainSingle().Subject;
+        replyTo.EmailAddress!.Address.Should().Be("support@example.com");
+        replyTo.EmailAddress.Name.Should().Be("Support Desk");
+    }
+
+    [Fact]
+    public void BuildMessage_RecipientDisplayNames_ArePreserved()
+    {
+        var mime = BaseMime();
+        mime.To.Clear();
+        mime.To.Add(new MailboxAddress("Jane Doe", "rcpt@example.com"));
+
+        var msg = GraphApiClient.BuildMessage(mime, [], ["rcpt@example.com"]);
+
+        msg.ToRecipients.Should().ContainSingle()
+            .Which.EmailAddress!.Name.Should().Be("Jane Doe",
+                "the envelope filter must not strip the display name off a kept address");
+    }
+
+    [Fact]
+    public void FindNonEnvelopeRecipients_ReportsHeaderOnlyAddresses()
+    {
+        var mime = BaseMime(m =>
+        {
+            m.To.Add(MailboxAddress.Parse("ghost@example.com"));
+            m.Cc.Add(MailboxAddress.Parse("cc@example.com"));
+        });
+
+        var dropped = GraphApiClient.FindNonEnvelopeRecipients(mime, ["rcpt@example.com", "cc@example.com"]);
+
+        dropped.Should().BeEquivalentTo(["ghost@example.com"]);
+    }
+
+    // =========================================================================
+    // Optional-property rejections — degrade instead of losing the mail
+    // =========================================================================
+
+    [Theory]
+    [InlineData("InvalidInternetMessageHeaderCollection")]
+    [InlineData("ErrorSendAsDenied")]
+    [InlineData("ErrorInvalidSender")]
+    public void IsOptionalPropertyRejection_RecoverableCodes_ReturnTrue(string code)
+        => GraphApiClient.IsOptionalPropertyRejection(code).Should().BeTrue();
+
+    [Theory]
+    [InlineData("ErrorInvalidRecipients")]
+    [InlineData("MailboxNotEnabledForRESTAPI")]
+    [InlineData(null)]
+    public void IsOptionalPropertyRejection_OtherCodes_ReturnFalse(string? code)
+        => GraphApiClient.IsOptionalPropertyRejection(code).Should().BeFalse();
+
+    [Fact]
+    public void IsPermanentRejection_TooManyCustomHeaders_IsNotPermanent()
+    {
+        // Graph returns this as HTTP 400, which the blanket rule would classify permanent —
+        // a mail must never be NDR'd because it carried one X-Spam-Level header too many.
+        GraphApiClient.IsPermanentRejection(400, "InvalidInternetMessageHeaderCollection")
+            .Should().BeFalse();
+    }
+
+    // =========================================================================
+    // Size estimation
+    // =========================================================================
+
+    [Fact]
+    public void Base64Length_MatchesFrameworkEncoding()
+    {
+        foreach (var size in new[] { 0, 1, 2, 3, 4, 100, 1023 })
+            GraphApiClient.Base64Length(size)
+                .Should().Be(Convert.ToBase64String(new byte[size]).Length, "size {0}", size);
+    }
+
+    [Fact]
+    public void EstimateBodyBytes_MultiByteCharacters_CountsUtf8Bytes()
+    {
+        var mime = BaseMime(m => m.Body = new TextPart("plain") { Text = "Grüße 😀" });
+
+        var estimate = GraphApiClient.EstimateBodyBytes(MimeMessageSplitter.Split(mime));
+
+        estimate.Should().Be(System.Text.Encoding.UTF8.GetByteCount("Grüße 😀"))
+            .And.BeGreaterThan("Grüße 😀".Length, "the old estimate compared UTF-16 chars against a byte budget");
+    }
+
     // =========================================================================
     // CollectAttachments — inline CID parts
     // =========================================================================
@@ -421,5 +671,60 @@ public sealed class GraphApiClientTests
         large.Should().BeEmpty();
         var att = small.Should().ContainSingle().Subject;
         System.Text.Encoding.UTF8.GetString(att.ContentBytes!).Should().Contain("second");
+    }
+
+    // =========================================================================
+    // CollectAttachments — file names for parts that announce none
+    // =========================================================================
+
+    [Fact]
+    public void CollectAttachments_UnnamedCalendarPart_GetsIcsFileName()
+    {
+        // A meeting invitation is a text/calendar alternative without a file name. Named
+        // "attachment" it reaches the recipient as a nameless blob instead of an invite.
+        var mime = BaseMime();
+        mime.Body = new Multipart("alternative")
+        {
+            new TextPart("plain") { Text = "text" },
+            new TextPart("calendar") { Text = "BEGIN:VCALENDAR\nEND:VCALENDAR" },
+        };
+
+        var (small, _) = GraphApiClient.CollectAttachments(mime);
+
+        small.Should().ContainSingle()
+            .Which.Name.Should().EndWith(".ics");
+    }
+
+    [Fact]
+    public void CollectAttachments_MultipleUnnamedParts_GetDistinctNames()
+    {
+        var mime = BaseMime();
+        mime.Body = new Multipart("mixed")
+        {
+            new TextPart("plain") { Text = "body" },
+            new MimePart("application", "octet-stream")
+            {
+                Content = new MimeKit.MimeContent(new MemoryStream(new byte[16])),
+                ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+            },
+            new MimePart("application", "octet-stream")
+            {
+                Content = new MimeKit.MimeContent(new MemoryStream(new byte[16])),
+                ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+            },
+        };
+
+        var (small, _) = GraphApiClient.CollectAttachments(mime);
+
+        small.Should().HaveCount(2);
+        small.Select(a => a.Name).Should().OnlyHaveUniqueItems(
+            "colliding names make two distinct attachments look like one");
+    }
+
+    [Fact]
+    public void FallbackFileName_KnownMediaType_GetsMatchingExtension()
+    {
+        GraphApiClient.FallbackFileName("text/calendar", 1).Should().Be("invite-1.ics");
+        GraphApiClient.FallbackFileName("image/png", 2).Should().Be("attachment-2.png");
     }
 }

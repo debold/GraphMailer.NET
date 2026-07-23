@@ -34,6 +34,37 @@ Up to **150 MB**, the Microsoft 365 ceiling. The default accepted size is 25 MB;
 [Servers & TLS](../configuration/servers-tls.html) if needed. Messages above 150 MB cannot be
 delivered via Graph.
 
+## Which parts of a message survive the relay?
+
+GraphMailer does not forward raw SMTP — it hands each message to Microsoft Graph as a structured
+object. Nearly everything a normal message carries comes through, but a few things cannot.
+
+**Carried over:** subject, body, sender, reply-to, all recipients, attachments (including inline
+images, so `cid:` references keep working), attached e-mails, importance/priority, private and
+confidential markings, read and delivery receipt requests, the Message-ID and the reply/reference
+chain that keeps conversations threaded, and up to five custom `X-` headers.
+
+**Cannot be carried over:**
+
+| | Why |
+|---|---|
+| `Date:` (original composition time) | Microsoft 365 stamps its own send time |
+| `Received:` chain, `Return-Path:`, `List-*`, `Auto-Submitted:` | Graph accepts custom headers only with an `X-` prefix |
+| More than five `X-` headers | Microsoft 365 limit; the first five are kept |
+| S/MIME and PGP signatures | Rebuilding the message invalidates the signature; encrypted mail arrives as an attachment |
+| The plain-text half of an HTML message | A message body is either HTML or text; Exchange regenerates the text version |
+
+Anything dropped is written to the log, so it is never silent — S/MIME and skipped recipients as a
+warning, the remaining headers at Debug level. See [Logs](../monitoring/logs.html).
+
+## Are messages delivered to addresses in the To: header?
+
+Only to addresses the sending application actually handed over as recipients (`RCPT TO` in SMTP
+terms). If an application lists five addresses in the `To:` header but submits the message once per
+recipient, each delivery goes to that one recipient — not to all five. This is the correct
+behaviour for a relay; anything else would send duplicates. Addresses in a header that were not
+submitted as recipients are logged with a warning.
+
 ## Do relayed messages appear in the sender's “Sent Items”?
 
 Yes. Every message GraphMailer accepts over SMTP is delivered with a copy kept in the sender

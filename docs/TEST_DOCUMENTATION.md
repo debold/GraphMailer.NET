@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 877 tests** (819 unit · 58 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-23
+**Total: 914 tests** (849 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-07-23
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -543,6 +543,28 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `CollectAttachments_NamedTextPartWithoutDisposition_IsAttached` | Text part with `Content-Type` `name=` parameter but no disposition header | Attached under its file name; NOT duplicated into the body (every part ends up in exactly one place) |
 | `CollectAttachments_AttachedMessage_IsForwardedAsEmlFile` | `message/rfc822` part (attached e-mail that itself contains an attachment) | One `message/rfc822` attachment named `*.eml`, byte-exact round-trip; inner parts NOT hoisted (regression: `OfType<MimePart>()` dropped the mail and hoisted its inner parts) |
 | `CollectAttachments_AlternativeBodies_AreNotAttached` | multipart/alternative with plain + HTML rendering | No attachments; Graph body is the HTML alternative (richest wins, as in every client) |
+| `BuildMessage_MoreThanFiveCustomHeaders_AreCappedAtGraphsLimit` | Nine `X-Scanner-*` headers | Exactly 5 forwarded, first ones in message order (regression: Graph rejects >5 with 400 `InvalidInternetMessageHeaderCollection`, which was classified permanent → NDR) |
+| `BuildMessage_WithoutOptionalExtras_OmitsHeadersAndSender` | `MessageFidelity.WithoutOptionalExtras` with an x-header and a Sender | `InternetMessageHeaders` and `Sender` null; subject/recipients untouched (the degraded retry drops extras, never the message) |
+| `BuildMessage_SensitivityHeader_IsMappedToMapiProperty` (Theory, 3 cases) | `Sensitivity: Personal` / `Private` / `Company-Confidential` | MAPI extended property `Integer 0x0036` = 1/2/3 (Graph's message resource has no sensitivity property) |
+| `BuildMessage_NormalOrEmptySensitivity_SetsNoMapiProperty` (Theory, 2 cases) | `Sensitivity: Normal` / header absent | No `0x0036` property (normal is Graph's default) |
+| `BuildMessage_DispositionNotificationTo_RequestsReadReceipt` | `Disposition-Notification-To` header | `isReadReceiptRequested == true`, delivery receipt untouched |
+| `BuildMessage_ReturnReceiptTo_RequestsDeliveryReceipt` | `Return-Receipt-To` header | `isDeliveryReceiptRequested == true` |
+| `BuildMessage_NoReceiptHeaders_LeavesFlagsUnset` | Plain message | Both receipt flags null |
+| `BuildMessage_SenderHeader_IsMapped` | `Sender:` differs from `From:` | `Message.Sender` set to the Sender header, `From` unchanged |
+| `BuildMessage_PriorityHeader_IsMappedToImportance` (Theory, 2 cases) | RFC 2156 `Priority: urgent` / `non-urgent`, no Importance/X-Priority | `Importance.High` / `Importance.Low` (third priority signal) |
+| `BuildMessage_HeaderRecipientNotInEnvelope_IsNotDeliveredTo` | `To:` lists an address that was never RCPT TO'd | Only the envelope address in `ToRecipients` (the relay must not invent recipients) |
+| `BuildMessage_EnvelopeRecipients_AreSplitAcrossToCcAndBcc_WithoutLoss` | Envelope = To header + Cc header + one blind address | Each envelope address lands in exactly one of To/Cc/Bcc — no recipient lost |
+| `BuildMessage_ReplyTo_IsNotFilteredAgainstTheEnvelope` | `Reply-To` address that is not an envelope recipient | Preserved with display name — Reply-To is not a delivery target; guards against "making it consistent" with the To/Cc filter |
+| `BuildMessage_RecipientDisplayNames_ArePreserved` | `To: Jane Doe <rcpt@example.com>`, address in the envelope | Display name survives the envelope filter |
+| `FindNonEnvelopeRecipients_ReportsHeaderOnlyAddresses` | To/Cc headers with one address missing from the envelope | Returns exactly that address (drives the Warning log) |
+| `IsOptionalPropertyRejection_RecoverableCodes_ReturnTrue` (Theory, 3 cases) | `InvalidInternetMessageHeaderCollection`, `ErrorSendAsDenied`, `ErrorInvalidSender` | `true` — resend without the fidelity extras |
+| `IsOptionalPropertyRejection_OtherCodes_ReturnFalse` (Theory, 3 cases) | `ErrorInvalidRecipients`, `MailboxNotEnabledForRESTAPI`, `null` | `false` — not recoverable by dropping extras |
+| `IsPermanentRejection_TooManyCustomHeaders_IsNotPermanent` | HTTP 400 `InvalidInternetMessageHeaderCollection` | `false` — a mail must never be NDR'd over one header too many |
+| `Base64Length_MatchesFrameworkEncoding` | Sizes 0–1023 | Matches `Convert.ToBase64String` exactly (the old `n * 4 / 3` underestimated padding) |
+| `EstimateBodyBytes_MultiByteCharacters_CountsUtf8Bytes` | Body with umlauts and an emoji | UTF-8 byte count, greater than the UTF-16 char count (old estimate compared chars against a byte budget) |
+| `CollectAttachments_UnnamedCalendarPart_GetsIcsFileName` | `text/calendar` alternative without a file name | Attachment name ends in `.ics` (regression: arrived as a nameless "attachment", so no client recognised the invitation) |
+| `CollectAttachments_MultipleUnnamedParts_GetDistinctNames` | Two unnamed `application/octet-stream` attachments | Distinct names — two attachments must not look like one |
+| `FallbackFileName_KnownMediaType_GetsMatchingExtension` | `text/calendar`, `image/png` | `invite-1.ics`, `attachment-2.png` |
 | `CollectAttachments_SecondTextPartInMixed_IsAttachedNotDropped` | Two unnamed text/plain parts in multipart/mixed (digest-style) | First becomes the body, second becomes an attachment — content outside multipart/alternative is never discarded |
 
 ---
@@ -878,6 +900,9 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `SmallMessage_IsDelivered_ViaSendMail` | Message without large attachment, `saveToSentItems: true` (as for relayed SMTP mail) | Delivered via `sendMail` (Mail.Send) — verifies that the Sent Items copy needs no extra permission |
 | `LargeAttachment_IsDelivered_ViaUploadSession` | 3.5 MB attachment | Delivered via draft + upload session (Mail.ReadWrite) |
 | `FidelityMessage_WithHeadersImportanceAndInlineImage_IsDelivered` | Message-ID, In-Reply-To/References (MAPI 0x1042/0x1039), custom x-header, high importance, inline CID image | Graph accepts the full fidelity payload (a rejection would break every relayed message carrying these) |
+| `SensitivityReceiptsAndSender_AreAcceptedByGraph` | `Sensitivity: Private` (MAPI 0x0036), `Disposition-Notification-To`, `Return-Receipt-To`, explicit `Sender` | Graph accepts all four — the private marking has no other route, Graph's message resource has no sensitivity property |
+| `ManyCustomHeaders_AreCappedAndStillDelivered` | Nine `X-GraphMailer-Scan-*` headers | Delivered — capped at Graph's limit of five instead of failing with 400 `InvalidInternetMessageHeaderCollection` |
+| `SensitivityAndReplyTo_SurviveExchangeProcessing` | Send with `Sensitivity: Private` + `Reply-To`, then poll the sender's Sent Items and read the message back | `Reply-To` and MAPI `0x0036` = 2 still on the stored message. Reads back from Sent Items rather than the recipient: the configured `RecipientAddress` is typically outside the test tenant. Graph echoes the id normalised (`Integer 0x36`), so both spellings are accepted |
 | `UnknownSender_IsRejected_ByGraph` | Nonexistent sender mailbox | `GraphDeliveryException` with 404/ErrorInvalidUser and `IsPermanent == true` (fail-fast classification verified against real Graph) |
 | `AliasSender_IsDelivered_WhenResolvedToUserId` | Alias as From, resolved object id as user key (requires `LiveTests:SenderAlias`) | Resolves and delivers |
 
@@ -910,6 +935,25 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `Host_StartsAndStops_WithoutException` | Full `IHost` start + stop cycle | No exception |
 | `Host_StopAsync_CompletesWithinTimeout` | Stop with 5 s cancellation token | Completes within timeout |
 | `Host_MultipleStartStop_DoesNotThrow` | 3 consecutive start/stop cycles | No exception in any cycle |
+
+---
+
+### SMTP → Graph fidelity (`Smtp/SmtpFidelityTests.cs`)
+
+The only place the whole chain runs together: a real SMTP session queues the message, the
+queued `.eml` + `.meta.json` are read back from disk, and the result goes through the same
+`GraphApiClient.BuildMessage` translation the queue processor uses. The envelope therefore
+comes from actual `RCPT TO` commands rather than a literal in the test. No tenant required.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `HeaderRecipientWithoutRcptTo_IsNotDeliveredTo` | `To:` lists two addresses, client sends `RCPT TO` for one (per-domain splitting) | Only the envelope address delivered to; the header-only address dropped |
+| `RcptToWithoutHeaderEntry_BecomesBccRecipient` | Envelope address absent from every header (a real Bcc) | Delivered as a BCC recipient |
+| `EveryEnvelopeRecipient_EndsUpInExactlyOneField` | Envelope spanning To + Cc + a blind address | To ∪ Cc ∪ Bcc reproduces the envelope exactly, no duplicates (the no-loss guarantee) |
+| `SensitivityPrivate_SurvivesTheWholeChain` | `Sensitivity: Private` submitted over SMTP | MAPI `Integer 0x0036` = 2 on the translated message |
+| `ReplyTo_SurvivesTheWholeChain_AndIsNotEnvelopeFiltered` | `Reply-To` address that is not an envelope recipient | Preserved with its display name — Reply-To is not a delivery target and must not be envelope-filtered |
+| `ImportanceReceiptsAndSender_SurviveTheWholeChain` | High importance, `Sender:`, both receipt headers | Importance, `Sender`, `isReadReceiptRequested`, `isDeliveryReceiptRequested` all set |
+| `ManyCustomHeaders_AreCappedSoTheMessageStaysDeliverable` | Nine `X-Scanner-*` headers submitted over SMTP | Capped at 5 — uncapped this message would be rejected with 400 and NDR'd |
 
 ---
 
