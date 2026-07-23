@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.2 — unreleased
+## 1.3.2.1058 — 2026-07-23
 
 ### Added
 
