@@ -11,6 +11,7 @@ using GraphMailer.Service.Infrastructure;
 using GraphMailer.Service.Infrastructure.Backup;
 using GraphMailer.Service.Infrastructure.Config;
 using GraphMailer.Service.Infrastructure.Encryption;
+using GraphMailer.Service.Services.Advisor;
 using GraphMailer.Service.Services.UpdateCheck;
 
 namespace GraphMailer.ConfigTool;
@@ -55,6 +56,7 @@ public partial class MainWindow : Window
     private MetricsPage? _metricsPage;
     private MessagesPage? _messagesPage;
     private LogPage? _logPage;
+    private RecommendationsPage? _recommendationsPage;
 
     public MainWindow()
     {
@@ -126,6 +128,7 @@ public partial class MainWindow : Window
 
         _pagesInitialized = true;
         UpdateNavBadges();
+        RefreshRecommendations();
 
         // No config file yet → defaults are in memory but not on disk; prompt the user to save.
         if (!_configService.FileExists)
@@ -199,6 +202,79 @@ public partial class MainWindow : Window
             ? Visibility.Visible : Visibility.Collapsed;
         NavAccessBadge.Visibility = _accessPage.HasUndecryptablePassword
             ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // ── Recommendations ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Re-evaluates the shared recommendation catalog and updates the sidebar count badge (and
+    /// the page, when it is the one on screen).
+    ///
+    /// Deliberately evaluated against the *persisted* document, not the live form state: that
+    /// keeps the badge in step with what the running service and the emailed report see, and
+    /// avoids re-running the rules on every keystroke. A tip therefore clears on Save, not on
+    /// toggling its checkbox.
+    /// </summary>
+    private void RefreshRecommendations()
+    {
+        if (!_pagesInitialized) return;
+
+        // The badge counts open suggestions only — "done" and "hidden" are not something to act on.
+        var count = LoadRecommendations().Open.Count;
+        NavRecommendationsBadgeText.Text = count.ToString();
+        NavRecommendationsBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        _recommendationsPage?.Refresh();
+    }
+
+    private RecommendationSummary LoadRecommendations()
+        => RecommendationEngine.Evaluate(
+            RecommendationInput.FromConfigDocument(_currentDoc),
+            _currentDoc.Recommendations.Dismissed);
+
+    /// <summary>
+    /// Hides or restores a single recommendation. Written straight through to disk instead of
+    /// going via the Save button: this is a display preference, and a full save would also
+    /// persist whatever the user has half-edited on other pages.
+    /// </summary>
+    private void SetRecommendationDismissed(string id, bool dismissed)
+    {
+        var ids = _currentDoc.Recommendations.Dismissed;
+        if (dismissed && !ids.Contains(id, StringComparer.OrdinalIgnoreCase))
+            ids.Add(id);
+        else if (!dismissed)
+            ids.RemoveAll(existing => string.Equals(existing, id, StringComparison.OrdinalIgnoreCase));
+
+        try
+        {
+            _configService.UpdateDismissedRecommendations(ids);
+        }
+        catch (Exception ex)
+        {
+            // Keep the in-memory change so the UI stays consistent; the next Save persists it.
+            ConfigToolLog.Error("MainWindow", ex, "Could not persist the dismissed recommendations");
+            MessageBox.Show(
+                "The hidden-tip preference could not be written to the configuration file:\n\n" +
+                DescribeException(ex) + "\n\nIt is applied for now and will be stored with the next save.",
+                "Recommendations", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        RefreshRecommendations();
+    }
+
+    /// <summary>Opens the ConfigTool page that holds the setting behind a recommendation.</summary>
+    private void NavigateToRecommendationTarget(RecommendationTarget target)
+    {
+        var e = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left);
+        switch (target)
+        {
+            case RecommendationTarget.ServersAndTls: NavSmtp_Click(this, e); break;
+            case RecommendationTarget.AccessControl: NavAccess_Click(this, e); break;
+            case RecommendationTarget.GraphApi: NavGraphApi_Click(this, e); break;
+            case RecommendationTarget.MailQueue: NavQueue_Click(this, e); break;
+            case RecommendationTarget.Monitoring: NavMonitoring_Click(this, e); break;
+            case RecommendationTarget.Notifications: NavNotifications_Click(this, e); break;
+            case RecommendationTarget.BackupAndRestore: NavBackup_Click(this, e); break;
+        }
     }
 
     // ── Config file watcher ─────────────────────────────────────────────────────
@@ -333,6 +409,11 @@ public partial class MainWindow : Window
 
     private void NavStatus_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
         => NavigateTo(NavStatus, "Status", "monitoring/status.html", () => _statusPage ??= new StatusPage());
+
+    private void NavRecommendations_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
+        => NavigateTo(NavRecommendations, "Recommendations", "monitoring/recommendations.html",
+            () => _recommendationsPage ??= new RecommendationsPage(
+                LoadRecommendations, SetRecommendationDismissed, NavigateToRecommendationTarget));
 
     private void NavSmtp_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
         => NavigateTo(NavSmtp, "Servers & TLS", "configuration/servers-tls.html", () => _smtpPage!);
@@ -471,6 +552,10 @@ public partial class MainWindow : Window
         _accessPage.ClearUndecryptableMarkers();
         UpdateNavBadges();
 
+        // The saved document is the one the rules are evaluated against — a setting the user
+        // just fixed drops out of the list here, not when its checkbox was toggled.
+        RefreshRecommendations();
+
         // Badge reflects disk vs. running-service config; reverting a change
         // and saving again clears it without a restart.
         _diskSnapshot = MakeRestartSnapshot(_currentDoc);
@@ -519,6 +604,7 @@ public partial class MainWindow : Window
         catch { _suppressDirty = false; throw; }
 
         UpdateNavBadges();
+        RefreshRecommendations();
         // Keep _suppressDirty = true past WPF's Render pass so deferred DataGrid
         // CheckBox Checked events don't re-show the "Unsaved Changes" badge.
         Dispatcher.InvokeAsync(() => { _suppressDirty = false; ClearDirty(); }, DispatcherPriority.Loaded);

@@ -1,3 +1,5 @@
+using GraphMailer.Service.Services.Advisor;
+
 namespace GraphMailer.Service.Services.Reporting;
 
 /// <summary>Health-check outcome, mirrors the ConfigTool StatusPage severity scale.</summary>
@@ -5,12 +7,6 @@ internal enum HealthStatus { Ok, Warning, Error, Unknown }
 
 /// <summary>One row in the report's Health Checks table.</summary>
 internal sealed record HealthItem(string Component, HealthStatus Status, string Detail);
-
-/// <summary>
-/// One entry in the report's Recommendations box: an optional feature that is currently off.
-/// Informational only — never a health finding, so it must not affect the report's severity.
-/// </summary>
-internal sealed record Recommendation(string Title, string Detail);
 
 /// <summary>A labelled count with an optional bar fraction (0..1) for the Top-N tables.</summary>
 internal sealed record NamedCount(string Name, long Count, string? SubLabel = null);
@@ -48,7 +44,11 @@ internal sealed record ReportData
     // ── Health ──
     public IReadOnlyList<HealthItem> Health { get; init; } = [];
 
-    /// <summary>Optional features that are switched off. Empty when everything is on — the box is then omitted.</summary>
+    /// <summary>
+    /// Applicable hints from <see cref="RecommendationEngine"/>, minus the ones the operator has
+    /// dismissed. Empty when nothing applies — the box is then omitted. Purely informational:
+    /// these never count towards <see cref="WarningCount"/> or <see cref="ErrorCount"/>.
+    /// </summary>
     public IReadOnlyList<Recommendation> Recommendations { get; init; } = [];
 
     // ── KPIs (period vs. previous period) ──

@@ -26,6 +26,7 @@ internal sealed class ConfigDocument
     public SenderValidationSection SenderValidation { get; set; } = new();
     public LoggingSection Logging { get; set; } = new();
     public BackupSection Backup { get; set; } = new();
+    public RecommendationsSection Recommendations { get; set; } = new();
 
     /// <summary>
     /// The original parsed document. Preserved on load so <see cref="ConfigService.Save"/>
@@ -172,6 +173,15 @@ internal sealed class ConfigDocument
         public string DefaultLevel { get; set; } = "Information";
     }
 
+    internal sealed class RecommendationsSection
+    {
+        /// <summary>
+        /// Stable ids of recommendation hints the operator has permanently hidden
+        /// (see <c>RecommendationIds</c>). Empty means every applicable hint is shown.
+        /// </summary>
+        public List<string> Dismissed { get; set; } = [];
+    }
+
     internal sealed class BackupSection
     {
         public bool BackupEnabled { get; set; } = false;
@@ -191,6 +201,12 @@ internal sealed class ConfigDocument
 
     internal sealed class NotificationSection
     {
+        /// <summary>
+        /// Master switch for all admin notifications. When false nothing is sent, regardless of the
+        /// per-event flags below — which keep their values so the setup survives a temporary silence.
+        /// </summary>
+        public bool NotifEnabled { get; set; }
+
         public List<string> RecipientAddresses { get; set; } = [];
         public string? NotifFrom { get; set; }
         public string SubjectPrefix { get; set; } = "[GraphMailer]";

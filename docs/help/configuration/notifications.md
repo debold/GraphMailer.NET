@@ -12,13 +12,11 @@ fallback for legacy applications that parse bounce messages.
 > [!NOTE]
 > Changes on this page apply to the running service **without a restart**.
 
-## Admin Recipients
-
-The email addresses that receive **all** system notification emails (alerts, NDR admin copies, the
-periodic report). Add one or more with **+ Add**. With no recipients configured, GraphMailer has
-nowhere to send alerts.
-
 ## Notification Settings
+
+The shared basics: every email GraphMailer sends about itself goes out from this address. It is
+used by all the features below **and** by [emailed backups](backup-restore.html), which is why it
+comes first.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -31,21 +29,55 @@ nowhere to send alerts.
 > sends email can work — admin notifications, non-delivery reports, scheduled reports **and**
 > [emailed backups](backup-restore.html). The ConfigTool therefore shows a validation error under
 > the field and refuses to save while any of these features is active without a (valid) sender.
+>
+> The error names exactly which features still depend on it. Switch those off — including the
+> **Send admin notifications** master switch below — and the address becomes optional again.
 
 ## Non-Delivery Reports (NDR)
 
 When a message is accepted over SMTP but **permanently** rejected by Microsoft 365 (after the retry
-window expires), GraphMailer can send a bounce notification.
+window expires), GraphMailer can send a bounce notification. NDRs have their own master switch and
+are **not** affected by the admin-notification one below.
 
 | Setting | Default | Meaning |
 |---|---|---|
 | Enable Non-Delivery Reports | Off | Master switch for bounces. |
 | Send NDR to original sender | On | Notifies the address that submitted the message. |
-| Send NDR copy to admin recipients | Off | Also sends a copy to the Admin Recipients above. |
+| Send NDR copy to admin recipients | Off | Also sends a copy to the [Admin Recipients](#admin-recipients). |
 
 > [!TIP]
 > Enabling NDRs to the original sender makes GraphMailer behave like a normal mail server — the
 > submitting application/user learns their message bounced instead of failing silently.
+
+> [!NOTE]
+> **Send NDR copy to admin recipients** stays switched off and locked until at least one admin
+> recipient exists — a copy needs somewhere to go. The Configuration Tool says so next to the
+> switch; add a recipient below and it unlocks.
+
+## Admin Recipients
+
+The email addresses that receive **all** system notification emails (alerts, NDR admin copies, the
+periodic report). Add one or more with **+ Add**. With no recipients configured, GraphMailer has
+nowhere to send alerts.
+
+## Admin Notifications
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Send admin notifications | Off | Master switch for every alert in *Notify on Events* below. |
+
+Turning this off stops all admin alerts at once without losing anything: the recipient list, the
+sender address and every individual event setting are kept and take effect again when you switch it
+back on. While it is off, the event toggles are greyed out.
+
+> [!TIP]
+> Use this to silence alerts during a planned maintenance window, or to clear the sender address:
+> with the master switch off, the sender is no longer required by admin notifications, so it can be
+> emptied without first deleting the recipients.
+
+Non-delivery reports and the periodic operations report have their own switches and are **not**
+covered by this master switch — they can still send while it is off. For the same reason the
+recipient list stays editable: those two features use it as well.
 
 ## Notify on Events
 
@@ -55,8 +87,8 @@ Toggle which conditions raise an alert email. Sensible defaults are pre-set:
 |---|---|
 | IP address blocked | On |
 | Email delivery failed (all retries exhausted) | On |
-| Certificate expiring within warning threshold | On |
-| Certificate expired | On |
+| TLS listener certificate expiring within warning threshold | On |
+| TLS listener certificate expired | On |
 | Low disk space | On |
 | Graph API unreachable | On |
 | SMTP port connectivity failure | On |
@@ -64,8 +96,24 @@ Toggle which conditions raise an alert email. Sensible defaults are pre-set:
 | Configuration backup result (success / failure) | On |
 | New GraphMailer version available | **Off** |
 
+The **All** switch in the card header turns every event on or off at once. It shows as on only
+while every single event is enabled, so it also tells you at a glance whether anything is switched
+off.
+
 The thresholds behind several of these (certificate warning days, disk-space percentage, port and
 Graph check intervals) are set on the [Monitoring](monitoring.html) page.
+
+> [!IMPORTANT]
+> The two certificate alerts watch the **TLS listener certificate** — the one that secures the SMTP
+> ports, configured on [Servers & TLS](servers-tls.html). They do **not** watch the Graph client
+> certificate used to authenticate against Entra, which is a separate certificate on the
+> [Graph API](graph-api.html) page.
+>
+> That distinction matters: if the TLS listener certificate expires, Graph still works and the alert
+> is delivered normally. If the **Graph client certificate** expires, GraphMailer cannot reach Graph
+> at all — and therefore cannot send email about it. That condition is reported in the log and on
+> the [Status](../monitoring/status.html) page instead, so a certificate-authenticated installation
+> should have its Graph certificate expiry tracked outside GraphMailer as well.
 
 > [!NOTE]
 > The *New GraphMailer version available* alert additionally requires the weekly **update check**
@@ -90,13 +138,16 @@ failures — to the Admin Recipients on a schedule.
 > same report design used throughout GraphMailer's emails, sent automatically on your chosen
 > schedule.
 
-If the weekly [update check](monitoring.html) or the anonymous [usage telemetry](monitoring.html)
-is switched off, the report closes with a short **Recommendations** box explaining what each one
-does. It is a hint, not a warning — it never affects the report's health status, and it disappears
-once both are enabled.
+The report closes with a short **Recommendations** box listing the suggestions that currently apply
+to this installation — the same list shown on the
+[Recommendations](../monitoring/recommendations.html) page in the Configuration Tool, grouped by
+category and naming the page that fixes each one. It is a hint, not a warning: it never affects the
+report's health status, it disappears once nothing applies, and tips you hide in the Configuration
+Tool are left out of the email too.
 
 ## Related
 
+- [Recommendations](../monitoring/recommendations.html) — the full list of suggestions and how to hide them
 - [Graph API](graph-api.html) — the connection used to send notifications
 - [Monitoring](monitoring.html) — the thresholds that trigger many of these alerts
 - [Mail Queue](mail-queue.html) — when a message becomes a permanent failure (NDR)

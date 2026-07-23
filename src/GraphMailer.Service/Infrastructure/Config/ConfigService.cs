@@ -125,11 +125,12 @@ internal sealed class ConfigService
             IpBlocking = ReadIpBlocking(merged),
             Monitoring = ReadMonitoring(merged),
             Metrics = ReadMetrics(merged),
-            Notification = ReadNotifications(merged),
+            Notification = ReadNotifications(merged, root),
             Ndr = ReadNdr(merged),
             SenderValidation = ReadSenderValidation(merged),
             Logging = ReadLogging(merged),
             Backup = ReadBackup(merged),
+            Recommendations = ReadRecommendations(merged),
             DecryptionFailures = [.. _decryptFailures],
         };
     }
@@ -252,7 +253,37 @@ internal sealed class ConfigService
         WriteSenderValidation(root, doc.SenderValidation);
         WriteLogging(root, doc.Logging);
         WriteBackup(root, doc.Backup);
+        WriteRecommendations(root, doc.Recommendations);
 
+        WriteAtomically(root);
+    }
+
+    /// <summary>
+    /// Persists only the dismissed-recommendation ids, leaving every other key on disk untouched.
+    ///
+    /// The ConfigTool calls this the moment a hint is dismissed or restored. A full
+    /// <see cref="Save"/> would also write whatever the user has half-edited on other pages, and
+    /// would raise the "unsaved changes" badge for what is really just a display preference — so
+    /// this re-reads the file, replaces the one key and writes it back atomically.
+    ///
+    /// No-op when the file does not exist yet: the caller keeps the ids in its
+    /// <see cref="ConfigDocument"/>, and the first real <see cref="Save"/> persists them.
+    /// </summary>
+    public void UpdateDismissedRecommendations(IReadOnlyList<string> ids)
+    {
+        if (!File.Exists(_filePath)) return;
+
+        var json = File.ReadAllText(_filePath, System.Text.Encoding.UTF8);
+        if (JsonNode.Parse(json) is not JsonObject root)
+            throw new ConfigLoadException($"Config file must contain a JSON object at the root: '{_filePath}'");
+
+        WriteRecommendations(root, new ConfigDocument.RecommendationsSection { Dismissed = [.. ids] });
+        WriteAtomically(root);
+    }
+
+    /// <summary>Writes <paramref name="root"/> to the config path via temp file + rename.</summary>
+    private void WriteAtomically(JsonObject root)
+    {
         var dir = Path.GetDirectoryName(_filePath);
         if (!string.IsNullOrWhiteSpace(dir))
             Directory.CreateDirectory(dir);
@@ -494,15 +525,26 @@ internal sealed class ConfigService
         };
     }
 
-    private static ConfigDocument.NotificationSection ReadNotifications(JsonObject root)
+    /// <param name="userRoot">
+    /// The <b>unmerged</b> user document. Needed for <c>Enabled</c>: the defaults overlay always
+    /// supplies it from appsettings.json, which makes "absent in the user file" indistinguishable
+    /// from "explicitly false" on the merged document.
+    /// </param>
+    private static ConfigDocument.NotificationSection ReadNotifications(JsonObject root, JsonObject userRoot)
     {
         var o = root["AdminNotifications"] as JsonObject ?? new JsonObject();
+        var userEnabled = (userRoot["AdminNotifications"] as JsonObject)?["Enabled"]?.GetValue<bool>();
         var types = o["NotificationTypes"] as JsonObject ?? new JsonObject();
         var report = o["ScheduledReport"] as JsonObject ?? new JsonObject();
         var recipients = o["RecipientAddresses"] as JsonArray;
+        var recipientList = recipients?.Select(n => n?.GetValue<string>()).OfType<string>().ToList() ?? [];
         return new ConfigDocument.NotificationSection
         {
-            RecipientAddresses = recipients?.Select(n => n?.GetValue<string>()).OfType<string>().ToList() ?? [],
+            // Before schema v6 the ConfigTool derived this key from the recipient count instead of
+            // exposing it. A file that predates the migration (e.g. a restored backup) is read with
+            // that same rule, so notifications never silently switch themselves off.
+            NotifEnabled = userEnabled ?? recipientList.Count > 0,
+            RecipientAddresses = recipientList,
             NotifFrom = Str(o, "SenderAddress"),
             SubjectPrefix = Str(o, "SubjectPrefix") ?? "[GraphMailer]",
             NotifIpBlocked = GetTypeEnabled(types, "IpBlockedAlert", true),
@@ -550,7 +592,7 @@ internal sealed class ConfigService
     private static void WriteNotifications(JsonObject root, ConfigDocument.NotificationSection s)
     {
         var o = EnsureSection(root, "AdminNotifications");
-        o["Enabled"] = s.RecipientAddresses.Count > 0;
+        o["Enabled"] = s.NotifEnabled;
         o["SenderAddress"] = string.IsNullOrWhiteSpace(s.NotifFrom) ? null : (JsonNode)s.NotifFrom!;
         o["SubjectPrefix"] = s.SubjectPrefix;
 
@@ -681,6 +723,18 @@ internal sealed class ConfigService
         var minLevel = EnsureSection(EnsureSection(root, "Serilog"), "MinimumLevel");
         minLevel["Default"] = s.DefaultLevel;
     }
+
+    private static ConfigDocument.RecommendationsSection ReadRecommendations(JsonObject root)
+    {
+        var o = root["Recommendations"] as JsonObject ?? new JsonObject();
+        return new ConfigDocument.RecommendationsSection
+        {
+            Dismissed = ReadStringArray(o, "Dismissed"),
+        };
+    }
+
+    private static void WriteRecommendations(JsonObject root, ConfigDocument.RecommendationsSection s)
+        => EnsureSection(root, "Recommendations")["Dismissed"] = ToJsonArray(s.Dismissed);
 
     private static void WriteIpBlocking(JsonObject root, ConfigDocument.IpBlockingSection s)
     {

@@ -3,6 +3,7 @@ using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Services;
 using GraphMailer.Service.Services.Reporting;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -31,6 +32,13 @@ public sealed class ScheduledReportServiceTests
             Monitor(new List<SmtpServerEntry>()),
             Monitor(new UpdateCheckOptions()),
             Monitor(new TelemetryOptions()),
+            Monitor(new GraphApiOptions()),
+            Monitor(new SenderValidationOptions()),
+            Monitor(new BackupOptions()),
+            Monitor(new NdrOptions()),
+            Monitor(new AdminNotificationsOptions()),
+            Monitor(new RecommendationOptions()),
+            new ConfigurationBuilder().Build(),
             new EphemeralDataProtectionProvider(),
             NullLogger<ReportDataCollector>.Instance);
 

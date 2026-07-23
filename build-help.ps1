@@ -80,6 +80,7 @@ $SiteMap = @(
     @{ Group = 'Configuration';   Path = 'configuration/notifications.md';    Title = 'Notifications' }
     @{ Group = 'Configuration';   Path = 'configuration/backup-restore.md';   Title = 'Backup & Restore' }
     @{ Group = 'Monitoring';      Path = 'monitoring/status.md';              Title = 'Status' }
+    @{ Group = 'Monitoring';      Path = 'monitoring/recommendations.md';     Title = 'Recommendations' }
     @{ Group = 'Monitoring';      Path = 'monitoring/metrics.md';             Title = 'Metrics' }
     @{ Group = 'Monitoring';      Path = 'monitoring/messages.md';            Title = 'Messages' }
     @{ Group = 'Monitoring';      Path = 'monitoring/logs.md';                Title = 'Logs' }

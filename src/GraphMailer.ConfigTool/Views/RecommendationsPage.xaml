@@ -1,0 +1,142 @@
+<UserControl x:Class="GraphMailer.ConfigTool.Views.RecommendationsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource BackgroundBrush}">
+    <UserControl.Resources>
+        <!-- One card per suggestion; shared by all three sections. The state-dependent bits
+             (summary line, button label, opacity) are computed in the code-behind. -->
+        <DataTemplate x:Key="RecommendationCard">
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,8"
+                    Opacity="{Binding CardOpacity}">
+                <StackPanel Margin="16,12,16,12">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding StateGlyph}"
+                                   FontSize="13"
+                                   Margin="0,0,8,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <!-- Severity chip: the primary sort key, so it belongs next to the title -->
+                        <Border Style="{StaticResource Badge}"
+                                Background="{Binding SeverityBackground}"
+                                Margin="0,0,8,0"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="{Binding SeverityLabel}"
+                                       FontSize="10"
+                                       FontWeight="SemiBold"
+                                       Foreground="{Binding SeverityForeground}"/>
+                        </Border>
+                        <TextBlock Text="{Binding Title}"
+                                   Style="{StaticResource SectionHeader}"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Body}"
+                               Style="{StaticResource HintText}"
+                               TextWrapping="Wrap"
+                               Margin="21,6,0,0"/>
+                    <!-- The argument for acting, kept separate from the description -->
+                    <StackPanel Margin="21,8,0,0"
+                                Visibility="{Binding ImpactVisibility}">
+                        <TextBlock Text="Why it matters"
+                                   Style="{StaticResource LabelText}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding Impact}"
+                                   Style="{StaticResource HintText}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <Grid Margin="21,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding TargetHint}"
+                                   Style="{StaticResource HintText}"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1"
+                                Content="Go to setting"
+                                Style="{StaticResource SmallButton}"
+                                Margin="0,0,8,0"
+                                Tag="{Binding}"
+                                Click="GoToSetting_Click"/>
+                        <Button Grid.Column="2"
+                                Content="{Binding DismissLabel}"
+                                Style="{StaticResource SmallButton}"
+                                Tag="{Binding}"
+                                Click="ToggleDismiss_Click"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <Style x:Key="SectionExpander"
+               TargetType="Expander">
+            <Setter Property="Margin"
+                    Value="0,0,0,10"/>
+            <Setter Property="Foreground"
+                    Value="{StaticResource TextBrush}"/>
+            <Setter Property="FontSize"
+                    Value="13"/>
+            <Setter Property="FontWeight"
+                    Value="SemiBold"/>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,20,24,24">
+
+            <!-- Intro: what these are, and that they are advice rather than findings -->
+            <Border Style="{StaticResource InfoBox}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock x:Name="SummaryText"
+                               Style="{StaticResource BodyText}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="These are suggestions, not problems — nothing here affects the service's health status. Hiding a tip also removes it from the periodic report email; only open tips are emailed."
+                               Style="{StaticResource HintText}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Empty state — only when the whole catalogue is irrelevant to this install -->
+            <Border x:Name="EmptyState"
+                    Style="{StaticResource InfoBox}"
+                    Visibility="Collapsed">
+                <TextBlock Text="Nothing to suggest yet — finish the Graph API setup and configure a listener, then this page fills in."
+                           Style="{StaticResource BodyText}"
+                           TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- Open: expanded by default, the only section that asks for action -->
+            <Expander x:Name="OpenSection"
+                      Style="{StaticResource SectionExpander}"
+                      IsExpanded="True">
+                <ItemsControl x:Name="OpenList"
+                              Margin="0,8,0,0"
+                              ItemTemplate="{StaticResource RecommendationCard}"/>
+            </Expander>
+
+            <!-- Done: collapsed — a record of what was already handled -->
+            <Expander x:Name="DoneSection"
+                      Style="{StaticResource SectionExpander}">
+                <ItemsControl x:Name="DoneList"
+                              Margin="0,8,0,0"
+                              ItemTemplate="{StaticResource RecommendationCard}"/>
+            </Expander>
+
+            <!-- Hidden: collapsed — the operator's dismissal list, and the place to undo one -->
+            <Expander x:Name="HiddenSection"
+                      Style="{StaticResource SectionExpander}">
+                <ItemsControl x:Name="HiddenList"
+                              Margin="0,8,0,0"
+                              ItemTemplate="{StaticResource RecommendationCard}"/>
+            </Expander>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

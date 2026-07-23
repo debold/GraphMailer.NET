@@ -32,7 +32,7 @@ One page per screen in the ConfigTool, in the same order as the app's sidebar:
 
 ## Monitoring
 
-- [Status](monitoring/status.html) · [Metrics](monitoring/metrics.html) · [Messages](monitoring/messages.html) · [Logs](monitoring/logs.html)
+- [Status](monitoring/status.html) · [Recommendations](monitoring/recommendations.html) · [Metrics](monitoring/metrics.html) · [Messages](monitoring/messages.html) · [Logs](monitoring/logs.html)
 
 ## Reference
 

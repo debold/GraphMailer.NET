@@ -149,6 +149,7 @@ try
     builder.Services.Configure<NdrOptions>(builder.Configuration.GetSection(NdrOptions.SectionName));
     builder.Services.Configure<SenderValidationOptions>(builder.Configuration.GetSection(SenderValidationOptions.SectionName));
     builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection(BackupOptions.SectionName));
+    builder.Services.Configure<RecommendationOptions>(builder.Configuration.GetSection(RecommendationOptions.SectionName));
 
     // Servers list (not a single-section option – bound directly as IList)
     builder.Services.Configure<List<SmtpServerEntry>>(builder.Configuration.GetSection("Servers"));

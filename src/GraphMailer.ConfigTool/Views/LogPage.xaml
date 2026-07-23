@@ -142,9 +142,10 @@
                                 VerticalAlignment="Center"
                                 ToolTip="Reload the log every 5 seconds and jump to the newest entry.&#x0a;Disable to freeze the view while reading or searching — the Refresh button still works.">
                         <CheckBox x:Name="AutoScrollCheck"
+                                  Style="{StaticResource ToggleSwitch}"
                                   IsChecked="True"
                                   VerticalAlignment="Center"
-                                  Margin="0,0,6,0"
+                                  Margin="0,0,8,0"
                                   Checked="AutoScroll_Changed"
                                   Unchecked="AutoScroll_Changed"/>
                         <TextBlock Text="Auto-refresh"

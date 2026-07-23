@@ -147,7 +147,12 @@ public sealed class ConfigSchemaBindingTests : IDisposable
     {
         _sut.Save(new ConfigDocument
         {
-            Notification = new() { RecipientAddresses = ["admin@corp.com"], NotifFrom = "relay@corp.com" }
+            Notification = new()
+            {
+                NotifEnabled = true,
+                RecipientAddresses = ["admin@corp.com"],
+                NotifFrom = "relay@corp.com",
+            }
         });
 
         var opts = Bind<AdminNotificationsOptions>(
@@ -155,7 +160,29 @@ public sealed class ConfigSchemaBindingTests : IDisposable
 
         opts.RecipientAddresses.Should().ContainSingle("admin@corp.com");
         opts.SenderAddress.Should().Be("relay@corp.com");
-        opts.Enabled.Should().BeTrue("Enabled is derived from RecipientAddresses being non-empty");
+        opts.Enabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Save_MasterSwitchOff_DisablesAdminNotificationsButKeepsTheRecipients()
+    {
+        // Since schema v6 Enabled is authoritative rather than derived from the recipient count:
+        // switching everything off must not require emptying the recipient list.
+        _sut.Save(new ConfigDocument
+        {
+            Notification = new()
+            {
+                NotifEnabled = false,
+                RecipientAddresses = ["admin@corp.com"],
+                NotifFrom = "relay@corp.com",
+            }
+        });
+
+        var opts = Bind<AdminNotificationsOptions>(
+            LoadServiceConfig(), AdminNotificationsOptions.SectionName);
+
+        opts.Enabled.Should().BeFalse();
+        opts.RecipientAddresses.Should().ContainSingle("admin@corp.com");
     }
 
     [Fact]
@@ -171,6 +198,30 @@ public sealed class ConfigSchemaBindingTests : IDisposable
 
         opts.Enabled.Should().BeFalse();
         opts.RecipientAddresses.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Save_Servers_AuthModeBindsToSmtpServerEntry()
+    {
+        // AuthMode used to live only in the ConfigDocument; the recommendation engine needs the
+        // service side to see it too, to tell "accepts credentials" from "no authentication".
+        _sut.Save(new ConfigDocument
+        {
+            Servers =
+            [
+                new() { Enabled = true, Name = "SMTP", Port = 25, Mode = "Plain", AuthMode = "None" },
+                new() { Enabled = true, Name = "Submission", Port = 587, Mode = "StartTls", AuthMode = "Required" },
+            ],
+        });
+
+        var servers = LoadServiceConfig().GetSection("Servers").Get<List<SmtpServerEntry>>()!;
+
+        servers[0].AuthMode.Should().Be("None");
+        servers[0].AcceptsCredentials.Should().BeFalse();
+        servers[0].IsPlaintext.Should().BeTrue();
+        servers[1].AuthMode.Should().Be("Required");
+        servers[1].AcceptsCredentials.Should().BeTrue();
+        servers[1].IsPlaintext.Should().BeFalse();
     }
 
     [Fact]
@@ -646,5 +697,31 @@ public sealed class ConfigSchemaBindingTests : IDisposable
 
         var raw = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(_filePath))!;
         raw["Backup"]!["Password"]!.GetValue<string>().Should().StartWith("ENC[").And.EndWith("]");
+    }
+
+    [Fact]
+    public void Recommendations_Dismissed_BindsToRecommendationOptions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            Recommendations = new ConfigDocument.RecommendationsSection
+            {
+                Dismissed = ["telemetry", "log-level"],
+            },
+        });
+
+        var opts = Bind<RecommendationOptions>(LoadServiceConfig(), RecommendationOptions.SectionName);
+
+        opts.Dismissed.Should().Equal("telemetry", "log-level");
+    }
+
+    [Fact]
+    public void Recommendations_NothingDismissed_BindsToAnEmptyList()
+    {
+        _sut.Save(new ConfigDocument());
+
+        var opts = Bind<RecommendationOptions>(LoadServiceConfig(), RecommendationOptions.SectionName);
+
+        opts.Dismissed.Should().BeEmpty();
     }
 }

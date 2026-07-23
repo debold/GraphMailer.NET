@@ -17,7 +17,7 @@ namespace GraphMailer.Service.Infrastructure.Config;
 internal static class ConfigSchema
 {
     /// <summary>Config schema version understood by this build.</summary>
-    internal const int Current = 4;
+    internal const int Current = 6;
 
     internal const string VersionKey = "SchemaVersion";
 
@@ -39,7 +39,9 @@ internal static class ConfigSchema
         if (from < 2) MigrateTo2(root);
         if (from < 3) MigrateTo3(root);
         if (from < 4) MigrateTo4(root);
-        // if (from < 5) MigrateTo5(root);   // future steps go here, in order
+        if (from < 5) MigrateTo5(root);
+        if (from < 6) MigrateTo6(root);
+        // if (from < 7) MigrateTo7(root);   // future steps go here, in order
 
         root[VersionKey] = Current;
         return true;
@@ -93,6 +95,36 @@ internal static class ConfigSchema
     {
         // Intentionally empty: purely additive schema change.
         _ = root;
+    }
+
+    /// <summary>
+    /// v4 → v5: additive only — <c>Recommendations.Dismissed</c> (string array, default empty) was
+    /// introduced so operators can permanently hide individual recommendation hints in the ConfigTool
+    /// and in the periodic report. Older files without the key are already valid (the option binder
+    /// falls back to an empty list, i.e. nothing is hidden), so there is nothing to transform; the
+    /// version bump records which shape wrote the file.
+    /// </summary>
+    private static void MigrateTo5(JsonObject root)
+    {
+        // Intentionally empty: purely additive schema change.
+        _ = root;
+    }
+
+    /// <summary>
+    /// v5 → v6: <c>AdminNotifications.Enabled</c> becomes an authoritative setting instead of a value
+    /// the ConfigTool derived from the recipient count on every save. The key already existed and
+    /// already carried that derived value, so the only work is materialising it for files that never
+    /// had it written (hand-edited configs): absent → <c>true</c> when recipients are configured.
+    /// Without this an operator who adds a master switch to an existing install would find
+    /// notifications silently off after the upgrade.
+    /// </summary>
+    private static void MigrateTo6(JsonObject root)
+    {
+        if (root["AdminNotifications"] is not JsonObject notifications) return;
+        if (notifications["Enabled"] is not null) return;
+
+        var recipients = notifications["RecipientAddresses"] as JsonArray;
+        notifications["Enabled"] = recipients is { Count: > 0 };
     }
 }
 

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using GraphMailer.Service.Services.Advisor;
 
 namespace GraphMailer.Service.Services.Reporting;
 
@@ -336,25 +337,31 @@ internal static class HtmlReportRenderer
         if (d.Recommendations.Count == 0)
             return;
 
-        SectionTitle(sb, "Recommendations", "optional features that are currently off", "24px 28px 8px 28px");
+        SectionTitle(sb, "Recommendations", "suggestions for this installation", "24px 28px 8px 28px");
         sb.Append($"""
             <tr><td style="padding:0 28px 20px 28px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{EmailTheme.InfoBg}" style="background-color:{EmailTheme.InfoBg};border:1px solid {EmailTheme.InfoBorder};">
             <tr><td style="padding:12px 14px;font-family:{SansFont};font-size:12px;color:{Text};line-height:18px;">
             """);
 
-        for (int i = 0; i < d.Recommendations.Count; i++)
+        // Grouped by severity (the engine already returns them in that order) so a longer list
+        // stays scannable: an operator can read the High block and stop there.
+        var first = true;
+        foreach (var group in d.Recommendations.GroupBy(r => r.Severity))
         {
-            var r = d.Recommendations[i];
-            var spacing = i == 0 ? "" : "padding-top:10px;";
             sb.Append($"""
-                <div style="{spacing}"><span style="font-weight:600;color:{EmailTheme.InfoFg};">{Enc(r.Title)}</span><br>{Enc(r.Detail)}</div>
+                <div style="{(first ? "" : "padding-top:14px;")}font-family:{MonoFont};font-size:10px;letter-spacing:0.6px;text-transform:uppercase;color:{Muted};">{Enc(group.First().SeverityLabel)} priority</div>
                 """);
+            first = false;
+
+            foreach (var r in group)
+                sb.Append($"""
+                    <div style="padding-top:8px;"><span style="font-weight:600;color:{EmailTheme.InfoFg};">{Enc(r.Title)}</span><br>{Enc(r.Detail)}<br><span style="color:{Muted};"><em>Why it matters:</em> {Enc(r.Impact)}</span><br><span style="color:{Muted};">{Enc(r.Category.ToString())} · ConfigTool → {Enc(r.TargetPageName)}</span></div>
+                    """);
         }
 
-        var subject = d.Recommendations.Count == 1 ? "This is switched on" : "Both are switched on";
         sb.Append($"""
-            <div style="padding-top:10px;color:{Muted};">{subject} in the ConfigTool → Monitoring page. This box disappears once done.</div>
+            <div style="padding-top:12px;color:{Muted};">Open the ConfigTool → Recommendations page to act on these, or to hide individual ones permanently.</div>
             </td></tr></table></td></tr>
             """);
     }

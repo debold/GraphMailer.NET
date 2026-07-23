@@ -12,32 +12,80 @@ namespace GraphMailer.Tests.Unit.ConfigTool;
 public sealed class SenderAddressRuleTests
 {
     [Fact]
-    public void NoSender_WithRecipients_IsAnError()
+    public void NoSender_WithAdminNotificationsEnabled_IsAnError()
     {
         var error = SenderAddressRule.Validate(
-            sender: "", hasRecipients: true, ndrEnabled: false, reportEnabled: false, backupEmailEnabled: false);
+            sender: "", adminNotificationsEnabled: true, ndrEnabled: false, reportEnabled: false, backupEmailEnabled: false);
 
         error.Should().Contain("admin notifications");
     }
 
     [Fact]
+    public void DocumentOverload_MasterSwitchOff_LetsTheSenderBeCleared()
+    {
+        // Regression: the rule used to key off the recipient list alone, so an operator who had
+        // switched everything off still could not clear the sender without first emptying the list.
+        var doc = new ConfigDocument
+        {
+            Notification = new()
+            {
+                NotifFrom = null,
+                NotifEnabled = false,
+                RecipientAddresses = ["ops@corp.com"],
+            },
+            Ndr = new() { NdrEnabled = false },
+            Backup = new() { EmailEnabled = false },
+        };
+
+        SenderAddressRule.Validate(doc).Should().BeNull();
+    }
+
+    [Fact]
+    public void DocumentOverload_MasterSwitchOnWithRecipients_StillRequiresASender()
+    {
+        var doc = new ConfigDocument
+        {
+            Notification = new()
+            {
+                NotifFrom = null,
+                NotifEnabled = true,
+                RecipientAddresses = ["ops@corp.com"],
+            },
+        };
+
+        SenderAddressRule.Validate(doc).Should().Contain("admin notifications");
+    }
+
+    [Fact]
+    public void DocumentOverload_MasterSwitchOnWithoutRecipients_DoesNotRequireASender()
+    {
+        // Nothing can be sent without a recipient, so the master switch alone must not block a save.
+        var doc = new ConfigDocument
+        {
+            Notification = new() { NotifFrom = null, NotifEnabled = true, RecipientAddresses = [] },
+        };
+
+        SenderAddressRule.Validate(doc).Should().BeNull();
+    }
+
+    [Fact]
     public void NoSender_WithNdrEnabled_IsAnError()
     {
-        SenderAddressRule.Validate("", hasRecipients: false, ndrEnabled: true, reportEnabled: false, backupEmailEnabled: false)
+        SenderAddressRule.Validate("", adminNotificationsEnabled: false, ndrEnabled: true, reportEnabled: false, backupEmailEnabled: false)
             .Should().Contain("non-delivery reports");
     }
 
     [Fact]
     public void NoSender_WithReportEnabled_IsAnError()
     {
-        SenderAddressRule.Validate(null, hasRecipients: false, ndrEnabled: false, reportEnabled: true, backupEmailEnabled: false)
+        SenderAddressRule.Validate(null, adminNotificationsEnabled: false, ndrEnabled: false, reportEnabled: true, backupEmailEnabled: false)
             .Should().Contain("scheduled reports");
     }
 
     [Fact]
     public void NoSender_WithEmailedBackups_IsAnError()
     {
-        SenderAddressRule.Validate("  ", hasRecipients: false, ndrEnabled: false, reportEnabled: false, backupEmailEnabled: true)
+        SenderAddressRule.Validate("  ", adminNotificationsEnabled: false, ndrEnabled: false, reportEnabled: false, backupEmailEnabled: true)
             .Should().Contain("emailed backups");
     }
 
@@ -56,7 +104,7 @@ public sealed class SenderAddressRuleTests
     public void NoSender_NothingDependsOnIt_IsValid()
     {
         // Fresh install: no recipients, NDR/report/backup-email off — no sender needed.
-        SenderAddressRule.Validate("", hasRecipients: false, ndrEnabled: false, reportEnabled: false, backupEmailEnabled: false)
+        SenderAddressRule.Validate("", adminNotificationsEnabled: false, ndrEnabled: false, reportEnabled: false, backupEmailEnabled: false)
             .Should().BeNull();
     }
 

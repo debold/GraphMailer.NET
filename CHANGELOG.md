@@ -1,5 +1,125 @@
 # Changelog
 
+## 1.3.2 — unreleased
+
+### Fixed
+
+- **The notification sender address could not be cleared while any recipient was configured**, even
+  with every notification switched off. The cross-page rule that guards the address keyed off the
+  recipient list alone, so an operator who had disabled all events, the NDR admin copy and emailed
+  backups still got "A sender email address is required" and had to empty the recipient list to get
+  rid of it. It now keys off whether admin notifications will actually be sent.
+
+### Added
+
+- **A master switch for admin notifications** (Notifications page). One toggle stops every admin
+  alert at once while keeping the recipient list, the sender address and all the individual event
+  settings — they take effect again when it is switched back on, and the event toggles grey out
+  meanwhile. Non-delivery reports and the periodic report keep their own switches, and the
+  recipient list stays editable because they use it too.
+
+  The service already had an `AdminNotifications.Enabled` flag, but the ConfigTool derived it from
+  the recipient count on every save instead of exposing it; it is now an authoritative setting.
+
+- **Recommendations are now a first-class screen in the Configuration Tool.** Until now the only
+  place suggestions appeared was the periodic report email, and only two of them (update check,
+  telemetry) hard-coded into the report renderer. There is now a shared catalogue of nine
+  suggestions, evaluated against the saved configuration and shown on a new **Recommendations**
+  page in the sidebar's Overview group, with a count badge that appears whenever something applies.
+
+  The page is split into three collapsible sections — **Open** (expanded), **Done** and **Hidden**.
+  Fixing a setting moves its suggestion from Open to Done rather than making it vanish, so the page
+  stays a record of everything that was suggested and already handled. A handled suggestion keeps
+  its title but shows a short confirmation line instead of the argument for it. The sidebar badge
+  counts open suggestions only.
+
+  Each suggestion names what it does and why it is worth having, is ordered by category
+  (Security → Reliability → Operations → Product), and carries a **Go to setting** button that
+  jumps straight to the page holding it. The catalogue:
+
+  | Priority | Suggestion | Appears when |
+  |---|---|---|
+  | High | Enable TLS on the listeners that accept authentication | An enabled listener is plaintext **and** its auth mode is Optional or Required |
+  | High | Authenticate to Graph with a certificate instead of a client secret | The Entra app uses a client secret and no certificate |
+  | Medium | Turn on sender validation | Sender validation is off (and Graph is configured) |
+  | Medium | Enable automatic configuration backups | Scheduled backups are off |
+  | Medium | Send non-delivery reports | NDRs are off |
+  | Medium | Add a recipient for admin notifications | No admin notification recipient is configured |
+  | Medium | Turn on the update check | The weekly GitHub release check is off |
+  | Low | Set the log level back to Information | The log level is anything other than *Information* |
+  | Low | Consider sharing anonymous usage telemetry | Anonymous telemetry is off |
+
+  Each suggestion carries a **priority** — the primary sort order, shown as a chip on the card and
+  as a group heading in the report email — and a **Why it matters** paragraph naming the concrete
+  consequence of leaving the setting as it is, kept separate from the description so the rating is
+  justified in words rather than merely asserted.
+
+  The TLS suggestion is deliberately about **credentials**, not encryption in general: a plaintext
+  listener whose auth mode is *None* never sees a password and is not flagged, so the default
+  port-25 relay listener stays a supported setup. It is a listener that accepts SMTP AUTH *and*
+  runs unencrypted that puts passwords on the wire — and the hint names the affected listeners by
+  name and port.
+
+  Suggestions that only make sense on a finished installation carry a precondition — the two
+  Graph-related ones are left out until a tenant and client id exist, the TLS one until at least
+  one listener is enabled. Those appear in *no* section rather than being listed as done, since
+  nothing was checked that could be called handled. So a fresh install is not flooded with advice
+  about setup steps the operator has not reached yet. None of this affects the service's health
+  status: they are suggestions, never findings.
+
+- **Individual tips can be hidden permanently.** *Hide* moves a tip to the **Hidden** section and
+  drops it from the report email; *Show again* brings it back. A hidden tip stays in that section
+  even once the setting satisfies it, so it always shows exactly what you have hidden. Hiding is
+  written straight to `graphmailer.json` the moment it is clicked — it does not wait for the Save
+  button and does not create unsaved changes, so it never persists half-finished edits on other
+  pages. The preference travels with configuration backups.
+
+### Changed
+
+- **The Notifications page is reordered** to follow how the settings depend on each other:
+  Notification Settings (the shared sender, also used by emailed backups) → Non-Delivery Reports →
+  Admin Recipients → Admin Notifications → Notify on Events → Periodic Reports. The master switch
+  now sits directly above the event toggles it governs, and is a toggle switch like the other
+  switches on the page rather than a checkbox.
+
+- **An "All" switch in the Notify on Events header** turns every event alert on or off at once. It
+  reads back as on only while every single event is enabled, so it doubles as an at-a-glance
+  indicator that nothing was quietly switched off.
+
+- **The two certificate alerts are renamed to "TLS listener certificate …"**. They always watched
+  the SMTP listener certificate, never the Graph client certificate used for Entra authentication,
+  but the old labels did not say so. An info icon on the page and a note in the help now spell out
+  the consequence: an expiring *listener* certificate can still be emailed about, an expiring
+  *Graph client* certificate cannot — without Graph there is no way to send the warning — so that
+  expiry needs tracking outside GraphMailer.
+
+- **Every remaining checkbox in the ConfigTool is now a toggle switch** (Monitoring page: update
+  check, telemetry, metrics, performance metrics; Logs page: auto-refresh). The rest of the app
+  already used them.
+
+- **"Send NDR copy to admin recipients" is switched off and locked while no admin recipient
+  exists**, with a hint next to it saying so. It previously accepted a setting that could not do
+  anything: at runtime the copy had nowhere to go.
+
+- **The report email's Recommendations box now draws from the same catalogue**, grouped by
+  category and naming the Configuration Tool page that fixes each entry. Previously it only ever
+  showed the update-check and telemetry hints, and its closing sentence ("Both are switched on
+  in the ConfigTool → Monitoring page") was wrong as soon as more than two applied. The email
+  carries **open** suggestions only — in a recurring report, a growing block of "nothing to do
+  here" would train the reader to skip the box.
+
+- **Config schema v4 → v6.** v5 is additive: the new `Recommendations.Dismissed` key holds the
+  hidden tips, and an absent key means nothing is hidden. v6 turns `AdminNotifications.Enabled`
+  from a derived value into an authoritative setting — the migration fills the key in from the
+  recipient count where it is missing, so an existing installation does not come back from the
+  upgrade with notifications silently off. Files that bypass the migration (a restored pre-v6
+  backup) are read with the same rule. Older files migrate automatically on service start and when
+  the Configuration Tool opens, with the original backed up to `config\backups\`.
+
+- `SmtpServerEntry.AuthMode` is now bound on the service side too. The key was already written to
+  `graphmailer.json`; only the ConfigTool read it, so nothing else could tell "accepts credentials"
+  from "no authentication at all".
+
 ## 1.3.1.1052 — 2026-07-22
 
 ### Fixed

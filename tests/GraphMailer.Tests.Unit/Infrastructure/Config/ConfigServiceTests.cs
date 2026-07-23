@@ -851,6 +851,85 @@ public sealed class ConfigServiceTests : IDisposable
     }
 
     // =========================================================================
+    // UpdateDismissedRecommendations – targeted partial write
+    // =========================================================================
+
+    [Fact]
+    public void UpdateDismissedRecommendations_WritesOnlyThatKey_LeavingEverythingElseUntouched()
+    {
+        // The ConfigTool calls this while the user may have unsaved edits on other pages:
+        // nothing outside Recommendations.Dismissed may change.
+        WriteJson("""
+        {
+            "SchemaVersion": 5,
+            "Smtp": { "Banner": "original" },
+            "CustomThirdPartyKey": { "keep": "me" }
+        }
+        """);
+
+        _sut.UpdateDismissedRecommendations(["telemetry", "log-level"]);
+
+        var saved = ParseSaved();
+        saved["Recommendations"]!["Dismissed"]!.AsArray()
+            .Select(n => n!.GetValue<string>()).Should().Equal("telemetry", "log-level");
+        saved["Smtp"]!["Banner"]!.GetValue<string>().Should().Be("original");
+        saved["CustomThirdPartyKey"]!["keep"]!.GetValue<string>().Should().Be("me");
+    }
+
+    [Fact]
+    public void UpdateDismissedRecommendations_DoesNotDisturbEncryptedSecrets()
+    {
+        // A partial write must never round-trip secrets through decrypt/re-encrypt: the
+        // ciphertext on disk has to stay byte-identical.
+        _sut.Save(new ConfigDocument { GraphApi = new() { ClientSecret = "top-secret" } });
+        var before = ParseSaved()["GraphApi"]!["ClientSecret"]!.GetValue<string>();
+
+        _sut.UpdateDismissedRecommendations(["telemetry"]);
+
+        ParseSaved()["GraphApi"]!["ClientSecret"]!.GetValue<string>().Should().Be(before);
+        _sut.Load().GraphApi.ClientSecret.Should().Be("top-secret");
+    }
+
+    [Fact]
+    public void UpdateDismissedRecommendations_EmptyList_ClearsThePreviousSelection()
+    {
+        WriteJson("""{ "Recommendations": { "Dismissed": [ "telemetry" ] } }""");
+
+        _sut.UpdateDismissedRecommendations([]);
+
+        _sut.Load().Recommendations.Dismissed.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void UpdateDismissedRecommendations_NoConfigFileYet_IsANoOp()
+    {
+        // First run: the document only lives in memory. Writing a half-empty config here would
+        // shadow the appsettings.json defaults — the caller's next Save persists the ids instead.
+        _sut.UpdateDismissedRecommendations(["telemetry"]);
+
+        File.Exists(_filePath).Should().BeFalse();
+    }
+
+    [Fact]
+    public void UpdateDismissedRecommendations_ThenSave_KeepsTheDismissedIds()
+    {
+        // Save() rebuilds from RawSource, which predates the partial write — the caller keeps the
+        // ids in its ConfigDocument, and this asserts the two paths agree on the result.
+        _sut.Save(new ConfigDocument { Smtp = new() { Banner = "first" } });
+        _sut.UpdateDismissedRecommendations(["telemetry"]);
+
+        var doc = _sut.Load();
+        doc.Recommendations.Dismissed.Should().Equal("telemetry");
+
+        doc.Smtp.Banner = "second";
+        _sut.Save(doc);
+
+        var reloaded = _sut.Load();
+        reloaded.Recommendations.Dismissed.Should().Equal("telemetry");
+        reloaded.Smtp.Banner.Should().Be("second");
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

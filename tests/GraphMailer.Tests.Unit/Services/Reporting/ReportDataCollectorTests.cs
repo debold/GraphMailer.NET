@@ -3,9 +3,11 @@ using FluentAssertions;
 using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure.Metrics;
 using GraphMailer.Service.Services;
+using GraphMailer.Service.Services.Advisor;
 using GraphMailer.Service.Services.Reporting;
 using GraphMailer.Service.Services.UpdateCheck;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -40,7 +42,19 @@ public sealed class ReportDataCollectorTests : IDisposable
         return svc;
     }
 
-    private ReportDataCollector CreateCollector(bool updateCheckEnabled = false, bool telemetryEnabled = false)
+    /// <summary>
+    /// Builds a collector whose configuration satisfies every recommendation rule except the ones
+    /// a test deliberately switches off, so a test about (say) telemetry is not swamped by
+    /// unrelated hints. <paramref name="dismissed"/> feeds the operator's hidden-tip list.
+    /// </summary>
+    private ReportDataCollector CreateCollector(
+        bool updateCheckEnabled = true,
+        bool telemetryEnabled = true,
+        bool senderValidationEnabled = true,
+        bool backupEnabled = true,
+        bool ndrEnabled = true,
+        string logLevel = "Information",
+        IEnumerable<string>? dismissed = null)
         => new(
             Monitor(new MailQueueOptions { MailDir = Path.Combine(_temp, "mail") }),
             Monitor(new MetricsOptions { Enabled = true, BasePath = _temp }),
@@ -50,6 +64,16 @@ public sealed class ReportDataCollectorTests : IDisposable
             Monitor(new List<SmtpServerEntry>()),
             Monitor(new UpdateCheckOptions { Enabled = updateCheckEnabled }),
             Monitor(new TelemetryOptions { Enabled = telemetryEnabled }),
+            // No tenant/client id → the Graph-dependent rules stay silent unless a test sets them.
+            Monitor(new GraphApiOptions()),
+            Monitor(new SenderValidationOptions { Enabled = senderValidationEnabled }),
+            Monitor(new BackupOptions { Enabled = backupEnabled }),
+            Monitor(new NdrOptions { Enabled = ndrEnabled }),
+            Monitor(new AdminNotificationsOptions { RecipientAddresses = ["ops@corp.com"] }),
+            Monitor(new RecommendationOptions { Dismissed = [.. dismissed ?? []] }),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Serilog:MinimumLevel:Default"] = logLevel })
+                .Build(),
             new EphemeralDataProtectionProvider(),
             NullLogger<ReportDataCollector>.Instance)
         {
@@ -199,26 +223,49 @@ public sealed class ReportDataCollectorTests : IDisposable
             .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         data.Recommendations.Should().HaveCount(2);
-        data.Recommendations.Should().Contain(r => r.Title.Contains("update check"));
-        data.Recommendations.Should().Contain(r => r.Title.Contains("telemetry"));
+        data.Recommendations.Should().Contain(r => r.Id == RecommendationIds.UpdateCheck);
+        data.Recommendations.Should().Contain(r => r.Id == RecommendationIds.Telemetry);
     }
 
     [Fact]
     public void Collect_OnlyTelemetryDisabled_RecommendsTelemetryOnly()
     {
-        var data = CreateCollector(updateCheckEnabled: true, telemetryEnabled: false)
+        var data = CreateCollector(telemetryEnabled: false)
             .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
 
-        data.Recommendations.Should().ContainSingle().Which.Title.Should().Contain("telemetry");
+        data.Recommendations.Should().ContainSingle().Which.Id.Should().Be(RecommendationIds.Telemetry);
     }
 
     [Fact]
-    public void Collect_BothOptInFeaturesEnabled_RecommendsNothing()
+    public void Collect_EverythingRecommendedIsConfigured_RecommendsNothing()
     {
-        var data = CreateCollector(updateCheckEnabled: true, telemetryEnabled: true)
-            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var data = CreateCollector().Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         data.Recommendations.Should().BeEmpty("an install with everything enabled must never be nagged");
+    }
+
+    [Fact]
+    public void Collect_ServiceSideInputMatchesRules_SurfacesEachDisabledFeature()
+    {
+        // Guards the service-side RecommendationInput adapter: a monitor that is wired to the
+        // wrong option would silently drop its hint from every report.
+        var data = CreateCollector(
+                senderValidationEnabled: false, backupEnabled: false, ndrEnabled: false, logLevel: "Debug")
+            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        // Sender validation needs a configured Graph app; this collector has none, so it stays silent.
+        data.Recommendations.Select(r => r.Id).Should().BeEquivalentTo(
+            [RecommendationIds.ConfigBackup, RecommendationIds.Ndr, RecommendationIds.LogLevel]);
+    }
+
+    [Fact]
+    public void Collect_DismissedRecommendation_IsOmittedFromTheReport()
+    {
+        var data = CreateCollector(telemetryEnabled: false, backupEnabled: false,
+                                   dismissed: [RecommendationIds.Telemetry])
+            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        data.Recommendations.Should().ContainSingle().Which.Id.Should().Be(RecommendationIds.ConfigBackup);
     }
 
     [Fact]
@@ -226,9 +273,17 @@ public sealed class ReportDataCollectorTests : IDisposable
     {
         // Recommendations are informational: they must not push the report into a
         // warning/error state, or the severity banner would cry wolf every single time.
-        var data = CreateCollector(updateCheckEnabled: false, telemetryEnabled: false)
+        var data = CreateCollector(updateCheckEnabled: false, telemetryEnabled: false,
+                                   backupEnabled: false, ndrEnabled: false)
             .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var baseline = CreateCollector().Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
 
+        // Compared against an otherwise identical install with nothing to recommend, so the
+        // machine's own health (disk space, certificates) does not colour the assertion.
+        data.Recommendations.Should().NotBeEmpty();
+        baseline.Recommendations.Should().BeEmpty();
+        data.WarningCount.Should().Be(baseline.WarningCount);
+        data.ErrorCount.Should().Be(baseline.ErrorCount);
         data.Health.Should().NotContain(h => h.Component == "Telemetry");
         data.Health.Should().ContainSingle(h => h.Component == "Software Update")
             .Which.Status.Should().Be(HealthStatus.Unknown, "a disabled update check is a choice, not a warning");

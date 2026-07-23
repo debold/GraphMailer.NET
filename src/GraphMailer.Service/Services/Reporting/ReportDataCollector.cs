@@ -5,9 +5,11 @@ using System.Text.Json;
 using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure;
 using GraphMailer.Service.Infrastructure.Encryption;
+using GraphMailer.Service.Services.Advisor;
 using GraphMailer.Service.Services.UpdateCheck;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -29,6 +31,13 @@ internal sealed class ReportDataCollector
     private readonly IOptionsMonitor<List<SmtpServerEntry>> _servers;
     private readonly IOptionsMonitor<UpdateCheckOptions> _updateCheck;
     private readonly IOptionsMonitor<TelemetryOptions> _telemetry;
+    private readonly IOptionsMonitor<GraphApiOptions> _graphApi;
+    private readonly IOptionsMonitor<SenderValidationOptions> _senderValidation;
+    private readonly IOptionsMonitor<BackupOptions> _backup;
+    private readonly IOptionsMonitor<NdrOptions> _ndr;
+    private readonly IOptionsMonitor<AdminNotificationsOptions> _adminNotifications;
+    private readonly IOptionsMonitor<RecommendationOptions> _recommendations;
+    private readonly IConfiguration _configuration;
     private readonly IDataProtector _configProtector;
     private readonly ILogger<ReportDataCollector> _logger;
 
@@ -44,6 +53,13 @@ internal sealed class ReportDataCollector
         IOptionsMonitor<List<SmtpServerEntry>> servers,
         IOptionsMonitor<UpdateCheckOptions> updateCheck,
         IOptionsMonitor<TelemetryOptions> telemetry,
+        IOptionsMonitor<GraphApiOptions> graphApi,
+        IOptionsMonitor<SenderValidationOptions> senderValidation,
+        IOptionsMonitor<BackupOptions> backup,
+        IOptionsMonitor<NdrOptions> ndr,
+        IOptionsMonitor<AdminNotificationsOptions> adminNotifications,
+        IOptionsMonitor<RecommendationOptions> recommendations,
+        IConfiguration configuration,
         IDataProtectionProvider dpProvider,
         ILogger<ReportDataCollector> logger)
     {
@@ -55,6 +71,13 @@ internal sealed class ReportDataCollector
         _servers = servers;
         _updateCheck = updateCheck;
         _telemetry = telemetry;
+        _graphApi = graphApi;
+        _senderValidation = senderValidation;
+        _backup = backup;
+        _ndr = ndr;
+        _adminNotifications = adminNotifications;
+        _recommendations = recommendations;
+        _configuration = configuration;
         _configProtector = dpProvider.CreateProtector(DataProtectionExtensions.ConfigPurpose);
         _logger = logger;
     }
@@ -337,30 +360,60 @@ internal sealed class ReportDataCollector
     // ── Recommendations ──────────────────────────────────────────────────────
 
     /// <summary>
-    /// Collects the opt-in features that are currently switched off. Both are deliberate
-    /// choices, not defects — they are surfaced once per report as a friendly hint and never
-    /// as a health warning, and the box disappears entirely once they are enabled.
+    /// Asks the shared <see cref="RecommendationEngine"/> which hints apply to this installation
+    /// and drops the ones the operator dismissed in the ConfigTool. Every hint describes a
+    /// deliberate choice, not a defect — they are surfaced as friendly advice and never as a
+    /// health warning, and the box disappears entirely once nothing applies.
     /// </summary>
-    private List<Recommendation> BuildRecommendations()
+    /// <remarks>
+    /// Only the open suggestions are emailed. The already-satisfied ones are useful context on the
+    /// ConfigTool's page, but in a recurring email they would be a growing block of "nothing to do
+    /// here" that trains the reader to skip the box.
+    /// </remarks>
+    private IReadOnlyList<Recommendation> BuildRecommendations()
+        => RecommendationEngine.Evaluate(BuildRecommendationInput(),
+                                         _recommendations.CurrentValue.Dismissed).Open;
+
+    /// <summary>
+    /// Service-side counterpart of <see cref="RecommendationInput.FromConfigDocument"/>: the same
+    /// snapshot, read from the live options instead of the ConfigTool's document. Both must stay
+    /// in sync when a rule gains an input.
+    /// </summary>
+    private RecommendationInput BuildRecommendationInput()
     {
-        var items = new List<Recommendation>();
+        var graph = _graphApi.CurrentValue;
+        var enabledServers = _servers.CurrentValue.Where(s => s.Enabled).ToList();
 
-        if (!_updateCheck.CurrentValue.Enabled)
-            items.Add(new Recommendation(
-                "Turn on the update check",
-                "Security fixes and new releases currently go unnoticed on this machine. Once a week the "
-                + "service asks github.com whether a newer GraphMailer version exists and shows the result "
-                + "on the Status page — nothing else is transmitted."));
-
-        if (!_telemetry.CurrentValue.Enabled)
-            items.Add(new Recommendation(
-                "Consider sharing anonymous usage telemetry",
-                "One daily heartbeat (random install id, version, OS/runtime, aggregated mail counters) and "
-                + "PII-free error reports help make GraphMailer better for real-world installations. Email "
-                + "addresses, IP addresses, hostnames and message content are never transmitted."));
-
-        return items;
+        return new RecommendationInput
+        {
+            GraphConfigured = !string.IsNullOrWhiteSpace(graph.TenantId)
+                           && !string.IsNullOrWhiteSpace(graph.ClientId),
+            GraphUsesClientSecret = graph.HasClientSecret,
+            GraphUsesCertificate = graph.HasClientCertificate,
+            EnabledListenerCount = enabledServers.Count,
+            HasTlsListener = enabledServers.Any(s => !s.IsPlaintext),
+            PlaintextAuthListeners =
+                [.. enabledServers.Where(s => s.IsPlaintext && s.AcceptsCredentials)
+                                  .Select(s => $"{s.Name} (port {s.Port})")],
+            SenderValidationEnabled = _senderValidation.CurrentValue.Enabled,
+            BackupEnabled = _backup.CurrentValue.Enabled,
+            NdrEnabled = _ndr.CurrentValue.Enabled,
+            UpdateCheckEnabled = _updateCheck.CurrentValue.Enabled,
+            TelemetryEnabled = _telemetry.CurrentValue.Enabled,
+            LogLevel = ReadSerilogLevel(),
+            HasAdminNotificationRecipients = _adminNotifications.CurrentValue.RecipientAddresses.Count > 0,
+        };
     }
+
+    /// <summary>
+    /// Reads the effective Serilog minimum level. Serilog accepts both
+    /// <c>"MinimumLevel": "Debug"</c> and <c>"MinimumLevel": { "Default": "Debug" }</c> — same
+    /// tolerance as <c>ConfigService.ReadLogging</c>. Falls back to the framework default.
+    /// </summary>
+    private string ReadSerilogLevel()
+        => _configuration["Serilog:MinimumLevel:Default"]
+        ?? _configuration["Serilog:MinimumLevel"]
+        ?? RecommendationInput.RecommendedLogLevel;
 
     private HealthItem CheckSoftwareUpdate()
     {

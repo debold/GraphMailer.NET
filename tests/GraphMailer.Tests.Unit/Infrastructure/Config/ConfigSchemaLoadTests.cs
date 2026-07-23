@@ -582,4 +582,59 @@ public sealed class ConfigSchemaLoadTests : IDisposable
         b.EmailEnabled.Should().BeTrue();
         b.EmailRecipients.Should().ContainSingle().Which.Should().Be("ops@corp.com");
     }
+
+    // =========================================================================
+    // Recommendations  (SectionName = "Recommendations")
+    // →  ConfigDocument.RecommendationsSection
+    // =========================================================================
+
+    [Fact]
+    public void Load_AdminNotifications_Enabled_AppearsInDocNotificationNotifEnabled()
+    {
+        WriteJson("""{ "AdminNotifications": { "Enabled": false, "RecipientAddresses": [ "ops@corp.com" ] } }""");
+
+        _sut.Load().Notification.NotifEnabled.Should().BeFalse(
+            "since schema v6 the flag is authoritative, not derived from the recipient count");
+    }
+
+    [Fact]
+    public void Load_AdminNotifications_EnabledAbsentWithRecipients_FallsBackToTheDerivedValue()
+    {
+        // Pre-v6 files (and restored backups that bypass the migration) must keep working.
+        WriteJson("""{ "AdminNotifications": { "RecipientAddresses": [ "ops@corp.com" ] } }""");
+
+        _sut.Load().Notification.NotifEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Load_AdminNotifications_EnabledAbsentWithoutRecipients_IsDisabled()
+    {
+        WriteJson("""{ "AdminNotifications": { "RecipientAddresses": [] } }""");
+
+        _sut.Load().Notification.NotifEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Load_Server_AuthMode_AppearsInDocServerAuthMode()
+    {
+        WriteJson("""{ "Servers": [ { "Name": "SMTP", "Port": 25, "Mode": "Plain", "AuthMode": "None" } ] }""");
+
+        _sut.Load().Servers.Should().ContainSingle().Which.AuthMode.Should().Be("None");
+    }
+
+    [Fact]
+    public void Load_Recommendations_Dismissed_AppearsInDocRecommendationsDismissed()
+    {
+        WriteJson("""{ "Recommendations": { "Dismissed": [ "telemetry", "log-level" ] } }""");
+
+        _sut.Load().Recommendations.Dismissed.Should().Equal("telemetry", "log-level");
+    }
+
+    [Fact]
+    public void Load_Recommendations_Absent_DefaultsToNothingDismissed()
+    {
+        WriteJson("""{ "Smtp": { "Banner": "test" } }""");
+
+        _sut.Load().Recommendations.Dismissed.Should().BeEmpty("every applicable hint is shown until hidden");
+    }
 }

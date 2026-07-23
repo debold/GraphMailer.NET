@@ -15,8 +15,13 @@ namespace GraphMailer.ConfigTool.Helpers;
 internal static class SenderAddressRule
 {
     /// <summary>Rule on primitives (unit-testable). Returns the error text, or null when valid.</summary>
+    /// <param name="adminNotificationsEnabled">
+    /// Admin notifications will actually be sent — the master switch is on <b>and</b> at least one
+    /// recipient is configured. A recipient list on its own does not require a sender: switching
+    /// the master off has to let the operator clear the address without emptying the list first.
+    /// </param>
     internal static string? Validate(
-        string? sender, bool hasRecipients, bool ndrEnabled, bool reportEnabled, bool backupEmailEnabled)
+        string? sender, bool adminNotificationsEnabled, bool ndrEnabled, bool reportEnabled, bool backupEmailEnabled)
     {
         var s = sender?.Trim();
 
@@ -26,7 +31,7 @@ internal static class SenderAddressRule
                 : "The notification sender address is not a valid email address.";
 
         var dependents = new List<string>();
-        if (hasRecipients) dependents.Add("admin notifications");
+        if (adminNotificationsEnabled) dependents.Add("admin notifications");
         if (ndrEnabled) dependents.Add("non-delivery reports (NDR)");
         if (reportEnabled) dependents.Add("scheduled reports");
         if (backupEmailEnabled) dependents.Add("emailed backups");
@@ -43,7 +48,8 @@ internal static class SenderAddressRule
     /// </summary>
     internal static string? Validate(ConfigDocument doc) => Validate(
         doc.Notification.NotifFrom,
-        hasRecipients: doc.Notification.RecipientAddresses.Count > 0,
+        adminNotificationsEnabled: doc.Notification.NotifEnabled
+                                && doc.Notification.RecipientAddresses.Count > 0,
         ndrEnabled: doc.Ndr.NdrEnabled,
         reportEnabled: doc.Notification.ReportEnabled,
         backupEmailEnabled: doc.Backup.EmailEnabled);

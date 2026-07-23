@@ -7,67 +7,6 @@
                   HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="24,20,24,24">
 
-            <!-- Admin recipients card -->
-            <Border Style="{StaticResource Card}"
-                    Margin="0,0,0,16">
-                <StackPanel>
-                    <Border Style="{StaticResource CardHeader}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="Admin Recipients"
-                                           Style="{StaticResource SectionHeader}"/>
-                                <TextBlock Text="Email addresses that receive all system notification emails."
-                                           Style="{StaticResource HintText}"
-                                           Margin="0,2,0,0"/>
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    Content="+ Add"
-                                    Style="{StaticResource SmallPrimaryButton}"
-                                    Click="AddRecipient_Click"/>
-                        </Grid>
-                    </Border>
-                    <DataGrid x:Name="RecipientsGrid"
-                              Margin="0"
-                              MinHeight="40"
-                              MaxHeight="240"
-                              CanUserAddRows="False"
-                              CanUserDeleteRows="False"
-                              AutoGenerateColumns="False"
-                              IsReadOnly="True">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Email Address"
-                                                Binding="{Binding Pattern}"
-                                                Width="*"/>
-                            <DataGridTemplateColumn Header=""
-                                                    Width="90">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal"
-                                                    HorizontalAlignment="Center">
-                                            <Button Content="&#x270E;"
-                                                    Style="{StaticResource SmallButton}"
-                                                    Padding="6,2"
-                                                    Height="22"
-                                                    Margin="0,0,4,0"
-                                                    Click="EditRecipient_Click"/>
-                                            <Button Content="&#x2715;"
-                                                    Style="{StaticResource SmallDangerButton}"
-                                                    Padding="6,2"
-                                                    Height="22"
-                                                    Click="RemoveRecipient_Click"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </StackPanel>
-            </Border>
-
             <!-- Notification settings card -->
             <Border Style="{StaticResource Card}"
                     Margin="0,0,0,16">
@@ -180,17 +119,123 @@
                                       Style="{StaticResource ToggleSwitch}"
                                       x:Name="NdrNotifyAdmin"
                                       IsChecked="False"
-                                      IsEnabled="{Binding IsChecked, ElementName=NdrEnabled}"
                                       Checked="AnyCheckbox_Changed"
                                       Unchecked="AnyCheckbox_Changed"/>
-                            <TextBlock Grid.Row="2"
-                                       Grid.Column="1"
-                                       Text="Send NDR copy to admin recipients"
-                                       Style="{StaticResource BodyText}"
-                                       Margin="10,0,0,0"
-                                       VerticalAlignment="Center"/>
+                            <StackPanel Grid.Row="2"
+                                        Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        Margin="10,0,0,0"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="Send NDR copy to admin recipients"
+                                           Style="{StaticResource BodyText}"
+                                           VerticalAlignment="Center"/>
+                                <!-- Explains the greyed-out switch when no recipient exists yet -->
+                                <TextBlock x:Name="NdrNotifyAdminHint"
+                                           Text="— add an admin recipient below first"
+                                           Style="{StaticResource HintText}"
+                                           Margin="6,0,0,0"
+                                           VerticalAlignment="Center"
+                                           Visibility="Collapsed"/>
+                            </StackPanel>
                         </Grid>
                     </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Master switch: turns every admin notification off in one place, so the sender
+                 address and the recipient list can be kept without anything being sent. -->
+            <!-- Admin recipients card. Deliberately NOT greyed out by the master switch: NDR admin
+                 copies and the periodic report use the same list and are independent of it. -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Admin Recipients"
+                                           Style="{StaticResource SectionHeader}"/>
+                                <TextBlock Text="Email addresses that receive all system notification emails."
+                                           Style="{StaticResource HintText}"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="+ Add"
+                                    Style="{StaticResource SmallPrimaryButton}"
+                                    Click="AddRecipient_Click"/>
+                        </Grid>
+                    </Border>
+                    <DataGrid x:Name="RecipientsGrid"
+                              Margin="0"
+                              MinHeight="40"
+                              MaxHeight="240"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Email Address"
+                                                Binding="{Binding Pattern}"
+                                                Width="*"/>
+                            <DataGridTemplateColumn Header=""
+                                                    Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center">
+                                            <Button Content="&#x270E;"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Margin="0,0,4,0"
+                                                    Click="EditRecipient_Click"/>
+                                            <Button Content="&#x2715;"
+                                                    Style="{StaticResource SmallDangerButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Click="RemoveRecipient_Click"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Master switch, directly above the event toggles it governs -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <StackPanel>
+                            <TextBlock Text="Admin Notifications"
+                                       Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text="Master switch for the event alerts below. Turn it off to stop every admin alert at once without losing the recipient list, the sender address or the individual event settings — they are kept and take effect again when you switch it back on. Non-delivery reports and the periodic report have their own switches and keep sending; the recipient list stays editable because they use it too."
+                                       Style="{StaticResource HintText}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0"
+                                  Style="{StaticResource ToggleSwitch}"
+                                  x:Name="NotifEnabled"
+                                  Checked="NotifEnabled_Changed"
+                                  Unchecked="NotifEnabled_Changed"/>
+                        <TextBlock Grid.Column="1"
+                                   Text="Send admin notifications"
+                                   Style="{StaticResource BodyText}"
+                                   Margin="10,0,0,0"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
                 </StackPanel>
             </Border>
 
@@ -198,10 +243,35 @@
             <Border Style="{StaticResource Card}">
                 <StackPanel>
                     <Border Style="{StaticResource CardHeader}">
-                        <TextBlock Text="Notify on Events"
-                                   Style="{StaticResource SectionHeader}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="Notify on Events"
+                                       Style="{StaticResource SectionHeader}"
+                                       VerticalAlignment="Center"/>
+                            <!-- Select-all: reflects "every event is on" and sets them all when
+                                 toggled. Follows the master switch's enabled state. -->
+                            <TextBlock Grid.Column="1"
+                                       x:Name="AllEventsLabel"
+                                       Text="All"
+                                       Style="{StaticResource HintText}"
+                                       Margin="0,0,8,0"
+                                       VerticalAlignment="Center"/>
+                            <CheckBox Grid.Column="2"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="AllEvents"
+                                      ToolTip="Switch every event notification below on or off at once."
+                                      VerticalAlignment="Center"
+                                      Checked="AllEvents_Changed"
+                                      Unchecked="AllEvents_Changed"/>
+                        </Grid>
                     </Border>
-                    <StackPanel Margin="16,12,16,16">
+                    <StackPanel x:Name="EventToggles"
+                                Margin="16,12,16,16">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
@@ -257,7 +327,7 @@
                                       Unchecked="AnyCheckbox_Changed"/>
                             <TextBlock Grid.Row="2"
                                        Grid.Column="1"
-                                       Text="Certificate expiring within warning threshold"
+                                       Text="TLS listener certificate expiring within warning threshold"
                                        Style="{StaticResource BodyText}"
                                        Margin="10,0,0,0"
                                        VerticalAlignment="Center"/>
@@ -269,12 +339,22 @@
                                       IsChecked="True"
                                       Checked="AnyCheckbox_Changed"
                                       Unchecked="AnyCheckbox_Changed"/>
-                            <TextBlock Grid.Row="3"
-                                       Grid.Column="1"
-                                       Text="Certificate expired"
-                                       Style="{StaticResource BodyText}"
-                                       Margin="10,0,0,0"
-                                       VerticalAlignment="Center"/>
+                            <StackPanel Grid.Row="3"
+                                        Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        Margin="10,0,0,0"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="TLS listener certificate expired"
+                                           Style="{StaticResource BodyText}"
+                                           VerticalAlignment="Center"/>
+                                <!-- Both cert alerts are about the SMTP listener certificate, not the
+                                     Graph client certificate — see the tooltip and the help page. -->
+                                <TextBlock Text="&#x2139;"
+                                           Style="{StaticResource HintText}"
+                                           Margin="6,0,0,0"
+                                           VerticalAlignment="Center"
+                                           ToolTip="These two alerts watch the SMTP listener certificate only.&#x0a;The Graph client certificate used for Entra authentication is a different certificate:&#x0a;if it expires, GraphMailer cannot reach Graph at all and therefore cannot email anything —&#x0a;that case is reported in the log and on the Status page instead."/>
+                            </StackPanel>
 
                             <CheckBox Grid.Row="4"
                                       Grid.Column="0"

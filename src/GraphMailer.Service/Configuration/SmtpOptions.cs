@@ -11,6 +11,22 @@ public sealed class SmtpServerEntry
     /// <summary>Plain, StartTls, or Ssl</summary>
     public string Mode { get; init; } = "Plain";
     public bool AuthRequired { get; init; } = false;
+
+    /// <summary>
+    /// "None", "Optional" or "Required". <see cref="AuthRequired"/> is the listener's behaviour flag
+    /// (derived from this on save); this distinguishes "authentication is offered" from "no
+    /// authentication at all", which the recommendation engine needs to judge plaintext listeners.
+    /// Older configs without the key fall back to the <see cref="AuthRequired"/> reading.
+    /// </summary>
+    public string AuthMode { get; init; } = "Optional";
+
+    /// <summary>True when this listener accepts SMTP credentials at all.</summary>
+    public bool AcceptsCredentials =>
+        !AuthMode.Equals("None", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>True when this listener never upgrades to TLS.</summary>
+    public bool IsPlaintext =>
+        Mode.Equals("Plain", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class SmtpOptions

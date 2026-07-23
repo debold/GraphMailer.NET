@@ -79,6 +79,75 @@ public sealed class ConfigSchemaTests
     }
 
     [Fact]
+    public void Migrate_V4_ToV5_IsAdditiveOnly_ContentUnchangedExceptVersion()
+    {
+        // v5 only introduced Recommendations.Dismissed (default empty) — the migration is a pure
+        // version stamp; existing content must survive byte-identical.
+        var root = JsonNode.Parse("""{ "SchemaVersion": 4, "Certificate": { "SubjectName": "smtp.local" } }""")!.AsObject();
+
+        var changed = ConfigSchema.Migrate(root);
+
+        changed.Should().BeTrue();
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+        root["Certificate"]!.AsObject()["SubjectName"]!.GetValue<string>().Should().Be("smtp.local");
+        root.ContainsKey("Recommendations").Should().BeFalse(
+            "the absent key is valid — the options binder falls back to the default (nothing hidden)");
+    }
+
+    [Fact]
+    public void Migrate_V5_ToV6_MaterialisesAdminNotificationsEnabledFromTheRecipientCount()
+    {
+        // v6 turns AdminNotifications.Enabled from a value the ConfigTool derived on every save
+        // into an authoritative setting. A hand-edited file without the key must not end up with
+        // notifications silently off.
+        var root = JsonNode.Parse("""
+            { "SchemaVersion": 5, "AdminNotifications": { "RecipientAddresses": [ "ops@corp.com" ] } }
+            """)!.AsObject();
+
+        ConfigSchema.Migrate(root).Should().BeTrue();
+
+        root["AdminNotifications"]!["Enabled"]!.GetValue<bool>().Should().BeTrue();
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+    }
+
+    [Fact]
+    public void Migrate_V5_ToV6_NoRecipients_LeavesAdminNotificationsDisabled()
+    {
+        var root = JsonNode.Parse("""
+            { "SchemaVersion": 5, "AdminNotifications": { "RecipientAddresses": [] } }
+            """)!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        root["AdminNotifications"]!["Enabled"]!.GetValue<bool>().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Migrate_V5_ToV6_ExistingEnabledFlag_IsNotOverwritten()
+    {
+        // Every file the ConfigTool ever saved already carries the derived value — re-deriving it
+        // would re-enable notifications somebody had switched off by hand.
+        var root = JsonNode.Parse("""
+            { "SchemaVersion": 5, "AdminNotifications": { "Enabled": false, "RecipientAddresses": [ "ops@corp.com" ] } }
+            """)!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        root["AdminNotifications"]!["Enabled"]!.GetValue<bool>().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Migrate_V5_ToV6_NoAdminNotificationsSection_IsLeftAlone()
+    {
+        var root = JsonNode.Parse("""{ "SchemaVersion": 5, "Smtp": { "Banner": "test" } }""")!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        root.ContainsKey("AdminNotifications").Should().BeFalse();
+        root["Smtp"]!["Banner"]!.GetValue<string>().Should().Be("test");
+    }
+
+    [Fact]
     public void Migrate_AlreadyCurrent_IsNoOp()
         => ConfigSchema.Migrate(new JsonObject { ["SchemaVersion"] = ConfigSchema.Current }).Should().BeFalse();
 

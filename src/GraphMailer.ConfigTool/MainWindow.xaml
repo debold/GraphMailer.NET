@@ -126,6 +126,36 @@
                                                                    Margin="10,0,0,0"/>
                                                 </StackPanel>
                                         </Border>
+                                        <Border x:Name="NavRecommendations"
+                                                Style="{StaticResource NavItem}"
+                                                MouseLeftButtonUp="NavRecommendations_Click">
+                                                <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="&#x1F4A1;"
+                                                                   FontSize="15"
+                                                                   Width="20"
+                                                                   TextAlignment="Center"
+                                                                   Foreground="#FFCCCCCC"/>
+                                                        <TextBlock Text="Recommendations"
+                                                                   FontSize="13"
+                                                                   Foreground="#FFCCCCCC"
+                                                                   Margin="10,0,0,0"/>
+                                                        <!-- Count of open (non-hidden) tips; amber = informational,
+                                                             deliberately not the red error dot used on config pages. -->
+                                                        <Border x:Name="NavRecommendationsBadge"
+                                                                Visibility="Collapsed"
+                                                                Background="#FFFFF4CE"
+                                                                CornerRadius="8"
+                                                                Padding="6,0"
+                                                                Margin="6,0,0,0"
+                                                                VerticalAlignment="Center">
+                                                                <TextBlock x:Name="NavRecommendationsBadgeText"
+                                                                           Text="0"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="#FF7A5700"/>
+                                                        </Border>
+                                                </StackPanel>
+                                        </Border>
 
                                         <!-- Configuration (editable settings, Save/Discard apply) -->
                                         <Border BorderBrush="#FF333333"

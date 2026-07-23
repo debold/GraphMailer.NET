@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 796 tests** (738 unit · 58 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-22
+**Total: 865 tests** (807 unit · 58 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-23
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -312,8 +312,10 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Render_NoFailedQueue_OmitsActionRequiredSection` | `FailedQueueCount = 0` | No "Action Required" section |
 | `Render_WithFailedQueue_ShowsActionRequiredSection` | One failed-queue item | "Action Required" section with the item's error |
 | `Render_WithoutRecommendations_OmitsTheBoxEntirely` | `Recommendations` empty (every opt-in feature enabled) | No "Recommendations" box at all — an all-enabled install is never nagged |
-| `Render_WithRecommendations_ShowsThemWithoutWarningStyling` | One recommendation | Title + detail rendered in the neutral info palette (`EmailTheme.InfoBg`), singular wording "This is switched on" |
-| `Render_WithTwoRecommendations_UsesPluralWording` | Two recommendations | Plural wording "Both are switched on" |
+| `Render_WithRecommendations_ShowsThemWithoutWarningStyling` | One recommendation | Title + detail rendered in the neutral info palette (`EmailTheme.InfoBg`), never the warning colours |
+| `Render_WithRecommendations_NamesTheConfigToolPageThatFixesEachOne` | One recommendation targeting Backup & Restore | "ConfigTool → Backup &amp; Restore" rendered (page name HTML-encoded) plus the closing pointer to the Recommendations page |
+| `Render_WithRecommendationsOfSeveralSeverities_GroupsThemUnderPriorityLabels` | High + Medium + Low hints | "High/Medium/Low priority" labels rendered, categories kept as per-item labels; the engine's severity order survives rendering |
+| `Render_WithRecommendations_ExplainsWhyEachOneMatters` | One recommendation | "Why it matters" and the `Impact` text rendered |
 | `Render_HtmlEncodesUserControlledText` | Subject/sender/top-sender contain `<script>` and other markup | Raw tags are HTML-encoded (`&lt;script&gt;…`); no live markup in the output |
 
 ---
@@ -349,8 +351,60 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Collect_UpdateCheckFailedWithoutResult_ReportsSoftwareUpdateUnknown` | Status file has only `LastError`, no version | `Unknown` with the error text surfaced in the detail |
 | `Collect_BothOptInFeaturesDisabled_RecommendsUpdateCheckAndTelemetry` | Update check and telemetry both off | Two recommendations — one per feature |
 | `Collect_OnlyTelemetryDisabled_RecommendsTelemetryOnly` | Update check on, telemetry off | Exactly one recommendation (telemetry) |
-| `Collect_BothOptInFeaturesEnabled_RecommendsNothing` | Both features on | `Recommendations` empty |
-| `Collect_DisabledOptInFeatures_DoNotAffectHealthSeverity` | Both features off | No "Telemetry" health row; "Software Update" stays `Unknown`, not `Warning` — a deliberate opt-out must never cry wolf in the severity banner |
+| `Collect_EverythingRecommendedIsConfigured_RecommendsNothing` | Every rule satisfied | `Recommendations` empty |
+| `Collect_ServiceSideInputMatchesRules_SurfacesEachDisabledFeature` | Sender validation / backup / NDR off, log level `Debug`, no Graph app | Backup + NDR + log-level hints; sender validation stays silent without a configured Graph app — guards the service-side `RecommendationInput` adapter against a mis-wired options monitor |
+| `Collect_DismissedRecommendation_IsOmittedFromTheReport` | Telemetry + backup applicable, telemetry dismissed | Only the backup hint reaches the report |
+| `Collect_DisabledOptInFeatures_DoNotAffectHealthSeverity` | Four features off, compared against an otherwise identical all-configured install | Same `WarningCount`/`ErrorCount` as the baseline; no "Telemetry" health row; "Software Update" stays `Unknown`, not `Warning` — a deliberate opt-out must never cry wolf in the severity banner |
+
+---
+
+### RecommendationEngine (`Services/Advisor/RecommendationEngineTests.cs`)
+
+> The shared catalogue of operational hints, consumed by both the ConfigTool's Recommendations
+> page and the periodic report email. Every rule gets an open/done pair: a rule that never fires is
+> invisible, and one that always fires trains operators to ignore the whole feature. Evaluation
+> splits the catalogue into **Open** / **Done** / **Dismissed**; rules whose precondition fails
+> appear in none of them.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Evaluate_FullyConfiguredInstallation_HasNothingOpen` | Baseline input satisfying every rule | `Open` empty |
+| `Evaluate_FullyConfiguredInstallation_ReportsEveryRuleAsDone` | Baseline input satisfying every rule | All 9 ids in `Done` with `State == Done`; `Dismissed` empty — satisfied rules are kept, not dropped |
+| `Evaluate_DoneHint_CarriesTheSatisfiedWordingNotTheArgumentForIt` | Telemetry on | `DoneSummary` says "is on" and differs from `Detail` — the "why you should" text reads wrong once done |
+| `Evaluate_GraphUsesClientSecret_RecommendsCertificate` | Graph configured with a secret, no certificate | Single hint `graph-client-certificate` |
+| `Evaluate_GraphUsesBothSecretAndCertificate_DoesNotRecommendCertificate` | Both a secret and a certificate present | No hint — the certificate already takes precedence |
+| `Evaluate_GraphNotConfigured_OmitsGraphRulesEntirely` | No tenant/client id, secret-only auth, sender validation off | Neither `graph-client-certificate` nor `sender-validation` in **any** section — advice before setup is noise, and calling them done would claim an unchecked result |
+| `Evaluate_PlaintextListenerAcceptsAuth_RecommendsTls` | Enabled plain listener with auth Optional/Required | Single hint `tls-listener` |
+| `Evaluate_PlaintextListenerWithoutAuth_DoesNotRecommendTls` | Plain listener with auth `None`, no TLS listener | No hint — a listener that never sees a password has nothing to protect |
+| `Evaluate_PlaintextAuthListener_NamesTheAffectedListeners` | Two plaintext auth listeners | Detail names both by name and port — "some listener" is not actionable |
+| `Evaluate_TlsRule_IsRatedHighBecauseCredentialsAreExposed` | Plaintext auth listener | `Severity == High` |
+| `Evaluate_NoEnabledListener_OmitsTheTlsRuleEntirely` | No enabled listener at all | `tls-listener` in no section — that install has a different problem |
+| `Evaluate_SenderValidationOff_RecommendsSenderValidation` | Graph configured, sender validation off | Single hint `sender-validation` |
+| `Evaluate_BackupOff_RecommendsBackup` | Scheduled backups off | Single hint `config-backup` |
+| `Evaluate_NdrOff_RecommendsNdr` | NDRs off | Single hint `ndr` |
+| `Evaluate_LogLevelOtherThanInformation_RecommendsInformation` (Theory) | Level = Verbose / Debug / Warning / Error / Fatal | Single hint `log-level` in every case |
+| `Evaluate_LogLevelInformationInAnyCasing_DoesNotRecommend` | Level = `"information"` | No hint (case-insensitive comparison) |
+| `Evaluate_VerboseLogLevel_ExplainsTheNoiseNotTheBlindSpot` | Level = Debug | Detail names the level and the disk-churn reason |
+| `Evaluate_HighLogLevel_ExplainsTheBlindSpotNotTheNoise` | Level = Error | Detail names the level and the missing-history reason |
+| `Evaluate_NoAdminRecipients_RecommendsAddingOne` | No admin notification recipient | Single hint `admin-notifications` |
+| `Evaluate_UpdateCheckOff_RecommendsUpdateCheck` | Weekly update check off | Single hint `update-check` |
+| `Evaluate_TelemetryOff_RecommendsTelemetry` | Anonymous telemetry off | Single hint `telemetry` |
+| `Evaluate_MultipleHints_SortsBySeverityFirst` | High + Medium + Low rules firing | Severities in ascending order, High first, Low last |
+| `Evaluate_SameSeverity_FallsBackToCategoryOrder` | Two Medium rules from different categories | Reliability before Operations |
+| `Evaluate_EveryHint_ExplainsWhyItMatters` | Fully unconfigured install | Every hint has a non-empty `Impact` that differs from `Detail` — the severity rating must be justified in words |
+| `Evaluate_EveryHint_CarriesATargetPageAndHelpPage` | Fully unconfigured install | All 9 rules fire; each has a target page name, an `.html` help page and a non-empty done summary; ids unique |
+| `Evaluate_EveryRelevantRule_LandsInExactlyOneSection` | One open, one dismissed, seven satisfied | Ids unique across all three lists; 1 open + 1 dismissed + 7 done |
+| `Evaluate_DismissedId_MovesTheHintOutOfTheOpenList` | Two hints apply, one dismissed | Dismissed one appears only in `Dismissed`, with `State == Dismissed` |
+| `Evaluate_DismissedIdThatIsAlreadySatisfied_StaysInTheHiddenSection` | Dismissed id whose condition is satisfied | Stays in `Dismissed`, absent from `Done` — hiding wins over done so the hidden list stays the operator's persisted list |
+| `Evaluate_UnknownDismissedId_IsIgnored` | Dismissed list holds an unknown id and an empty string | Evaluation unaffected; `Dismissed` empty — a config from a newer build must never break it |
+| `Evaluate_NullDismissedList_ShowsEverythingAsOpenOrDone` | `null` passed for the dismissed ids | Applicable hint still open |
+| `Evaluate_DismissedIdInDifferentCasing_StillMatches` | `"CONFIG-BACKUP"` dismissed | Hint not open (case-insensitive id match) |
+| `FromConfigDocument_DefaultDocument_MapsTheOffSwitches` | Brand-new `ConfigDocument` | Every toggle false, no listeners, log level `Information` |
+| `FromConfigDocument_ConfiguredDocument_MatchesTheServiceSideSnapshot` | Fully configured document (cert auth, StartTls listener, all features on) | Snapshot mirrors it; nothing open and all 9 rules done — guards the ConfigTool adapter against the service-side one |
+| `FromConfigDocument_DisabledTlsListener_DoesNotCountAsTlsCoverage` | Enabled plain listener with auth + disabled Ssl listener | `HasTlsListener == false`; the plain listener is flagged — a switched-off listener protects nothing |
+| `FromConfigDocument_PlainListenerAcceptingAuth_IsFlagged` (Theory) | Plain listener with AuthMode Optional / Required | Listed in `PlaintextAuthListeners` with name and port |
+| `FromConfigDocument_PlainListenerWithoutAuth_IsNotFlagged` | Default port-25 relay listener, AuthMode `None` | `PlaintextAuthListeners` empty — a supported setup must not raise a High-severity hint |
+| `FromConfigDocument_TlsListenerWithAuth_IsNotFlagged` | StartTls listener with AuthMode Required | `PlaintextAuthListeners` empty |
 
 ---
 
@@ -592,6 +646,11 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Load_CorruptEncUserPassword_ReportsFailure_WithIndex` | One user with an undecryptable password | `DecryptionFailures` contains `Users[0]`; user still loaded, only password blank |
 | `Load_CorruptEncSecondUser_LoadsFirstUser_AndReportsSecondIndex` | First user's password valid, second user's broken | First password decrypted; second blank; `DecryptionFailures` reports `Users[1]` |
 | `Load_AllSecretsValid_HasNoDecryptionFailures` | All `ENC[...]` values decrypt | `DecryptionFailures` empty; secret decrypted |
+| `UpdateDismissedRecommendations_WritesOnlyThatKey_LeavingEverythingElseUntouched` | Partial write while other sections and an unknown third-party key exist | Only `Recommendations.Dismissed` changes; banner and unknown key survive byte-identical |
+| `UpdateDismissedRecommendations_DoesNotDisturbEncryptedSecrets` | Partial write on a config holding an `ENC[...]` secret | Ciphertext unchanged on disk and still decryptable — no decrypt/re-encrypt round-trip |
+| `UpdateDismissedRecommendations_EmptyList_ClearsThePreviousSelection` | Empty list written over an existing dismissal | `doc.Recommendations.Dismissed` empty |
+| `UpdateDismissedRecommendations_NoConfigFileYet_IsANoOp` | First run, no `graphmailer.json` on disk | No file created — a half-empty config would shadow the appsettings defaults |
+| `UpdateDismissedRecommendations_ThenSave_KeepsTheDismissedIds` | Partial write, then a full `Save` of the reloaded document | Both the ids and the unrelated edit survive — the partial path and `Save` agree |
 | `Backup_SaveThenLoad_RoundTripsValues_AndDecryptsPassword` | Save then load the `Backup` section | All fields round-trip; password written `ENC[...]` and decrypted back |
 | `Load_OmittedScalar_TakesDefaultFromAppSettings_NotHardCodedLiteral` | Config omits a field; bundled `appsettings.json` carries a non-literal default | Loaded value comes from the appsettings overlay (single default source), not the code fallback |
 | `Load_UserValue_OverridesAppSettingsDefault` | Config sets a field that also has an appsettings default | User value wins |
@@ -693,7 +752,7 @@ backups. The rule feeds the inline error on the Notifications page and the save-
 
 | Test | Scenario | Expected result |
 |---|---|---|
-| `NoSender_WithRecipients_IsAnError` | Sender empty, admin recipients present | Error naming "admin notifications" |
+| `NoSender_WithAdminNotificationsEnabled_IsAnError` | Sender empty, admin notifications on with recipients | Error naming "admin notifications" |
 | `NoSender_WithNdrEnabled_IsAnError` | Sender empty, NDR on | Error naming "non-delivery reports" |
 | `NoSender_WithReportEnabled_IsAnError` | Sender null, scheduled report on | Error naming "scheduled reports" |
 | `NoSender_WithEmailedBackups_IsAnError` | Sender whitespace, backup email on | Error naming "emailed backups" |
@@ -702,6 +761,9 @@ backups. The rule feeds the inline error on the Notifications page and the save-
 | `InvalidSenderFormat_IsAnError_EvenWithoutDependents` | `not-an-email`, no dependents | Format error (a typo'd address must not be persisted) |
 | `ValidSender_WithAllDependents_IsValid` | Valid address, all features active | No error |
 | `DocumentOverload_CoversTheCrossPageBackupEmailDependency` | ConfigDocument with Backup.EmailEnabled only | Error — the overload sees the Backup page's toggle |
+| `DocumentOverload_MasterSwitchOff_LetsTheSenderBeCleared` | Master switch off, recipients still listed, NDR/backup-email off | No error — **regression**: the rule used to key off the recipient list alone, so the sender could not be cleared without first emptying the list |
+| `DocumentOverload_MasterSwitchOnWithRecipients_StillRequiresASender` | Master switch on, recipients present, no sender | Error naming "admin notifications" |
+| `DocumentOverload_MasterSwitchOnWithoutRecipients_DoesNotRequireASender` | Master switch on, no recipients | No error — nothing can be sent without a recipient |
 
 ---
 
@@ -1130,6 +1192,11 @@ Daily opt-in heartbeat scheduler: persists cadence + install id + counter waterm
 | `Migrate_V1_ToCurrent_IsAdditiveOnly_ContentUnchangedExceptVersion` | v1 doc (v2 only added `Certificate.FailClosed`) | Version stamped to current; existing content untouched; the absent key stays absent (binder default applies) |
 | `Migrate_V2_ToV3_IsAdditiveOnly_ContentUnchangedExceptVersion` | v2 doc (v3 only added `UpdateCheck.Enabled` + the `UpdateAvailable` notification type) | Version stamped to current; existing content untouched; the absent keys stay absent (binder defaults apply) |
 | `Migrate_V3_ToV4_IsAdditiveOnly_ContentUnchangedExceptVersion` | v3 doc (v4 only added `Telemetry.Enabled`) | Version stamped to current; existing content untouched; the absent key stays absent (binder default applies) |
+| `Migrate_V4_ToV5_IsAdditiveOnly_ContentUnchangedExceptVersion` | v4 doc (v5 only added `Recommendations.Dismissed`) | Version stamped to current; existing content untouched; the absent key stays absent (binder default = nothing hidden) |
+| `Migrate_V5_ToV6_MaterialisesAdminNotificationsEnabledFromTheRecipientCount` | v5 doc with recipients but no `Enabled` key | `AdminNotifications.Enabled == true` — the flag becomes authoritative without silently switching notifications off |
+| `Migrate_V5_ToV6_NoRecipients_LeavesAdminNotificationsDisabled` | v5 doc with an empty recipient list | `Enabled == false` |
+| `Migrate_V5_ToV6_ExistingEnabledFlag_IsNotOverwritten` | v5 doc with `Enabled: false` and recipients | Stays `false` — re-deriving would re-enable what somebody switched off |
+| `Migrate_V5_ToV6_NoAdminNotificationsSection_IsLeftAlone` | v5 doc without the section | Section not created; unrelated content untouched |
 | `Migrate_AlreadyCurrent_IsNoOp` | Doc already at current version | `false` (no change) |
 | `Migrate_Idempotent` | Migrate twice | First `true`, second `false` |
 | `Migrate_NewerThanBuild_LeavesFileAlone` | `SchemaVersion = Current + 1` | `false`; version left untouched |
@@ -1190,6 +1257,12 @@ Verifies that every JSON key written by the service (`graphmailer.json`) is corr
 | `Load_Telemetry_Absent_DefaultsToDisabled` | No `Telemetry` section (pre-v4 config) | `doc.Monitoring.TelemetryEnabled == false` — telemetry is strictly opt-in |
 | `Load_AdminNotifications_UpdateAvailable_Enabled_AppearsInDocNotifUpdateAvailable_True` | `UpdateAvailable.Enabled = true` | `doc.Notification.NotifUpdateAvailable == true` |
 | `Load_AdminNotifications_UpdateAvailable_Absent_DefaultsToDisabled` | `NotificationTypes` without `UpdateAvailable` | `doc.Notification.NotifUpdateAvailable == false` (opt-in) |
+| `Load_AdminNotifications_Enabled_AppearsInDocNotificationNotifEnabled` | `Enabled: false` with recipients present | `doc.Notification.NotifEnabled == false` — authoritative since v6, not derived |
+| `Load_AdminNotifications_EnabledAbsentWithRecipients_FallsBackToTheDerivedValue` | Pre-v6 file: recipients, no `Enabled` key | `NotifEnabled == true` — restored backups that bypass the migration keep working |
+| `Load_AdminNotifications_EnabledAbsentWithoutRecipients_IsDisabled` | Pre-v6 file: no recipients, no `Enabled` key | `NotifEnabled == false` |
+| `Load_Server_AuthMode_AppearsInDocServerAuthMode` | `Servers[0].AuthMode = "None"` | `doc.Servers[0].AuthMode == "None"` |
+| `Load_Recommendations_Dismissed_AppearsInDocRecommendationsDismissed` | `Recommendations.Dismissed: ["telemetry","log-level"]` | `doc.Recommendations.Dismissed` holds both ids in order |
+| `Load_Recommendations_Absent_DefaultsToNothingDismissed` | No `Recommendations` section (pre-v5 config) | `doc.Recommendations.Dismissed` empty — every applicable hint is shown until hidden |
 
 ---
 
@@ -1205,8 +1278,10 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `Save_DiskWarnPct_BindsToDiskSpaceMonitoringThresholdPercent` | `doc.Monitoring.DiskWarnPct = 25` saved | `DiskSpaceMonitoring:ThresholdPercent == 25` |
 | `Save_PortCheckIntervalMinutes_BindsToPortMonitoringCheckIntervalMinutes` | `doc.Monitoring.PortCheckIntervalMinutes = 3` saved | `PortMonitoring:CheckIntervalMinutes == 3` |
 | `Save_GraphCheckIntervalMinutes_BindsToGraphApiMonitoringCheckIntervalMinutes` | `doc.Monitoring.GraphCheckIntervalMinutes = 30` saved | `GraphApiMonitoring:CheckIntervalMinutes == 30` |
-| `Save_RecipientAddresses_BindToAdminNotificationsRecipientAddresses` | Recipient address in doc | `AdminNotifications:RecipientAddresses[0]` matches |
+| `Save_RecipientAddresses_BindToAdminNotificationsRecipientAddresses` | Master switch on + recipient address in doc | `AdminNotifications:RecipientAddresses[0]` matches, `Enabled == true` |
+| `Save_MasterSwitchOff_DisablesAdminNotificationsButKeepsTheRecipients` | Master switch off, recipients present | `Enabled == false`, recipients preserved — since v6 the flag is authoritative, not derived |
 | `Save_RecipientAddressesEmpty_DisablesAdminNotifications` | Empty recipient list | `AdminNotifications:Enabled == false` |
+| `Save_Servers_AuthModeBindsToSmtpServerEntry` | Two listeners with AuthMode `None` / `Required` | `SmtpServerEntry.AuthMode` binds, and `AcceptsCredentials`/`IsPlaintext` reflect it |
 | `Save_SubjectPrefix_BindsToAdminNotificationsSubjectPrefix` | `SubjectPrefix = "[PROD]"` | `AdminNotifications:SubjectPrefix == "[PROD]"` |
 | `Save_ScheduledReport_BindsToAdminNotificationsScheduledReport` | `doc.Notification.Report*` set (Monthly, 08:30, Friday, day 5) saved | `AdminNotifications:ScheduledReport` binds to `ScheduledReportOptions` (Enabled, Frequency, TimeOfDay, DayOfWeek, DayOfMonth) |
 | `Save_NotifIpBlocked_False_BindsToIpBlockedAlertEnabled_False` | `NotifIpBlocked = false` | `IpBlockedAlert:Enabled == false` |
@@ -1231,6 +1306,8 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `Save_DisabledUser_BindsToUserEntryEnabledFalse` | User saved with `Enabled = false` | Runtime `UserEntry.Enabled == false` (regression: flag was silently dropped) |
 | `Backup_AllFields_BindToBackupOptions` | Full `Backup` section saved | `BackupOptions` bound: frequency (enum), time, day (enum), max, dir, email + recipients |
 | `Backup_Password_IsWrittenEncrypted` | `Backup.Password` saved | JSON value is `ENC[...]` |
+| `Recommendations_Dismissed_BindsToRecommendationOptions` | `Recommendations.Dismissed` saved with two ids | `RecommendationOptions.Dismissed` binds both ids in order |
+| `Recommendations_NothingDismissed_BindsToAnEmptyList` | Default document saved | `RecommendationOptions.Dismissed` empty |
 | `Save_NotifBackup_False_BindsToBackupResultEnabled_False` | `Notification.NotifBackup = false` | `AdminNotifications:NotificationTypes:BackupResult:Enabled == false` |
 | `Save_UpdateCheckEnabled_BindsToUpdateCheckEnabled` | `doc.Monitoring.UpdateCheckEnabled = true` saved | Options bound: `UpdateCheck:Enabled == true` |
 | `Save_TelemetryEnabled_BindsToTelemetryOptionsEnabled` | `doc.Monitoring.TelemetryEnabled = true` saved | Options bound: `Telemetry:Enabled == true` |

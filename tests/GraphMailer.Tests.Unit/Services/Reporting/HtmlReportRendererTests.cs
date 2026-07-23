@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GraphMailer.Service.Services.Advisor;
 using GraphMailer.Service.Services.Reporting;
 
 namespace GraphMailer.Tests.Unit.Services.Reporting;
@@ -95,7 +96,8 @@ public sealed class HtmlReportRendererTests
     {
         var data = Sample() with
         {
-            Recommendations = [new Recommendation("Turn on the update check", "Security fixes go unnoticed.")],
+            Recommendations = [Hint(RecommendationIds.UpdateCheck, RecommendationCategory.Operations,
+                                   "Turn on the update check", "Security fixes go unnoticed.")],
         };
 
         var html = HtmlReportRenderer.Render(data).Html;
@@ -104,23 +106,78 @@ public sealed class HtmlReportRendererTests
         html.Should().Contain("Turn on the update check");
         html.Should().Contain("Security fixes go unnoticed.");
         html.Should().Contain(EmailTheme.InfoBg, "hints use the neutral info palette, never the warning colours");
-        html.Should().Contain("This is switched on", "the singular wording is used for a single hint");
+        html.Should().NotContain(EmailTheme.WarnBg);
     }
 
     [Fact]
-    public void Render_WithTwoRecommendations_UsesPluralWording()
+    public void Render_WithRecommendations_NamesTheConfigToolPageThatFixesEachOne()
+    {
+        var data = Sample() with
+        {
+            Recommendations = [Hint(RecommendationIds.ConfigBackup, RecommendationCategory.Reliability,
+                                    "Enable automatic configuration backups", "…",
+                                    RecommendationTarget.BackupAndRestore)],
+        };
+
+        var html = HtmlReportRenderer.Render(data).Html;
+
+        html.Should().Contain("ConfigTool → Backup &amp; Restore",
+            "the reader needs to know which screen to open, and the page name is HTML-encoded");
+        html.Should().Contain("Recommendations page", "the closing line points at the new screen");
+    }
+
+    [Fact]
+    public void Render_WithRecommendationsOfSeveralSeverities_GroupsThemUnderPriorityLabels()
     {
         var data = Sample() with
         {
             Recommendations =
             [
-                new Recommendation("Turn on the update check", "…"),
-                new Recommendation("Consider sharing anonymous usage telemetry", "…"),
+                Hint(RecommendationIds.TlsListener, RecommendationCategory.Security,
+                     "Enable TLS on the listeners that accept authentication", "…",
+                     severity: RecommendationSeverity.High),
+                Hint(RecommendationIds.ConfigBackup, RecommendationCategory.Reliability,
+                     "Enable automatic configuration backups", "…",
+                     severity: RecommendationSeverity.Medium),
+                Hint(RecommendationIds.Telemetry, RecommendationCategory.Product,
+                     "Consider sharing anonymous usage telemetry", "…",
+                     severity: RecommendationSeverity.Low),
             ],
         };
 
-        HtmlReportRenderer.Render(data).Html.Should().Contain("Both are switched on");
+        var html = HtmlReportRenderer.Render(data).Html;
+
+        html.Should().Contain("High priority").And.Contain("Medium priority").And.Contain("Low priority");
+        html.Should().Contain("Security").And.Contain("Reliability").And.Contain("Product",
+            "the category stays as a per-item label even though grouping is by severity");
+        html.IndexOf("Enable TLS on the listeners", StringComparison.Ordinal)
+            .Should().BeLessThan(html.IndexOf("Consider sharing anonymous usage telemetry", StringComparison.Ordinal),
+                "the engine's severity order must survive rendering");
     }
+
+    [Fact]
+    public void Render_WithRecommendations_ExplainsWhyEachOneMatters()
+    {
+        var data = Sample() with
+        {
+            Recommendations = [Hint(RecommendationIds.ConfigBackup, RecommendationCategory.Reliability,
+                                    "Enable automatic configuration backups", "What it does.")],
+        };
+
+        var html = HtmlReportRenderer.Render(data).Html;
+
+        html.Should().Contain("Why it matters").And.Contain("It would otherwise go unnoticed.");
+    }
+
+    private static Recommendation Hint(
+        string id,
+        RecommendationCategory category,
+        string title,
+        string detail,
+        RecommendationTarget target = RecommendationTarget.Monitoring,
+        RecommendationSeverity severity = RecommendationSeverity.Medium)
+        => new(id, severity, category, title, detail, "It would otherwise go unnoticed.",
+               target, "configuration/monitoring.html", RecommendationState.Open, "Already done.");
 
     [Fact]
     public void Render_HtmlEncodesUserControlledText()
