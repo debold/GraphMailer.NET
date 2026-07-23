@@ -46,13 +46,30 @@ deprecated Basic Auth / SMTP AUTH.
    then point your applications at the relay.
 
 The bundled help (Start menu → *GraphMailer Help*) walks through every page,
-including a quickstart and troubleshooting guide.
+including a quickstart and troubleshooting guide. You can also read the same help
+online before installing — it is browsable right here on GitHub:
+**[GraphMailer Help](docs/help/index.md)** (installation, Entra setup, a reference
+page for every ConfigTool screen, troubleshooting, FAQ, and glossary).
 
 ## Silent install
 
 ```
 GraphMailerSetup-<version>.exe /quiet /norestart
 ```
+
+## Changelog
+
+Every user-visible change is recorded in **[CHANGELOG.md](CHANGELOG.md)** — new features, fixes,
+and behavioural changes, newest first.
+
+## Testing
+
+GraphMailer ships with an extensive automated test suite — unit tests, SMTP/HTTP
+integration tests, and opt-in live tests against a real Microsoft 365 tenant. Every
+single test is catalogued, with its scenario and expected result, in
+**[docs/TEST_DOCUMENTATION.md](docs/TEST_DOCUMENTATION.md)** — a useful map of exactly
+which behaviours (security decisions, retry logic, config schema, delivery paths) are
+covered.
 
 ## License
 

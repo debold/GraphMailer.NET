@@ -193,6 +193,25 @@ body {
 .content th { background: var(--page-bg); font-weight: 600; }
 .content tr:nth-child(even) td { background: #fbfcfd; }
 
+/* Screenshots / figures */
+.content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 18px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.content figure { margin: 18px 0; }
+.content figure img { margin: 0; }
+.content figcaption {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+
 /* Blockquote (non-alert) */
 .content blockquote {
   margin: 16px 0;

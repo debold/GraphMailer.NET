@@ -4,16 +4,18 @@ This is the **Metrics** page. It shows mail-traffic statistics and resource usag
 so you can see trends and spot problems building up — including behaviour that is hard to see in the
 logs, such as clients that connect and disconnect without sending mail. The data comes from the local
 statistics database (SQLite) and is the same data the scheduled
-[report](../configuration/notifications.html) is built from.
+[report](../configuration/notifications.md) is built from.
 
 The page is split into six tabs — **Overview**, **Activity**, **Reception**, **Delivery**,
 **End-to-End** and **Server** — with a global **time range** selector (**24h / 7d / 30d / 90d**) that
 applies to all tabs. The page reloads itself every few seconds while it is open, so there is nothing
 to refresh by hand.
 
+![The Metrics page, Overview tab: summary cards, the Mail Flow per Day chart, and volume/latency tiles](../assets/screenshots/metrics.png)
+
 > [!NOTE]
 > This page is **read-only**. What is recorded (and for how long) is controlled by *Metrics Storage*
-> and *Performance Metrics* on the [Monitoring](../configuration/monitoring.html) page.
+> and *Performance Metrics* on the [Monitoring](../configuration/monitoring.md) page.
 
 ## Overview
 
@@ -47,8 +49,8 @@ drag and the selected event are kept when the list refreshes itself.
 
 > [!TIP]
 > Recent Activity is the fastest way to confirm a specific message went through and how long it took.
-> For the actual message file (headers, body, attachments) use the [Messages](messages.html) page;
-> for the underlying service events use the [Logs](logs.html) page.
+> For the actual message file (headers, body, attachments) use the [Messages](messages.md) page;
+> for the underlying service events use the [Logs](logs.md) page.
 
 ## Reception
 
@@ -107,7 +109,7 @@ time range, plus the on-disk size of the statistics database.
 
 > [!NOTE]
 > If the charts are empty and you see *“No performance data yet,”* performance sampling is turned
-> off. Enable **Performance Metrics** on the [Monitoring](../configuration/monitoring.html)
+> off. Enable **Performance Metrics** on the [Monitoring](../configuration/monitoring.md)
 > page to start recording memory, CPU and disk usage.
 
 > [!NOTE]
@@ -117,6 +119,6 @@ time range, plus the on-disk size of the statistics database.
 
 ## Related
 
-- [Monitoring](../configuration/monitoring.html) — enable/tune what is recorded and retention
-- [Messages](messages.html) — the actual queued / sent / failed message files
-- [Notifications](../configuration/notifications.html) — the scheduled report built from this data
+- [Monitoring](../configuration/monitoring.md) — enable/tune what is recorded and retention
+- [Messages](messages.md) — the actual queued / sent / failed message files
+- [Notifications](../configuration/notifications.md) — the scheduled report built from this data

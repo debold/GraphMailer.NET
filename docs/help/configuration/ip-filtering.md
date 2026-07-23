@@ -64,12 +64,12 @@ when it expires. Use **↺ Refresh** to update, and **Unblock** to release an ad
 handy if a legitimate client tripped the limit (for example after a misconfigured password).
 
 > [!TIP]
-> If a real application keeps getting blocked, check the [Logs](../monitoring/logs.html) for *why*
+> If a real application keeps getting blocked, check the [Logs](../monitoring/logs.md) for *why*
 > its attempts fail (wrong password, not whitelisted, rejected sender) and fix that cause, rather
 > than only unblocking it repeatedly.
 
 ## Related
 
-- [Servers & TLS](servers-tls.html) — listener ports and whether they require authentication
-- [Access Control](access-control.html) — SMTP users and sender/recipient lists
-- [Logs](../monitoring/logs.html) — the reason behind each rejection or block
+- [Servers & TLS](servers-tls.md) — listener ports and whether they require authentication
+- [Access Control](access-control.md) — SMTP users and sender/recipient lists
+- [Logs](../monitoring/logs.md) — the reason behind each rejection or block

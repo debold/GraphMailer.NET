@@ -4,6 +4,8 @@ This is the **Recommendations** page — a short list of settings that would mak
 more secure, more reliable, or easier to operate. GraphMailer checks your configuration against a
 fixed catalogue of suggestions and lists the ones that apply.
 
+![The Recommendations page with its Open, Done, and Hidden sections](../assets/screenshots/recommendations.png)
+
 > [!NOTE]
 > These are suggestions, **not** problems. Nothing on this page affects the service's health status,
 > blocks a save, or stops mail from flowing. An installation that shows several tips is working
@@ -45,16 +47,16 @@ A section with nothing in it is not shown at all.
 
 | Priority | Suggestion | Appears when | Fix it on |
 |---|---|---|---|
-| High | Enable TLS on the listeners that accept authentication | An enabled listener runs in plain mode **and** its auth mode is Optional or Required | [Servers & TLS](../configuration/servers-tls.html) |
-| High | Authenticate to Graph with a certificate instead of a client secret | The Entra app uses a client secret and no certificate | [Graph API](../configuration/graph-api.html) |
-| High | Switch on the alerts that warn you before mail stops | An early-warning alert is off while admin notifications are otherwise working | [Notifications](../configuration/notifications.html) |
-| Medium | Turn on sender validation | Sender validation is off (and Graph is configured) | [Access Control](../configuration/access-control.html) |
-| Medium | Enable automatic configuration backups | Scheduled backups are off | [Backup & Restore](../configuration/backup-restore.html) |
-| Medium | Send non-delivery reports | NDRs are off | [Notifications](../configuration/notifications.html) |
-| Medium | Add a recipient for admin notifications | No admin notification recipient is configured | [Notifications](../configuration/notifications.html) |
-| Medium | Turn on the update check | The weekly GitHub release check is off | [Monitoring](../configuration/monitoring.html) |
-| Low | Set the log level back to Information | The log level is anything other than *Information* | [Monitoring](../configuration/monitoring.html) |
-| Low | Consider sharing anonymous usage telemetry | Anonymous telemetry is off | [Monitoring](../configuration/monitoring.html) |
+| High | Enable TLS on the listeners that accept authentication | An enabled listener runs in plain mode **and** its auth mode is Optional or Required | [Servers & TLS](../configuration/servers-tls.md) |
+| High | Authenticate to Graph with a certificate instead of a client secret | The Entra app uses a client secret and no certificate | [Graph API](../configuration/graph-api.md) |
+| High | Switch on the alerts that warn you before mail stops | An early-warning alert is off while admin notifications are otherwise working | [Notifications](../configuration/notifications.md) |
+| Medium | Turn on sender validation | Sender validation is off (and Graph is configured) | [Access Control](../configuration/access-control.md) |
+| Medium | Enable automatic configuration backups | Scheduled backups are off | [Backup & Restore](../configuration/backup-restore.md) |
+| Medium | Send non-delivery reports | NDRs are off | [Notifications](../configuration/notifications.md) |
+| Medium | Add a recipient for admin notifications | No admin notification recipient is configured | [Notifications](../configuration/notifications.md) |
+| Medium | Turn on the update check | The weekly GitHub release check is off | [Monitoring](../configuration/monitoring.md) |
+| Low | Set the log level back to Information | The log level is anything other than *Information* | [Monitoring](../configuration/monitoring.md) |
+| Low | Consider sharing anonymous usage telemetry | Anonymous telemetry is off | [Monitoring](../configuration/monitoring.md) |
 
 > [!NOTE]
 > The TLS suggestion is about **credentials**, not encryption in general. A plain listener whose
@@ -89,7 +91,7 @@ Every suggestion carries a priority, shown as a chip on its card, and the list i
 | **Low** | Hygiene and optional extras — worth doing, nothing breaks without it. |
 
 Even *High* describes a risk you may knowingly accept — it is never a fault in the running service,
-and it never changes the health status on the [Status](status.html) page.
+and it never changes the health status on the [Status](status.md) page.
 
 Each open suggestion also carries a **Why it matters** paragraph: the concrete consequence of
 leaving the setting as it is, kept separate from the description so you can weigh the change
@@ -126,7 +128,7 @@ reasons to run plain SMTP; an environment with its own central backup does not n
 - Hiding takes effect immediately and is written straight to the configuration file — it does **not**
   wait for the Save button and does not create unsaved changes.
 - A hidden tip is also dropped from the **Recommendations** box of the periodic
-  [report email](../configuration/notifications.html).
+  [report email](../configuration/notifications.md).
 - Hiding is sticky: if you later switch the feature on and off again, the tip stays hidden.
 - A hidden tip stays in **Hidden** even once the setting satisfies it, so that section always shows
   exactly what you have hidden and remains the one place to review the list.
@@ -143,6 +145,6 @@ identifiers, so it travels with a configuration backup and is restored along wit
 
 ## Related
 
-- [Status](status.html) — the health checks, which are about problems rather than suggestions
-- [Notifications](../configuration/notifications.html) — the periodic report that repeats these tips
-- [Monitoring](../configuration/monitoring.html) — log level, update check and telemetry settings
+- [Status](status.md) — the health checks, which are about problems rather than suggestions
+- [Notifications](../configuration/notifications.md) — the periodic report that repeats these tips
+- [Monitoring](../configuration/monitoring.md) — log level, update check and telemetry settings

@@ -5,7 +5,7 @@ the **queue**, **sent**, and **failed** folders, individually or merged — and 
 message.
 
 Each message is stored as a `.eml` file with a matching `.meta.json` sidecar under the mail directory
-(see [Mail Queue](../configuration/mail-queue.html)).
+(see [Mail Queue](../configuration/mail-queue.md)).
 
 > [!NOTE]
 > This page is **read-only**.
@@ -35,7 +35,7 @@ of the panel closes it again.
 > [!TIP]
 > The **Failed** folder is the one to watch. Messages here will not be retried automatically — they
 > have passed their expiration window. Use the detail panel's last-error line, together with
-> [Troubleshooting](../reference/troubleshooting.html), to understand why, then have the sender
+> [Troubleshooting](../reference/troubleshooting.md), to understand why, then have the sender
 > resubmit if appropriate.
 
 > [!IMPORTANT]
@@ -45,6 +45,6 @@ of the panel closes it again.
 
 ## Related
 
-- [Mail Queue](../configuration/mail-queue.html) — where these folders live and the retry policy
-- [Metrics](metrics.html) — aggregated delivery statistics
-- [Troubleshooting](../reference/troubleshooting.html) — interpreting failure reasons
+- [Mail Queue](../configuration/mail-queue.md) — where these folders live and the retry policy
+- [Metrics](metrics.md) — aggregated delivery statistics
+- [Troubleshooting](../reference/troubleshooting.md) — interpreting failure reasons

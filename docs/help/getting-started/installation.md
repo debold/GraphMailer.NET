@@ -23,7 +23,7 @@ You only need to run one installer; both are installed together.
 > [!NOTE]
 > GraphMailer does **not** need to run on a domain controller or mail server, and it does not
 > open any inbound port to the internet. It only accepts SMTP from the machines you allow on the
-> [IP Filtering](../configuration/ip-filtering.html) page.
+> [IP Filtering](../configuration/ip-filtering.md) page.
 
 ## Choosing an installer
 
@@ -99,5 +99,5 @@ service and firewall rule are removed.
 ## Next step
 
 The service is now running on safe defaults, but it cannot send to Microsoft 365 yet. Continue
-with the **[Quickstart](quickstart.html)**, then connect your tenant in
-**[Entra / Graph Setup](entra-setup.html)**.
+with the **[Quickstart](quickstart.md)**, then connect your tenant in
+**[Entra / Graph Setup](entra-setup.md)**.

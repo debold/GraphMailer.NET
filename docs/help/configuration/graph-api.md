@@ -4,8 +4,10 @@ This is the **Graph API** page of the Configuration Tool — where GraphMailer's
 Microsoft 365 lives. It has three parts: the **automatic setup wizard**, a **test email** tool, and
 **manual configuration**.
 
+![The Graph API page: automatic Entra ID setup with the active registration, and the test-email tool](../assets/screenshots/graph-api.png)
+
 If you have not connected your tenant yet, start with the step-by-step
-**[Entra / Graph Setup](../getting-started/entra-setup.html)** guide; this page is the field-level
+**[Entra / Graph Setup](../getting-started/entra-setup.md)** guide; this page is the field-level
 reference.
 
 > [!NOTE]
@@ -16,7 +18,7 @@ reference.
 The **“Sign in & set up automatically”** button runs the wizard that registers GraphMailer in your
 tenant, generates an authentication certificate, grants the required permissions, and fills in all
 the settings below for you. This is the recommended path and is documented in full on the
-[Entra / Graph Setup](../getting-started/entra-setup.html) page.
+[Entra / Graph Setup](../getting-started/entra-setup.md) page.
 
 After a successful run, the page shows the result: app name, Tenant ID, Client ID, certificate
 subject, thumbprint and expiry date.
@@ -75,19 +77,19 @@ GraphMailer needs three Microsoft Graph **application** permissions, all granted
 > [!CAUTION]
 > These permissions apply tenant-wide by default. Restrict GraphMailer to only the mailboxes it
 > should use with an Exchange Online **Application Access Policy** — see the
-> [Entra / Graph Setup](../getting-started/entra-setup.html) guide.
+> [Entra / Graph Setup](../getting-started/entra-setup.md) guide.
 
 ## Troubleshooting
 
 - **Test mail fails with `MailboxNotEnabledForRESTAPI`** — the sender has no Exchange Online mailbox
-  (e.g. an on-premises hybrid user). See [Troubleshooting](../reference/troubleshooting.html).
+  (e.g. an on-premises hybrid user). See [Troubleshooting](../reference/troubleshooting.md).
 - **Authentication errors after setup** — confirm an administrator granted admin consent, and that
   the certificate (or secret) in the config matches the one registered in Entra.
 - **Certificate expiring** — renew it from this page; see
-  [Entra / Graph Setup → Renewing the certificate](../getting-started/entra-setup.html).
+  [Entra / Graph Setup → Renewing the certificate](../getting-started/entra-setup.md).
 
 ## Related
 
-- [Entra / Graph Setup](../getting-started/entra-setup.html) — full setup and renewal walkthrough
-- [Access Control](access-control.html) — Microsoft 365 sender validation (`User.Read.All`)
-- [Monitoring](monitoring.html) — alerts for permission gaps and certificate expiry
+- [Entra / Graph Setup](../getting-started/entra-setup.md) — full setup and renewal walkthrough
+- [Access Control](access-control.md) — Microsoft 365 sender validation (`User.Read.All`)
+- [Monitoring](monitoring.md) — alerts for permission gaps and certificate expiry

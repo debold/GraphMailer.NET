@@ -13,27 +13,27 @@ This help covers installation, first-time setup, and a reference page for every 
 
 ## New here? Start with these
 
-1. **[Installation](getting-started/installation.html)** — install the service and the ConfigTool.
-2. **[Quickstart](getting-started/quickstart.html)** — what to do right after installation.
-3. **[Entra / Graph Setup](getting-started/entra-setup.html)** — register the app in Microsoft 365 so GraphMailer may send mail.
+1. **[Installation](getting-started/installation.md)** — install the service and the ConfigTool.
+2. **[Quickstart](getting-started/quickstart.md)** — what to do right after installation.
+3. **[Entra / Graph Setup](getting-started/entra-setup.md)** — register the app in Microsoft 365 so GraphMailer may send mail.
 
 ## Configuration reference
 
 One page per screen in the ConfigTool, in the same order as the app's sidebar:
 
-- [Servers & TLS](configuration/servers-tls.html) — SMTP listeners, ports, encryption, banner, size limits
-- [Access Control](configuration/access-control.html) — SMTP users and authentication
-- [IP Filtering](configuration/ip-filtering.html) — allowed networks and automatic blocking
-- [Graph API](configuration/graph-api.html) — Microsoft 365 connection and certificate
-- [Mail Queue](configuration/mail-queue.html) — delivery, retries, archiving
-- [Monitoring](configuration/monitoring.html) — self-check thresholds, metrics recording, log level
-- [Notifications](configuration/notifications.html) — admin alerts and the scheduled report
-- [Backup & Restore](configuration/backup-restore.html) — configuration backups
+- [Servers & TLS](configuration/servers-tls.md) — SMTP listeners, ports, encryption, banner, size limits
+- [Access Control](configuration/access-control.md) — SMTP users and authentication
+- [IP Filtering](configuration/ip-filtering.md) — allowed networks and automatic blocking
+- [Graph API](configuration/graph-api.md) — Microsoft 365 connection and certificate
+- [Mail Queue](configuration/mail-queue.md) — delivery, retries, archiving
+- [Monitoring](configuration/monitoring.md) — self-check thresholds, metrics recording, log level
+- [Notifications](configuration/notifications.md) — admin alerts and the scheduled report
+- [Backup & Restore](configuration/backup-restore.md) — configuration backups
 
 ## Monitoring
 
-- [Status](monitoring/status.html) · [Recommendations](monitoring/recommendations.html) · [Metrics](monitoring/metrics.html) · [Messages](monitoring/messages.html) · [Logs](monitoring/logs.html)
+- [Status](monitoring/status.md) · [Recommendations](monitoring/recommendations.md) · [Metrics](monitoring/metrics.md) · [Messages](monitoring/messages.md) · [Logs](monitoring/logs.md)
 
 ## Reference
 
-- [Troubleshooting](reference/troubleshooting.html) · [FAQ](reference/faq.html) · [Glossary](reference/glossary.html)
+- [Troubleshooting](reference/troubleshooting.md) · [FAQ](reference/faq.md) · [Glossary](reference/glossary.md)

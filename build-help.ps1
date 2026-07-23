@@ -4,7 +4,10 @@
     wrapped in docs/help/_template.html, with a shared sidebar, breadcrumb and prev/next nav.
 
 .DESCRIPTION
-    Markdown is the single source; HTML is generated. Rendering uses Markdig (downloaded from
+    Markdown is the single source; HTML is generated. Cross-page links in the sources use
+    relative .md targets so they also resolve when the pages are browsed on GitHub; this build
+    rewrites those relative .md hrefs to .html in the generated output, and fails up front on a
+    relative .html target or a relative link whose file is missing (Test-HelpLinks). Rendering uses Markdig (downloaded from
     nuget.org on first run and cached under %TEMP%\gm-markdig, mirroring how build-installer.ps1
     caches the .NET runtime). GitHub-style callouts (> [!NOTE] / [!TIP] / [!IMPORTANT] /
     [!WARNING] / [!CAUTION]) are rendered via Markdig's alert-block extension and styled by
@@ -156,6 +159,38 @@ foreach ($p in $SiteMap) { $p.Html = [IO.Path]::ChangeExtension($p.Path, '.html'
 $present = $SiteMap | Where-Object { Test-Path (Join-Path $helpRoot $_.Path) }
 $built = 0
 
+# ── Link check: keep the Markdown sources GitHub-browsable ───────────────────
+# Cross-page links must use relative .md targets (they resolve on GitHub; the build
+# rewrites them to .html for the shipped site). Fail the build on a relative .html
+# target (a regression to the old scheme) or a relative link whose file is missing.
+# External URLs (http://, https://, mailto:, …) and pure #anchor links are ignored.
+function Test-HelpLinks([string]$root) {
+    $linkRx = [regex]'\]\(\s*([^)\s]+?)\s*(?:\s+"[^"]*")?\)'
+    $problems = @()
+    foreach ($file in Get-ChildItem -Path $root -Filter *.md -Recurse -File) {
+        $text = Get-Content -Raw $file.FullName
+        foreach ($m in $linkRx.Matches($text)) {
+            $target = $m.Groups[1].Value
+            if ($target -match '^[a-z][a-z0-9+.-]*:' -or $target.StartsWith('#')) { continue }
+            $path = ($target -split '#', 2)[0]
+            if (-not $path) { continue }
+            $rel = [IO.Path]::GetRelativePath($root, $file.FullName)
+            if ($path -match '\.html$') {
+                $problems += "  ${rel}: '$target' -> use a relative .md target, not .html"
+                continue
+            }
+            $resolved = [IO.Path]::GetFullPath((Join-Path $file.DirectoryName $path))
+            if (-not (Test-Path -LiteralPath $resolved)) {
+                $problems += "  ${rel}: '$target' -> target file not found"
+            }
+        }
+    }
+    if ($problems.Count -gt 0) {
+        throw "Broken help links ($($problems.Count)):`n" + ($problems -join "`n")
+    }
+}
+Test-HelpLinks $helpRoot
+
 function Get-RootPrefix([string]$htmlPath) {
     $depth = ($htmlPath -split '/').Count - 1
     if ($depth -le 0) { return '' }
@@ -203,6 +238,11 @@ for ($i = 0; $i -lt $present.Count; $i++) {
     $md = Get-Content -Raw (Join-Path $helpRoot $page.Path)
     $bodyHtml = [Markdig.Markdown]::ToHtml($md, $pipeline)
 
+    # The Markdown sources link to sibling pages as .md so they resolve when browsed
+    # on GitHub; the generated site is .html, so rewrite relative href="….md" targets
+    # (optional #anchor kept). External URLs (http://, https://, mailto:) are left alone.
+    $bodyHtml = [regex]::Replace($bodyHtml, '(href=")(?![a-z][a-z0-9+.-]*:)([^"]+?)\.md(#[^"]*)?(")', '${1}${2}.html${3}${4}')
+
     $rootPrefix = Get-RootPrefix $page.Html
     $out = $template
     $out = $out.Replace('{{ROOT}}', $rootPrefix)
@@ -220,8 +260,13 @@ for ($i = 0; $i -lt $present.Count; $i++) {
     $built++
 }
 
-# Copy assets alongside the generated pages.
-Copy-Item -Path (Join-Path $helpRoot 'assets') -Destination (Join-Path $OutputDir 'assets') -Recurse -Force
+# Copy assets alongside the generated pages. Remove the destination first so the copy
+# mirrors the source exactly: Copy-Item -Recurse into an *existing* directory nests the
+# source ('assets/assets/…') and leaves stale top-level files behind (so edited CSS or a
+# newly added screenshots/ subfolder would silently not propagate on a rebuild).
+$assetsDest = Join-Path $OutputDir 'assets'
+if (Test-Path $assetsDest) { Remove-Item $assetsDest -Recurse -Force }
+Copy-Item -Path (Join-Path $helpRoot 'assets') -Destination $assetsDest -Recurse -Force
 
 $skipped = $SiteMap.Count - $present.Count
 Write-Host "Built $built help page(s) (v$version) -> $OutputDir" -ForegroundColor Green

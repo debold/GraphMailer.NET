@@ -95,6 +95,10 @@
 
 ### Fixed
 
+- **Three German strings in the Entra ID setup dialog are now English.** The login-URL fallback
+  panel of the Entra setup progress window still carried its label and the *Open browser* / *Copy URL*
+  buttons in German, against the English-only UI rule.
+
 - **Mail carrying more than five `X-` headers was rejected outright and never delivered.** Graph
   accepts at most five custom internet headers per message and answers a sixth with HTTP 400
   `InvalidInternetMessageHeaderCollection`. GraphMailer forwarded *every* `x-` header it found, and
@@ -136,6 +140,20 @@
   rid of it. It now keys off whether admin notifications will actually be sent.
 
 ### Changed
+
+- **The user help is now browsable on GitHub, and the README links it.** The help sources cross-link
+  each other with relative `.md` targets (which GitHub resolves), and `build-help.ps1` rewrites those
+  to `.html` when it renders the shipped HTML — so the same pages read correctly both online and in
+  the bundled offline help. `build-help.ps1` also gained a link check that fails the build on a
+  relative `.html` target (a regression to the old scheme) or a relative link whose file is missing,
+  so a broken help link can no longer slip in. The README now links the help start page (in
+  *Getting started*) and adds a *Testing* section pointing at `docs/TEST_DOCUMENTATION.md`.
+
+- **The help now carries screenshots of the Configuration Tool** (Status/overview, Graph API,
+  Metrics, Recommendations, with the Entra setup wizard to follow), stored under
+  `docs/help/assets/screenshots/` and styled by `help.css`. `build-help.ps1` now clears the output
+  `assets/` folder before copying, so edited assets and newly added subfolders (like the screenshots)
+  actually propagate on a rebuild instead of being copied into a nested `assets/assets/`.
 
 - **Mail is now delivered strictly to the SMTP envelope recipients.** `To:` and `Cc:` headers were
   handed to Graph as-is, so an address listed in a header but never sent as `RCPT TO` received the

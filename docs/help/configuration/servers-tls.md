@@ -29,7 +29,7 @@ listener has these fields:
 | Description | A free-text label shown in the list — no effect on delivery. |
 | Port | The TCP port to listen on. |
 | TLS Mode | `None` (plaintext), `STARTTLS (optional)`, `STARTTLS (required)`, or `Implicit TLS`. |
-| Authentication | `None`, `Optional`, or `Required` — whether clients may / must sign in. See [Access Control](access-control.html). |
+| Authentication | `None`, `Optional`, or `Required` — whether clients may / must sign in. See [Access Control](access-control.md). |
 
 > [!NOTE]
 > `STARTTLS (optional)` lets a client choose to encrypt; `STARTTLS (required)` refuses to accept
@@ -38,7 +38,7 @@ listener has these fields:
 
 > [!WARNING]
 > Plaintext (`None`) listeners and `Optional` authentication rely entirely on the
-> [IP Filtering](ip-filtering.html) allow-list to decide who may relay mail. Only keep port 25
+> [IP Filtering](ip-filtering.md) allow-list to decide who may relay mail. Only keep port 25
 > plain on a trusted internal network. For anything reachable more widely, require TLS and
 > authentication.
 
@@ -64,7 +64,7 @@ this page.
 > If a TLS listener is configured but **no certificate can be loaded**, GraphMailer logs an error
 > and falls back to **plain (unencrypted)** SMTP on that port rather than refusing all mail. This
 > keeps mail flowing during a certificate problem, but means traffic is briefly unencrypted —
-> watch the [Logs](../monitoring/logs.html) and [Monitoring](monitoring.html) for this.
+> watch the [Logs](../monitoring/logs.md) and [Monitoring](monitoring.md) for this.
 
 ### Do not start TLS listeners without a certificate (fail-closed)
 
@@ -92,6 +92,6 @@ certificate is missing. Changing the option requires a **service restart**.
 
 ## Related
 
-- [Access Control](access-control.html) — who may authenticate and which senders are allowed
-- [IP Filtering](ip-filtering.html) — which networks may connect at all
-- [Monitoring](monitoring.html) — alerts when a certificate is missing or expiring
+- [Access Control](access-control.md) — who may authenticate and which senders are allowed
+- [IP Filtering](ip-filtering.md) — which networks may connect at all
+- [Monitoring](monitoring.md) — alerts when a certificate is missing or expiring

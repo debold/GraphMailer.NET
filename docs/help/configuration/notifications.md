@@ -5,7 +5,7 @@ sends *to you*: operational alerts when something needs attention, optional non-
 (bounces) for failed mail, and a scheduled HTML operations report.
 
 All of these are sent **through Microsoft 365 using the same Graph connection** as normal mail, so
-the [Graph API](graph-api.html) connection must be working first. All system emails share one
+the [Graph API](graph-api.md) connection must be working first. All system emails share one
 styled HTML design (matching the operations report); NDRs additionally carry a plain-text
 fallback for legacy applications that parse bounce messages.
 
@@ -15,7 +15,7 @@ fallback for legacy applications that parse bounce messages.
 ## Notification Settings
 
 The shared basics: every email GraphMailer sends about itself goes out from this address. It is
-used by all the features below **and** by [emailed backups](backup-restore.html), which is why it
+used by all the features below **and** by [emailed backups](backup-restore.md), which is why it
 comes first.
 
 | Setting | Default | Meaning |
@@ -25,9 +25,9 @@ comes first.
 
 > [!IMPORTANT]
 > Set the sender address to a real mailbox in your tenant (the same kind of address you use for the
-> [test email](graph-api.html)). There is **no fallback account**: without a sender, nothing that
+> [test email](graph-api.md)). There is **no fallback account**: without a sender, nothing that
 > sends email can work — admin notifications, non-delivery reports, scheduled reports **and**
-> [emailed backups](backup-restore.html). The ConfigTool therefore shows a validation error under
+> [emailed backups](backup-restore.md). The ConfigTool therefore shows a validation error under
 > the field and refuses to save while any of these features is active without a (valid) sender.
 >
 > The error names exactly which features still depend on it. Switch those off — including the
@@ -102,7 +102,7 @@ while every single event is enabled, so it also tells you at a glance whether an
 off.
 
 The thresholds behind several of these (certificate warning days, disk-space percentage, port and
-Graph check intervals) are set on the [Monitoring](monitoring.html) page.
+Graph check intervals) are set on the [Monitoring](monitoring.md) page.
 
 ### The two certificates are not the same thing
 
@@ -111,8 +111,8 @@ reported when one of them lapses:
 
 | Certificate | Configured on | What it does | Alerts |
 |---|---|---|---|
-| TLS listener | [Servers & TLS](servers-tls.html) | Secures the SMTP ports | *expiring* **and** *expired* |
-| Graph client | [Graph API](graph-api.html) | Authenticates against Entra (certificate auth only) | *expiring* only |
+| TLS listener | [Servers & TLS](servers-tls.md) | Secures the SMTP ports | *expiring* **and** *expired* |
+| Graph client | [Graph API](graph-api.md) | Authenticates against Entra (certificate auth only) | *expiring* only |
 
 If the **TLS listener certificate** expires, Graph still works, so both alerts go out normally.
 
@@ -128,12 +128,12 @@ therefore deliberately no "Graph client certificate expired" alert: it could nev
 > is worth tracking that expiry date outside GraphMailer as well.
 
 The warning uses the same threshold as the TLS certificate (**certificate warning days** on the
-[Monitoring](monitoring.html) page) and only applies when Graph API uses certificate authentication;
+[Monitoring](monitoring.md) page) and only applies when Graph API uses certificate authentication;
 with a client secret the alert never fires.
 
 > [!NOTE]
 > The *New GraphMailer version available* alert additionally requires the weekly **update check**
-> to be enabled on the [Monitoring](monitoring.html) page. You receive **one email per new
+> to be enabled on the [Monitoring](monitoring.md) page. You receive **one email per new
 > release**, not a weekly reminder.
 
 ## Periodic Reports
@@ -156,14 +156,14 @@ failures — to the Admin Recipients on a schedule.
 
 The report closes with a short **Recommendations** box listing the suggestions that currently apply
 to this installation — the same list shown on the
-[Recommendations](../monitoring/recommendations.html) page in the Configuration Tool, grouped by
+[Recommendations](../monitoring/recommendations.md) page in the Configuration Tool, grouped by
 category and naming the page that fixes each one. It is a hint, not a warning: it never affects the
 report's health status, it disappears once nothing applies, and tips you hide in the Configuration
 Tool are left out of the email too.
 
 ## Related
 
-- [Recommendations](../monitoring/recommendations.html) — the full list of suggestions and how to hide them
-- [Graph API](graph-api.html) — the connection used to send notifications
-- [Monitoring](monitoring.html) — the thresholds that trigger many of these alerts
-- [Mail Queue](mail-queue.html) — when a message becomes a permanent failure (NDR)
+- [Recommendations](../monitoring/recommendations.md) — the full list of suggestions and how to hide them
+- [Graph API](graph-api.md) — the connection used to send notifications
+- [Monitoring](monitoring.md) — the thresholds that trigger many of these alerts
+- [Mail Queue](mail-queue.md) — when a message becomes a permanent failure (NDR)

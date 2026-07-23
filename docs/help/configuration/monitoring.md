@@ -6,8 +6,8 @@ SMTP port, or a broken Microsoft 365 connection — and it controls how statisti
 recorded.
 
 When a check fails, GraphMailer raises an admin notification (if configured on the
-[Notifications](notifications.html) page) and reflects the condition in the scheduled report and on
-the [Status](../monitoring/status.html) page.
+[Notifications](notifications.md) page) and reflects the condition in the scheduled report and on
+the [Status](../monitoring/status.md) page.
 
 > [!NOTE]
 > Changes on this page apply to the running service **without a restart**. The log level in
@@ -17,10 +17,10 @@ the [Status](../monitoring/status.html) page.
 
 Once a week, queries the GraphMailer releases on GitHub (`api.github.com`) and reports whether a
 newer version is available. The result appears in the **Software Update** card on the
-[Status](../monitoring/status.html) page, which also offers a **Check now** button for an immediate
+[Status](../monitoring/status.md) page, which also offers a **Check now** button for an immediate
 check, and as a **Software Update** row in the health table of the scheduled
-[report](notifications.html). An optional admin email for new releases can be enabled on the
-[Notifications](notifications.html) page (one email per new version).
+[report](notifications.md). An optional admin email for new releases can be enabled on the
+[Notifications](notifications.md) page (one email per new version).
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -111,7 +111,7 @@ required permissions are present.
 ## Metrics Storage
 
 Records email and performance statistics to the local SQLite database that feeds the
-[Metrics](../monitoring/metrics.html) page and the scheduled report.
+[Metrics](../monitoring/metrics.md) page and the scheduled report.
 
 | Setting | Default | Range | Meaning |
 |---|---|---|---|
@@ -139,10 +139,10 @@ Periodically samples the service's resource usage (memory, CPU, disk) into the m
 > [!NOTE]
 > The log level changes **immediately**, no restart needed. Microsoft and System framework logs are
 > always kept at `Warning` regardless of this setting, to keep the logs readable. View the files on
-> the [Logs](../monitoring/logs.html) page.
+> the [Logs](../monitoring/logs.md) page.
 
 ## Related
 
-- [Notifications](notifications.html) — where alerts from these checks are delivered
-- [Metrics](../monitoring/metrics.html) — the statistics this page records
-- [Logs](../monitoring/logs.html) — the log files the log level controls
+- [Notifications](notifications.md) — where alerts from these checks are delivered
+- [Metrics](../monitoring/metrics.md) — the statistics this page records
+- [Logs](../monitoring/logs.md) — the log files the log level controls

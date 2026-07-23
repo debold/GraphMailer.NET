@@ -49,7 +49,7 @@ read-only):
 | `failed\` | Messages that exhausted the retry window, kept for manual inspection until the failed-mail retention period elapses. |
 
 Each message is stored as an `{id}.eml` file plus an `{id}.meta.json` sidecar. You can browse these
-folders from the [Messages](../monitoring/messages.html) page.
+folders from the [Messages](../monitoring/messages.md) page.
 
 > [!TIP]
 > Moving the mail directory to a dedicated drive can help on a busy relay. Remember it requires a
@@ -70,6 +70,6 @@ folders from the [Messages](../monitoring/messages.html) page.
 
 ## Related
 
-- [Messages](../monitoring/messages.html) — browse the queue, sent and failed folders
-- [Notifications](notifications.html) — non-delivery reports and failed-queue alerts
-- [Monitoring](monitoring.html) — disk-space monitoring for the mail directory
+- [Messages](../monitoring/messages.md) — browse the queue, sent and failed folders
+- [Notifications](notifications.md) — non-delivery reports and failed-queue alerts
+- [Monitoring](monitoring.md) — disk-space monitoring for the mail directory

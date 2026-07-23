@@ -16,7 +16,7 @@ tagged with the component that produced it (for example `[SmtpRelay]`, `[QueuePr
 
 > [!NOTE]
 > This page is **read-only**. The minimum level that gets *written* is set by the **Log level** on
-> the [Monitoring](../configuration/monitoring.html) page.
+> the [Monitoring](../configuration/monitoring.md) page.
 
 ## Filtering
 
@@ -64,6 +64,6 @@ What the levels mean:
 
 ## Related
 
-- [Monitoring](../configuration/monitoring.html) — set the log level (applies immediately)
-- [Messages](messages.html) — the message files referenced by delivery log entries
-- [Troubleshooting](../reference/troubleshooting.html) — common messages and what to do
+- [Monitoring](../configuration/monitoring.md) — set the log level (applies immediately)
+- [Messages](messages.md) — the message files referenced by delivery log entries
+- [Troubleshooting](../reference/troubleshooting.md) — common messages and what to do

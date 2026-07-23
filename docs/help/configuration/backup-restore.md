@@ -43,7 +43,7 @@ Optionally email each scheduled backup to a list of recipients (separate from th
 
 > [!IMPORTANT]
 > Emailed backups are sent **from the sender address configured on the
-> [Notifications](notifications.html) page** — there is no separate sender here and no fallback
+> [Notifications](notifications.md) page** — there is no separate sender here and no fallback
 > account. If email backups are enabled without that sender, the page shows a validation error
 > and the configuration cannot be saved.
 
@@ -77,5 +77,5 @@ Optionally email each scheduled backup to a list of recipients (separate from th
 
 ## Related
 
-- [Notifications](notifications.html) — sender address and the "backup result" alert
-- [Entra / Graph Setup](../getting-started/entra-setup.html) — what the encrypted secrets protect
+- [Notifications](notifications.md) — sender address and the "backup result" alert
+- [Entra / Graph Setup](../getting-started/entra-setup.md) — what the encrypted secrets protect

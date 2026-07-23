@@ -4,6 +4,8 @@ This is the **Status** page — the dashboard you land on when you open the Conf
 gives an at-a-glance view of how GraphMailer is doing right now and lets you start, stop, and manage
 the Windows service.
 
+![The Status page: KPI cards, service control, software update, and the system-health table](../assets/screenshots/overview.png)
+
 > [!NOTE]
 > This page is **read-only monitoring** plus service control — it does not change any configuration.
 
@@ -40,7 +42,7 @@ to manage it:
 ## Software Update
 
 Shows the installed GraphMailer version and — when the weekly update check on the
-[Monitoring](../configuration/monitoring.html) page is enabled — the latest release published
+[Monitoring](../configuration/monitoring.md) page is enabled — the latest release published
 on GitHub, with a badge (*Up to date* / *Update available*), the time of the last and next check,
 and a **Release notes** link.
 
@@ -53,7 +55,7 @@ and a **Release notes** link.
 > [!NOTE]
 > Updates are never installed automatically — download the new release from GitHub and install it
 > yourself. An optional email alert for new releases can be enabled on the
-> [Notifications](../configuration/notifications.html) page.
+> [Notifications](../configuration/notifications.md) page.
 
 While an update is available, a small green badge with the new version number also appears next to
 the GraphMailer name at the top of the sidebar — visible on every page. Clicking it opens this
@@ -61,7 +63,7 @@ Status page.
 
 ## System Health
 
-A table of the same self-checks configured on the [Monitoring](../configuration/monitoring.html)
+A table of the same self-checks configured on the [Monitoring](../configuration/monitoring.md)
 page — each component (certificates, disk space, SMTP ports, Graph API) with its current status
 (OK / Warning / Error), a detail message, and when it was last checked. This is the quickest place
 to see *why* something is wrong.
@@ -69,7 +71,7 @@ to see *why* something is wrong.
 > [!IMPORTANT]
 > The **Graph Certificate** row matters more than it looks. When Graph API uses certificate
 > authentication and that certificate expires, GraphMailer cannot obtain a token — delivery stops
-> and no [notification email](../configuration/notifications.html) can be sent about it, because
+> and no [notification email](../configuration/notifications.md) can be sent about it, because
 > sending one would need the very certificate that just lapsed. This row and the log are the only
 > places the condition shows up.
 
@@ -77,10 +79,10 @@ to see *why* something is wrong.
 
 If a stored secret cannot be decrypted (for example after restoring config to a different machine,
 where the encryption key differs), a red banner appears at the top. Re-enter the affected secret on
-its page — [Graph API](../configuration/graph-api.html) or [Access Control](../configuration/access-control.html) — and save to clear it.
+its page — [Graph API](../configuration/graph-api.md) or [Access Control](../configuration/access-control.md) — and save to clear it.
 
 ## Related
 
-- [Monitoring](../configuration/monitoring.html) — configure the checks shown here
-- [Metrics](metrics.html) — longer-term statistics and trends
-- [Logs](logs.html) — the detailed event log behind a problem
+- [Monitoring](../configuration/monitoring.md) — configure the checks shown here
+- [Metrics](metrics.md) — longer-term statistics and trends
+- [Logs](logs.md) — the detailed event log behind a problem

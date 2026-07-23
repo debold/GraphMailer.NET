@@ -11,7 +11,7 @@ for senders and recipients, and optional validation of senders against your Micr
 ## SMTP Users
 
 Accounts that clients use to authenticate (SMTP AUTH). Whether authentication is offered or
-demanded is set per listener on the [Servers & TLS](servers-tls.html) page (Auth = `None` /
+demanded is set per listener on the [Servers & TLS](servers-tls.md) page (Auth = `None` /
 `Optional` / `Required`).
 
 Use **+ Add User**, **✎** edit, or **✕** remove. Each user has:
@@ -34,7 +34,7 @@ password configured that you do not want to retype.
 > [!CAUTION]
 > While capture is armed, the **first** login for that user succeeds with any password. Make sure
 > the intended application connects before anyone else could, and confirm in the
-> [Logs](../monitoring/logs.html) that the expected client authenticated.
+> [Logs](../monitoring/logs.md) that the expected client authenticated.
 
 > [!NOTE]
 > A red warning icon next to a user means its stored password could not be decrypted with the
@@ -61,7 +61,7 @@ The same model applied to **RCPT TO** (the destination address):
 
 > [!TIP]
 > A common pattern for an internal relay: leave senders/recipients open and rely on
-> [IP Filtering](ip-filtering.html) plus authenticated users, then add a Blocked list only if you
+> [IP Filtering](ip-filtering.md) plus authenticated users, then add a Blocked list only if you
 > need to stop a specific address.
 
 ## Microsoft 365 Sender Validation
@@ -81,7 +81,7 @@ while validation is enabled and the service is running).
 
 > [!IMPORTANT]
 > Sender validation requires the **`User.Read.All`** application permission on the Entra app
-> registration — the [Entra setup wizard](../getting-started/entra-setup.html) grants it.
+> registration — the [Entra setup wizard](../getting-started/entra-setup.md) grants it.
 
 > [!WARNING]
 > **Fail-open vs. fail-closed.** By default (fail-open), if Microsoft 365 is unreachable or the
@@ -91,6 +91,6 @@ while validation is enabled and the service is running).
 
 ## Related
 
-- [Servers & TLS](servers-tls.html) — where per-listener authentication is enabled
-- [IP Filtering](ip-filtering.html) — network-level access control
-- [Entra / Graph Setup](../getting-started/entra-setup.html) — the `User.Read.All` permission
+- [Servers & TLS](servers-tls.md) — where per-listener authentication is enabled
+- [IP Filtering](ip-filtering.md) — network-level access control
+- [Entra / Graph Setup](../getting-started/entra-setup.md) — the `User.Read.All` permission

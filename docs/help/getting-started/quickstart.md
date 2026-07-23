@@ -3,6 +3,8 @@
 This page walks you through everything that needs to happen between *"GraphMailer is installed"*
 and *"my application can send mail through it"*. Follow the steps in order.
 
+![The GraphMailer Configuration Tool: navigation sidebar on the left, the Status dashboard on the right](../assets/screenshots/overview.png)
+
 > [!NOTE]
 > This is the short, happy-path version. Each step links to the detailed reference page for the
 > matching ConfigTool screen if you need more background.
@@ -18,7 +20,7 @@ You need:
 
 ## Step 1 — Confirm the service is running
 
-After [installation](installation.html), open the **GraphMailer Configuration Tool** from the
+After [installation](installation.md), open the **GraphMailer Configuration Tool** from the
 Start menu. The bottom-left of the window shows the service state.
 
 - A green dot and **Running** mean the service started on the bundled defaults.
@@ -36,7 +38,7 @@ including SMTP listeners on ports 25, 465 and 587 and a self-signed TLS certific
 Open **IP Filtering**. By default only private network ranges are allowed to connect. Add the
 IP address of each application or device that will relay mail, then **Save**.
 
-See [IP Filtering](../configuration/ip-filtering.html) for the default ranges and how automatic
+See [IP Filtering](../configuration/ip-filtering.md) for the default ranges and how automatic
 blocking works.
 
 ## Step 3 — Connect GraphMailer to Microsoft 365
@@ -48,7 +50,7 @@ connection details for you.
 > [!IMPORTANT]
 > The wizard needs an administrator who can grant **admin consent** for the requested permissions.
 > Without consent, GraphMailer can authenticate but every delivery attempt fails. The full
-> walkthrough is on the [Entra / Graph Setup](entra-setup.html) page.
+> walkthrough is on the [Entra / Graph Setup](entra-setup.md) page.
 
 ## Step 4 — Point your application at GraphMailer
 
@@ -58,7 +60,7 @@ Configure your application's SMTP settings to the GraphMailer host:
 |---|---|
 | Server / host | The Windows machine running GraphMailer |
 | Port | `25` (plain), `587` (STARTTLS), or `465` (implicit TLS) |
-| Authentication | Optional — see [Access Control](../configuration/access-control.html) |
+| Authentication | Optional — see [Access Control](../configuration/access-control.md) |
 | From address | A mailbox or alias in your Microsoft 365 tenant |
 
 > [!WARNING]
@@ -73,10 +75,10 @@ queue to *sent*. If something fails, the **Logs** page records the concrete reas
 > [!CAUTION]
 > Users hosted on-premises in a hybrid tenant (no Exchange Online mailbox) pass sender validation
 > but fail delivery with `MailboxNotEnabledForRESTAPI`. This is a known Microsoft 365 limitation —
-> see [Troubleshooting](../reference/troubleshooting.html).
+> see [Troubleshooting](../reference/troubleshooting.md).
 
 ## What's next
 
-- Lock down who may submit mail with [Access Control](../configuration/access-control.html).
-- Turn on the daily report and admin alerts in [Notifications](../configuration/notifications.html).
-- Review delivery statistics on the [Metrics](../monitoring/metrics.html) page.
+- Lock down who may submit mail with [Access Control](../configuration/access-control.md).
+- Turn on the daily report and admin alerts in [Notifications](../configuration/notifications.md).
+- Review delivery statistics on the [Metrics](../monitoring/metrics.md) page.

@@ -24,7 +24,11 @@ There are two ways to do it, both on the **Graph API** page of the Configuration
 ## Option A — Automatic setup (recommended)
 
 On the **Graph API** page, click **“Sign in & set up automatically.”** A browser window opens for
-you to sign in. The wizard then performs these steps and shows the progress of each:
+you to sign in.
+
+![The wizard waiting for you to sign in, with a fallback link if the browser window was closed](../assets/screenshots/entra-setup-1.png)
+
+The wizard then performs these steps and shows the progress of each:
 
 1. **Sign in to Microsoft Entra ID** — in your system browser (times out after 3 minutes).
 2. **Check for an existing app registration** — reuses one named *GraphMailer* if it already exists.
@@ -37,8 +41,15 @@ you to sign in. The wizard then performs these steps and shows the progress of e
 7. **Apply the configuration** — Tenant ID, Client ID and certificate are written to the service
    config for you.
 
+![The setup wizard running: sign-in done, checking the registration, and deciding on the certificate](../assets/screenshots/entra-setup-2.png)
+
+If a `GraphMailer Entra Auth` certificate already exists (for example when you re-run setup), the
+wizard offers to **keep** or **replace** it rather than generating a new one.
+
 When it finishes, the page shows the result: app name, Tenant ID, Client ID, certificate subject,
 thumbprint and expiry date.
+
+![The wizard after every step has completed successfully](../assets/screenshots/entra-setup-3.png)
 
 ### Why these three permissions?
 
@@ -72,7 +83,7 @@ Fill in:
 > or rotate on a schedule, and Entra trusts the exact registered certificate. If you use a
 > certificate, it must also be uploaded to the app registration in Entra.
 
-See the [Graph API](../configuration/graph-api.html) reference for every field on this page.
+See the [Graph API](../configuration/graph-api.md) reference for every field on this page.
 
 ## Send a test email
 
@@ -91,8 +102,8 @@ run the renewal: it signs you in, generates a fresh certificate, uploads it to t
 registration in Entra, and updates the config — no new app registration, no downtime.
 
 > [!TIP]
-> The [Monitoring](../configuration/monitoring.html) page and the scheduled
-> [report](../configuration/notifications.html) warn you as the certificate approaches expiry, so
+> The [Monitoring](../configuration/monitoring.md) page and the scheduled
+> [report](../configuration/notifications.md) warn you as the certificate approaches expiry, so
 > renewal never takes you by surprise.
 
 ## Troubleshooting
@@ -101,4 +112,4 @@ registration in Entra, and updates the config — no new app registration, no do
 - **Permissions look granted but mail fails** — confirm an administrator granted *admin consent*
   in step 6.
 - **`MailboxNotEnabledForRESTAPI`** — the sender has no Exchange Online mailbox (e.g. an on-premises
-  hybrid user). See [Troubleshooting](../reference/troubleshooting.html).
+  hybrid user). See [Troubleshooting](../reference/troubleshooting.md).
