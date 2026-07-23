@@ -146,9 +146,12 @@
 
 - **S/MIME and PGP-protected mail is now flagged in the log.** Relaying rebuilds the message, which
   invalidates the sender's signature; encrypted parts arrive as an attachment. This was a silent
-  degradation and is now a warning naming the affected message. At Debug level, the headers that
-  cannot be carried over at all (`Date`, `Received`, `List-*`, `Auto-Submitted` — Graph accepts
-  custom headers only with an `x-` prefix) are listed per message.
+  degradation and is now a warning naming the affected message.
+
+  Everything else that cannot come along is logged at Debug, so nothing is dropped without a
+  trace: the headers Graph has no place for (`Date`, `Received`, `List-*`, `Auto-Submitted` — it
+  accepts custom headers only with an `x-` prefix), and the plain-text alternative of an HTML
+  message (a Graph message body holds one rendering; Exchange regenerates the text part).
 
 - **The Notifications page is reordered** to follow how the settings depend on each other:
   Notification Settings (the shared sender, also used by emailed backups) → Non-Delivery Reports →

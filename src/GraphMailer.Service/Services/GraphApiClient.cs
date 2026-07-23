@@ -97,7 +97,7 @@ internal sealed class GraphApiClient : IGraphApiClient
                 "[GraphApi] {MessageId}: {Count} surplus multipart/alternative body rendering(s) not carried over (clients would not display them either)",
                 messageId, split.DroppedAlternativeBodies);
 
-        WarnAboutUnrelayableContent(mime, messageId);
+        WarnAboutUnrelayableContent(mime, split, messageId);
 
         // Policy rejection with the concrete reason: these addresses stand in the To:/Cc:
         // header but were never RCPT TO'd, so they are not delivered to.
@@ -685,13 +685,24 @@ internal sealed class GraphApiClient : IGraphApiClient
     /// degradation is visible instead of silent. S/MIME and PGP are a Warning: the relay
     /// rebuilds the message, which invalidates the signature the sender relied on.
     /// </summary>
-    private void WarnAboutUnrelayableContent(MimeMessage mime, string messageId)
+    private void WarnAboutUnrelayableContent(
+        MimeMessage mime, MimeMessageSplitter.SplitResult split, string messageId)
     {
         if (mime.Body is MimeKit.Cryptography.MultipartSigned or MimeKit.Cryptography.MultipartEncrypted
             || (mime.Body?.ContentType.IsMimeType("application", "pkcs7-mime") ?? false))
             _logger.LogWarning(
                 "[GraphApi] {MessageId} is S/MIME/PGP protected — Graph delivery rebuilds the message, " +
                 "so the signature will not verify at the recipient (encrypted parts arrive as an attachment)",
+                messageId);
+
+        // A Graph message body is single-typed: with both renderings present the HTML one
+        // wins and the plain-text alternative cannot come along. Debug rather than Warning
+        // on purpose — this is the normal shape of almost every HTML mail, and Exchange
+        // regenerates a text version, so warning here would drown the real warnings.
+        if (split.HtmlBody is not null && split.TextBody is not null)
+            _logger.LogDebug(
+                "[GraphApi] {MessageId}: plain-text alternative not carried over — the Graph message body " +
+                "holds one rendering and the HTML one takes precedence (Exchange regenerates the text part)",
                 messageId);
 
         // Headers Graph has no place for: it accepts custom internet headers only with an
