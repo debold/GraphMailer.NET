@@ -214,6 +214,8 @@ internal sealed class ConfigDocument
         public bool NotifDeliveryFailed { get; set; } = true;
         public bool NotifCertExpiring { get; set; } = true;
         public bool NotifCertExpired { get; set; } = true;
+        /// <summary>Advance warning before the Graph client certificate (Entra auth) expires.</summary>
+        public bool NotifGraphCertExpiring { get; set; } = true;
         public bool NotifDiskSpace { get; set; } = true;
         public bool NotifGraphDown { get; set; } = true;
         public bool NotifPortDown { get; set; } = true;

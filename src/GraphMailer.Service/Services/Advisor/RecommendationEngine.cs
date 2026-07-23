@@ -110,6 +110,26 @@ internal static class RecommendationEngine
             // Before Graph is set up there is no auth method at all to have an opinion about.
             relevant: i => i.GraphConfigured),
 
+        new Rule(RecommendationIds.CriticalNotifications,
+            RecommendationSeverity.High,
+            RecommendationCategory.Operations,
+            RecommendationTarget.Notifications,
+            "configuration/notifications.html",
+            "Switch on the alerts that warn you before mail stops",
+            i => i.DisabledCriticalNotifications.Count > 0,
+            i => $"These early-warning alerts are switched off: {string.Join(", ", i.DisabledCriticalNotifications)}. "
+               + "They are the ones that reach you while there is still time to act, as opposed to the "
+               + "informational events (IP blocked, service start/stop, backup result) that report something "
+               + "already over.",
+            "Every one of these fails quietly. An expiring Graph client certificate is the worst case: when it "
+            + "lapses, delivery stops completely and GraphMailer can no longer send email — not even to tell "
+            + "you why. A full disk, a dead listener port or a Graph outage are equally invisible until "
+            + "somebody reports that mail is missing.",
+            "The early-warning alerts are all switched on.",
+            // Only meaningful once notifications can actually be delivered — otherwise the
+            // admin-notifications rule already covers it, and this one would just repeat it.
+            Relevant: i => i.AdminNotificationsEnabled && i.HasAdminNotificationRecipients),
+
         // ── Medium ────────────────────────────────────────────────────────────
         Entry(RecommendationIds.SenderValidation,
             RecommendationSeverity.Medium,

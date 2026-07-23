@@ -18,6 +18,13 @@ internal interface IAdminNotificationService
     Task NotifyEmailDeliveryFailedAsync(string messageId, string error, CancellationToken ct = default);
     Task NotifyCertificateExpiringAsync(string certSubject, DateTime notAfter, CancellationToken ct = default);
     Task NotifyCertificateExpiredAsync(string certSubject, DateTime notAfter, CancellationToken ct = default);
+
+    /// <summary>
+    /// Advance warning that the Graph client certificate (Entra app-only auth) is about to expire.
+    /// There is no "expired" counterpart on purpose: once it lapses no Graph token can be acquired,
+    /// so the message could never be delivered.
+    /// </summary>
+    Task NotifyGraphCertificateExpiringAsync(string certSubject, DateTime notAfter, CancellationToken ct = default);
     Task NotifyLowDiskSpaceAsync(string drivePath, double freePercent, CancellationToken ct = default);
     Task NotifyIpBlockedAsync(string ip, CancellationToken ct = default);
     Task NotifyAuthFailureAsync(string ip, string username, CancellationToken ct = default);

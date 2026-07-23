@@ -89,6 +89,7 @@ Toggle which conditions raise an alert email. Sensible defaults are pre-set:
 | Email delivery failed (all retries exhausted) | On |
 | TLS listener certificate expiring within warning threshold | On |
 | TLS listener certificate expired | On |
+| Graph client certificate expiring (Entra authentication) | On |
 | Low disk space | On |
 | Graph API unreachable | On |
 | SMTP port connectivity failure | On |
@@ -103,17 +104,32 @@ off.
 The thresholds behind several of these (certificate warning days, disk-space percentage, port and
 Graph check intervals) are set on the [Monitoring](monitoring.html) page.
 
+### The two certificates are not the same thing
+
+GraphMailer watches **two independent certificates**, and the difference decides what can still be
+reported when one of them lapses:
+
+| Certificate | Configured on | What it does | Alerts |
+|---|---|---|---|
+| TLS listener | [Servers & TLS](servers-tls.html) | Secures the SMTP ports | *expiring* **and** *expired* |
+| Graph client | [Graph API](graph-api.html) | Authenticates against Entra (certificate auth only) | *expiring* only |
+
+If the **TLS listener certificate** expires, Graph still works, so both alerts go out normally.
+
+If the **Graph client certificate** expires, GraphMailer can no longer obtain a Graph token — mail
+delivery stops completely and no email can be sent, not even to report the problem. There is
+therefore deliberately no "Graph client certificate expired" alert: it could never be delivered.
+
 > [!IMPORTANT]
-> The two certificate alerts watch the **TLS listener certificate** — the one that secures the SMTP
-> ports, configured on [Servers & TLS](servers-tls.html). They do **not** watch the Graph client
-> certificate used to authenticate against Entra, which is a separate certificate on the
-> [Graph API](graph-api.html) page.
->
-> That distinction matters: if the TLS listener certificate expires, Graph still works and the alert
-> is delivered normally. If the **Graph client certificate** expires, GraphMailer cannot reach Graph
-> at all — and therefore cannot send email about it. That condition is reported in the log and on
-> the [Status](../monitoring/status.html) page instead, so a certificate-authenticated installation
-> should have its Graph certificate expiry tracked outside GraphMailer as well.
+> The *Graph client certificate expiring* warning is the **last message you will get** before
+> delivery stops. It is on by default and worth leaving on. Once the certificate has actually
+> lapsed, the condition appears only in the log and as a **Graph Certificate** row in the health
+> checks (Status page and the periodic report) — so on a certificate-authenticated installation it
+> is worth tracking that expiry date outside GraphMailer as well.
+
+The warning uses the same threshold as the TLS certificate (**certificate warning days** on the
+[Monitoring](monitoring.html) page) and only applies when Graph API uses certificate authentication;
+with a client secret the alert never fires.
 
 > [!NOTE]
 > The *New GraphMailer version available* alert additionally requires the weekly **update check**

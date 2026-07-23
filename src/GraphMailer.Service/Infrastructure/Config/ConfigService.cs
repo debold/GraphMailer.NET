@@ -551,6 +551,7 @@ internal sealed class ConfigService
             NotifDeliveryFailed = GetTypeEnabled(types, "EmailDeliveryFailed", true),
             NotifCertExpiring = GetTypeEnabled(types, "CertificateExpiringWarning", true),
             NotifCertExpired = GetTypeEnabled(types, "CertificateExpired", true),
+            NotifGraphCertExpiring = GetTypeEnabled(types, "GraphCertificateExpiringWarning", true),
             NotifDiskSpace = GetTypeEnabled(types, "LowDiskSpaceWarning", true),
             NotifGraphDown = GetTypeEnabled(types, "GraphApiConnectionError", true),
             NotifPortDown = GetTypeEnabled(types, "PortMonitoringAlert", true),
@@ -605,6 +606,7 @@ internal sealed class ConfigService
         SetTypeEnabled(types, "EmailDeliveryFailed", s.NotifDeliveryFailed);
         SetTypeEnabled(types, "CertificateExpiringWarning", s.NotifCertExpiring);
         SetTypeEnabled(types, "CertificateExpired", s.NotifCertExpired);
+        SetTypeEnabled(types, "GraphCertificateExpiringWarning", s.NotifGraphCertExpiring);
         SetTypeEnabled(types, "LowDiskSpaceWarning", s.NotifDiskSpace);
         SetTypeEnabled(types, "GraphApiConnectionError", s.NotifGraphDown);
         SetTypeEnabled(types, "PortMonitoringAlert", s.NotifPortDown);

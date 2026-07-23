@@ -104,7 +104,6 @@
                                       Style="{StaticResource ToggleSwitch}"
                                       x:Name="NdrNotifySender"
                                       IsChecked="True"
-                                      IsEnabled="{Binding IsChecked, ElementName=NdrEnabled}"
                                       Checked="AnyCheckbox_Changed"
                                       Unchecked="AnyCheckbox_Changed"/>
                             <TextBlock Grid.Row="1"
@@ -288,6 +287,7 @@
                                 <RowDefinition Height="34"/>
                                 <RowDefinition Height="34"/>
                                 <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
                             </Grid.RowDefinitions>
 
                             <CheckBox Grid.Row="0"
@@ -359,27 +359,35 @@
                             <CheckBox Grid.Row="4"
                                       Grid.Column="0"
                                       Style="{StaticResource ToggleSwitch}"
-                                      x:Name="NotifDiskSpace"
+                                      x:Name="NotifGraphCertExpiring"
                                       IsChecked="True"
                                       Checked="AnyCheckbox_Changed"
                                       Unchecked="AnyCheckbox_Changed"/>
-                            <TextBlock Grid.Row="4"
-                                       Grid.Column="1"
-                                       Text="Low disk space"
-                                       Style="{StaticResource BodyText}"
-                                       Margin="10,0,0,0"
-                                       VerticalAlignment="Center"/>
+                            <StackPanel Grid.Row="4"
+                                        Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        Margin="10,0,0,0"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="Graph client certificate expiring (Entra authentication)"
+                                           Style="{StaticResource BodyText}"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Text="&#x2139;"
+                                           Style="{StaticResource HintText}"
+                                           Margin="6,0,0,0"
+                                           VerticalAlignment="Center"
+                                           ToolTip="Warns while the certificate is still valid — this is the last warning you get.&#x0a;Once it expires GraphMailer can no longer authenticate against Graph and therefore&#x0a;cannot send any email at all, so there is deliberately no &quot;expired&quot; alert:&#x0a;that case is written to the log and shown in the operations report instead.&#x0a;Only applies when Graph API uses certificate authentication."/>
+                            </StackPanel>
 
                             <CheckBox Grid.Row="5"
                                       Grid.Column="0"
                                       Style="{StaticResource ToggleSwitch}"
-                                      x:Name="NotifGraphDown"
+                                      x:Name="NotifDiskSpace"
                                       IsChecked="True"
                                       Checked="AnyCheckbox_Changed"
                                       Unchecked="AnyCheckbox_Changed"/>
                             <TextBlock Grid.Row="5"
                                        Grid.Column="1"
-                                       Text="Graph API unreachable"
+                                       Text="Low disk space"
                                        Style="{StaticResource BodyText}"
                                        Margin="10,0,0,0"
                                        VerticalAlignment="Center"/>
@@ -387,13 +395,13 @@
                             <CheckBox Grid.Row="6"
                                       Grid.Column="0"
                                       Style="{StaticResource ToggleSwitch}"
-                                      x:Name="NotifPortDown"
+                                      x:Name="NotifGraphDown"
                                       IsChecked="True"
                                       Checked="AnyCheckbox_Changed"
                                       Unchecked="AnyCheckbox_Changed"/>
                             <TextBlock Grid.Row="6"
                                        Grid.Column="1"
-                                       Text="SMTP port connectivity failure"
+                                       Text="Graph API unreachable"
                                        Style="{StaticResource BodyText}"
                                        Margin="10,0,0,0"
                                        VerticalAlignment="Center"/>
@@ -401,13 +409,13 @@
                             <CheckBox Grid.Row="7"
                                       Grid.Column="0"
                                       Style="{StaticResource ToggleSwitch}"
-                                      x:Name="NotifServiceStartStop"
-                                      IsChecked="False"
+                                      x:Name="NotifPortDown"
+                                      IsChecked="True"
                                       Checked="AnyCheckbox_Changed"
                                       Unchecked="AnyCheckbox_Changed"/>
                             <TextBlock Grid.Row="7"
                                        Grid.Column="1"
-                                       Text="Service started / stopped"
+                                       Text="SMTP port connectivity failure"
                                        Style="{StaticResource BodyText}"
                                        Margin="10,0,0,0"
                                        VerticalAlignment="Center"/>
@@ -415,13 +423,13 @@
                             <CheckBox Grid.Row="8"
                                       Grid.Column="0"
                                       Style="{StaticResource ToggleSwitch}"
-                                      x:Name="NotifBackup"
-                                      IsChecked="True"
+                                      x:Name="NotifServiceStartStop"
+                                      IsChecked="False"
                                       Checked="AnyCheckbox_Changed"
                                       Unchecked="AnyCheckbox_Changed"/>
                             <TextBlock Grid.Row="8"
                                        Grid.Column="1"
-                                       Text="Configuration backup result (success / failure)"
+                                       Text="Service started / stopped"
                                        Style="{StaticResource BodyText}"
                                        Margin="10,0,0,0"
                                        VerticalAlignment="Center"/>
@@ -429,11 +437,25 @@
                             <CheckBox Grid.Row="9"
                                       Grid.Column="0"
                                       Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifBackup"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="9"
+                                       Grid.Column="1"
+                                       Text="Configuration backup result (success / failure)"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="10"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
                                       x:Name="NotifUpdateAvailable"
                                       IsChecked="False"
                                       Checked="AnyCheckbox_Changed"
                                       Unchecked="AnyCheckbox_Changed"/>
-                            <TextBlock Grid.Row="9"
+                            <TextBlock Grid.Row="10"
                                        Grid.Column="1"
                                        Text="New GraphMailer version available (requires the update check on the Monitoring page; one email per new version)"
                                        Style="{StaticResource BodyText}"

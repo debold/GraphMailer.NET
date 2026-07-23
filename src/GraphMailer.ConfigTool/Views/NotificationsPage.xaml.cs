@@ -51,6 +51,7 @@ public partial class NotificationsPage : UserControl
         NotifDeliveryFailed.IsChecked = doc.Notification.NotifDeliveryFailed;
         NotifCertExpiring.IsChecked = doc.Notification.NotifCertExpiring;
         NotifCertExpired.IsChecked = doc.Notification.NotifCertExpired;
+        NotifGraphCertExpiring.IsChecked = doc.Notification.NotifGraphCertExpiring;
         NotifDiskSpace.IsChecked = doc.Notification.NotifDiskSpace;
         NotifGraphDown.IsChecked = doc.Notification.NotifGraphDown;
         NotifPortDown.IsChecked = doc.Notification.NotifPortDown;
@@ -139,6 +140,7 @@ public partial class NotificationsPage : UserControl
         doc.Notification.NotifDeliveryFailed = NotifDeliveryFailed.IsChecked == true;
         doc.Notification.NotifCertExpiring = NotifCertExpiring.IsChecked == true;
         doc.Notification.NotifCertExpired = NotifCertExpired.IsChecked == true;
+        doc.Notification.NotifGraphCertExpiring = NotifGraphCertExpiring.IsChecked == true;
         doc.Notification.NotifDiskSpace = NotifDiskSpace.IsChecked == true;
         doc.Notification.NotifGraphDown = NotifGraphDown.IsChecked == true;
         doc.Notification.NotifPortDown = NotifPortDown.IsChecked == true;
@@ -181,8 +183,8 @@ public partial class NotificationsPage : UserControl
     private CheckBox[] EventCheckBoxes =>
     [
         NotifIpBlocked, NotifDeliveryFailed, NotifCertExpiring, NotifCertExpired,
-        NotifDiskSpace, NotifGraphDown, NotifPortDown, NotifServiceStartStop,
-        NotifBackup, NotifUpdateAvailable,
+        NotifGraphCertExpiring, NotifDiskSpace, NotifGraphDown, NotifPortDown,
+        NotifServiceStartStop, NotifBackup, NotifUpdateAvailable,
     ];
 
     /// <summary>

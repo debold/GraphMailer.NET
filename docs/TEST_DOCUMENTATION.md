@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 865 tests** (807 unit · 58 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-23
+**Total: 877 tests** (819 unit · 58 integration) plus **9 opt-in live tests** against a real M365 test tenant — last updated 2026-07-23
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -387,13 +387,17 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Evaluate_VerboseLogLevel_ExplainsTheNoiseNotTheBlindSpot` | Level = Debug | Detail names the level and the disk-churn reason |
 | `Evaluate_HighLogLevel_ExplainsTheBlindSpotNotTheNoise` | Level = Error | Detail names the level and the missing-history reason |
 | `Evaluate_NoAdminRecipients_RecommendsAddingOne` | No admin notification recipient | Single hint `admin-notifications` |
+| `Evaluate_CriticalNotificationsOff_RecommendsSwitchingThemOn` | One early-warning alert off, notifications otherwise working | Single hint `critical-notifications` |
+| `Evaluate_CriticalNotificationsHint_NamesTheDisabledAlerts` | Two early-warning alerts off | Detail names both — the operator has to know which switches to flip |
+| `Evaluate_CriticalNotificationsHint_IsRatedHighAndCallsOutTheGraphCertificate` | Graph certificate warning off | `Severity == High`; impact says GraphMailer "can no longer send email" — the one alert whose absence cannot be recovered from |
+| `Evaluate_NotificationsCannotBeDelivered_OmitsTheCriticalNotificationsRule` (Theory) | Master switch off / no recipients | Rule in no section — `admin-notifications` already covers it, repeating would be the same advice twice |
 | `Evaluate_UpdateCheckOff_RecommendsUpdateCheck` | Weekly update check off | Single hint `update-check` |
 | `Evaluate_TelemetryOff_RecommendsTelemetry` | Anonymous telemetry off | Single hint `telemetry` |
 | `Evaluate_MultipleHints_SortsBySeverityFirst` | High + Medium + Low rules firing | Severities in ascending order, High first, Low last |
 | `Evaluate_SameSeverity_FallsBackToCategoryOrder` | Two Medium rules from different categories | Reliability before Operations |
 | `Evaluate_EveryHint_ExplainsWhyItMatters` | Fully unconfigured install | Every hint has a non-empty `Impact` that differs from `Detail` — the severity rating must be justified in words |
-| `Evaluate_EveryHint_CarriesATargetPageAndHelpPage` | Fully unconfigured install | All 9 rules fire; each has a target page name, an `.html` help page and a non-empty done summary; ids unique |
-| `Evaluate_EveryRelevantRule_LandsInExactlyOneSection` | One open, one dismissed, seven satisfied | Ids unique across all three lists; 1 open + 1 dismissed + 7 done |
+| `Evaluate_EveryHint_CarriesATargetPageAndHelpPage` | Unconfigured install + an install with alerts off | 9 rules fire on the first, all 10 across both (admin-notifications and critical-notifications are mutually exclusive by design); each has a target page name, an `.html` help page and a non-empty done summary |
+| `Evaluate_EveryRelevantRule_LandsInExactlyOneSection` | One open, one dismissed, eight satisfied | Ids unique across all three lists; 1 open + 1 dismissed + 8 done |
 | `Evaluate_DismissedId_MovesTheHintOutOfTheOpenList` | Two hints apply, one dismissed | Dismissed one appears only in `Dismissed`, with `State == Dismissed` |
 | `Evaluate_DismissedIdThatIsAlreadySatisfied_StaysInTheHiddenSection` | Dismissed id whose condition is satisfied | Stays in `Dismissed`, absent from `Done` — hiding wins over done so the hidden list stays the operator's persisted list |
 | `Evaluate_UnknownDismissedId_IsIgnored` | Dismissed list holds an unknown id and an empty string | Evaluation unaffected; `Dismissed` empty — a config from a newer build must never break it |
@@ -1081,12 +1085,24 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 
 ### CertificateMonitoringService (`Services/CertificateMonitoringServiceTests.cs`)
 
+> Watches two independent certificates: the **TLS listener** certificate (expiring *and* expired
+> alerts) and the **Graph client** certificate used for Entra auth (expiring only — once it lapses
+> no Graph token can be had, so no email could carry the news).
+
 | Test | Scenario | Expected result |
 |---|---|---|
 | `ExecuteAsync_Disabled_DoesNotCheckCertificate` | `Enabled = false` | `ICertificateLoader.LoadCertificate` never called |
 | `ExecuteAsync_NoCertificate_DoesNotNotify` | No cert configured (loader returns null) | Neither `NotifyCertificateExpiringAsync` nor `NotifyCertificateExpiredAsync` called |
 | `ExecuteAsync_ExpiringCertificate_NotifiesExpiringSoon` | Self-signed cert expiring in 5 days; threshold = 14 days | `NotifyCertificateExpiringAsync` called |
 | `ExecuteAsync_ExpiredCertificate_NotifiesExpired` | Self-signed cert expired 1 day ago | `NotifyCertificateExpiredAsync` called |
+| `CheckAll_GraphUsesClientSecret_DoesNotWarnAboutTheGraphCertificate` | Graph configured with a client secret | `NotifyGraphCertificateExpiringAsync` never called — there is no certificate to expire |
+| `CheckAll_GraphCertificateNotInStore_DoesNotNotifyAndDoesNotThrow` | Thumbprint that resolves to nothing | No notification, no exception — logged as an operator error, and the TLS check must still run |
+| `CheckAll_TlsCertificateExpiring_StillWarnsWhileGraphUsesACertificate` | TLS cert expiring + Graph on certificate auth | `NotifyCertificateExpiringAsync` still called — the two certificates are independent |
+
+> **Coverage gap (deliberate)**: the Graph certificate *expiring* and *expired* branches need a real
+> certificate installed in the Windows store, which `GraphClientProvider.TryGetClientCertificate`
+> reads directly. Only the not-configured and not-found paths are unit-testable; the warning path is
+> covered by the shared resolution logic plus manual verification.
 
 ---
 
@@ -1197,6 +1213,7 @@ Daily opt-in heartbeat scheduler: persists cadence + install id + counter waterm
 | `Migrate_V5_ToV6_NoRecipients_LeavesAdminNotificationsDisabled` | v5 doc with an empty recipient list | `Enabled == false` |
 | `Migrate_V5_ToV6_ExistingEnabledFlag_IsNotOverwritten` | v5 doc with `Enabled: false` and recipients | Stays `false` — re-deriving would re-enable what somebody switched off |
 | `Migrate_V5_ToV6_NoAdminNotificationsSection_IsLeftAlone` | v5 doc without the section | Section not created; unrelated content untouched |
+| `Migrate_V6_ToV7_IsAdditiveOnly_ContentUnchangedExceptVersion` | v6 doc (v7 only added `GraphCertificateExpiringWarning`) | Version stamped to current; existing content untouched; the absent key stays absent (binder default = warning on) |
 | `Migrate_AlreadyCurrent_IsNoOp` | Doc already at current version | `false` (no change) |
 | `Migrate_Idempotent` | Migrate twice | First `true`, second `false` |
 | `Migrate_NewerThanBuild_LeavesFileAlone` | `SchemaVersion = Current + 1` | `false`; version left untouched |
@@ -1257,6 +1274,8 @@ Verifies that every JSON key written by the service (`graphmailer.json`) is corr
 | `Load_Telemetry_Absent_DefaultsToDisabled` | No `Telemetry` section (pre-v4 config) | `doc.Monitoring.TelemetryEnabled == false` — telemetry is strictly opt-in |
 | `Load_AdminNotifications_UpdateAvailable_Enabled_AppearsInDocNotifUpdateAvailable_True` | `UpdateAvailable.Enabled = true` | `doc.Notification.NotifUpdateAvailable == true` |
 | `Load_AdminNotifications_UpdateAvailable_Absent_DefaultsToDisabled` | `NotificationTypes` without `UpdateAvailable` | `doc.Notification.NotifUpdateAvailable == false` (opt-in) |
+| `Load_AdminNotifications_GraphCertificateExpiringWarning_Disabled_AppearsInDocNotifGraphCertExpiring_False` | `GraphCertificateExpiringWarning.Enabled = false` | `doc.Notification.NotifGraphCertExpiring == false` |
+| `Load_AdminNotifications_GraphCertificateExpiringWarning_Absent_DefaultsToEnabled` | Pre-v7 config without the key | `NotifGraphCertExpiring == true` — the last warning before Graph auth dies must not default to off |
 | `Load_AdminNotifications_Enabled_AppearsInDocNotificationNotifEnabled` | `Enabled: false` with recipients present | `doc.Notification.NotifEnabled == false` — authoritative since v6, not derived |
 | `Load_AdminNotifications_EnabledAbsentWithRecipients_FallsBackToTheDerivedValue` | Pre-v6 file: recipients, no `Enabled` key | `NotifEnabled == true` — restored backups that bypass the migration keep working |
 | `Load_AdminNotifications_EnabledAbsentWithoutRecipients_IsDisabled` | Pre-v6 file: no recipients, no `Enabled` key | `NotifEnabled == false` |
@@ -1281,6 +1300,7 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `Save_RecipientAddresses_BindToAdminNotificationsRecipientAddresses` | Master switch on + recipient address in doc | `AdminNotifications:RecipientAddresses[0]` matches, `Enabled == true` |
 | `Save_MasterSwitchOff_DisablesAdminNotificationsButKeepsTheRecipients` | Master switch off, recipients present | `Enabled == false`, recipients preserved — since v6 the flag is authoritative, not derived |
 | `Save_RecipientAddressesEmpty_DisablesAdminNotifications` | Empty recipient list | `AdminNotifications:Enabled == false` |
+| `Save_NotifGraphCertExpiring_False_BindsToGraphCertificateExpiringWarningEnabled_False` | `NotifGraphCertExpiring = false` | `GraphCertificateExpiringWarning:Enabled == false` |
 | `Save_Servers_AuthModeBindsToSmtpServerEntry` | Two listeners with AuthMode `None` / `Required` | `SmtpServerEntry.AuthMode` binds, and `AcceptsCredentials`/`IsPlaintext` reflect it |
 | `Save_SubjectPrefix_BindsToAdminNotificationsSubjectPrefix` | `SubjectPrefix = "[PROD]"` | `AdminNotifications:SubjectPrefix == "[PROD]"` |
 | `Save_ScheduledReport_BindsToAdminNotificationsScheduledReport` | `doc.Notification.Report*` set (Monthly, 08:30, Friday, day 5) saved | `AdminNotifications:ScheduledReport` binds to `ScheduledReportOptions` (Enabled, Frequency, TimeOfDay, DayOfWeek, DayOfMonth) |

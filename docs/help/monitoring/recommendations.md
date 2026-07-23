@@ -47,6 +47,7 @@ A section with nothing in it is not shown at all.
 |---|---|---|---|
 | High | Enable TLS on the listeners that accept authentication | An enabled listener runs in plain mode **and** its auth mode is Optional or Required | [Servers & TLS](../configuration/servers-tls.html) |
 | High | Authenticate to Graph with a certificate instead of a client secret | The Entra app uses a client secret and no certificate | [Graph API](../configuration/graph-api.html) |
+| High | Switch on the alerts that warn you before mail stops | An early-warning alert is off while admin notifications are otherwise working | [Notifications](../configuration/notifications.html) |
 | Medium | Turn on sender validation | Sender validation is off (and Graph is configured) | [Access Control](../configuration/access-control.html) |
 | Medium | Enable automatic configuration backups | Scheduled backups are off | [Backup & Restore](../configuration/backup-restore.html) |
 | Medium | Send non-delivery reports | NDRs are off | [Notifications](../configuration/notifications.html) |
@@ -60,6 +61,22 @@ A section with nothing in it is not shown at all.
 > auth mode is *None* never sees a password, so it is not flagged — the default port-25 relay
 > listener is a normal, supported setup. It is a listener that accepts SMTP AUTH *and* runs
 > unencrypted that puts passwords on the wire.
+
+The **early-warning alerts** the third suggestion looks at are the ones that reach you while there
+is still time to act:
+
+- Graph client certificate expiring (only when Graph uses certificate authentication)
+- Email delivery failed
+- Graph API unreachable
+- TLS listener certificate expiring
+- Low disk space
+- SMTP port connectivity failure
+
+It names whichever of these are switched off. The remaining events (IP blocked, service
+start/stop, backup result, new version available) report something already over and are a matter of
+taste, so they are not part of it. The suggestion only appears once admin notifications are
+switched on and have a recipient — before that, the *Add a recipient for admin notifications*
+suggestion already covers the same ground.
 
 ## Priority
 

@@ -148,6 +148,22 @@ public sealed class ConfigSchemaTests
     }
 
     [Fact]
+    public void Migrate_V6_ToV7_IsAdditiveOnly_ContentUnchangedExceptVersion()
+    {
+        // v7 only introduced the GraphCertificateExpiringWarning notification type (default on) —
+        // the migration is a pure version stamp; existing content must survive byte-identical.
+        var root = JsonNode.Parse("""{ "SchemaVersion": 6, "Certificate": { "SubjectName": "smtp.local" } }""")!.AsObject();
+
+        var changed = ConfigSchema.Migrate(root);
+
+        changed.Should().BeTrue();
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+        root["Certificate"]!.AsObject()["SubjectName"]!.GetValue<string>().Should().Be("smtp.local");
+        root.ContainsKey("AdminNotifications").Should().BeFalse(
+            "the absent key is valid — the options binder falls back to the default (warning on)");
+    }
+
+    [Fact]
     public void Migrate_AlreadyCurrent_IsNoOp()
         => ConfigSchema.Migrate(new JsonObject { ["SchemaVersion"] = ConfigSchema.Current }).Should().BeFalse();
 

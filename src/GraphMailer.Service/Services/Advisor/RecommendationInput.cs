@@ -43,9 +43,44 @@ internal sealed record RecommendationInput
     /// <summary>Serilog minimum level, e.g. "Information". Empty when not configured anywhere.</summary>
     public string LogLevel { get; init; } = "Information";
     public bool HasAdminNotificationRecipients { get; init; }
+    /// <summary>The admin-notification master switch.</summary>
+    public bool AdminNotificationsEnabled { get; init; }
+    /// <summary>
+    /// Display names of the early-warning alerts that are switched off. These are the ones that
+    /// tell an operator <i>before</i> something breaks; the remaining event types report things
+    /// that have already happened and are a matter of taste.
+    /// </summary>
+    public IReadOnlyList<string> DisabledCriticalNotifications { get; init; } = [];
 
     /// <summary>The recommended Serilog level — anything else raises the log-level hint.</summary>
     internal const string RecommendedLogLevel = "Information";
+
+    /// <summary>
+    /// Collects the display names of the early-warning alerts that are switched off. Shared by both
+    /// producers so the ConfigTool and the report agree on what counts as critical.
+    ///
+    /// The Graph client certificate warning only counts when Graph actually authenticates with a
+    /// certificate — and it is listed first, because it is the only alert whose absence is
+    /// unrecoverable: once that certificate lapses, GraphMailer cannot send the bad news either.
+    /// </summary>
+    internal static IReadOnlyList<string> CollectDisabledCriticalNotifications(
+        bool graphUsesCertificate,
+        bool graphCertExpiringEnabled,
+        bool deliveryFailedEnabled,
+        bool graphDownEnabled,
+        bool tlsCertExpiringEnabled,
+        bool diskSpaceEnabled,
+        bool portDownEnabled)
+    {
+        var off = new List<string>();
+        if (graphUsesCertificate && !graphCertExpiringEnabled) off.Add("Graph client certificate expiring");
+        if (!deliveryFailedEnabled) off.Add("Email delivery failed");
+        if (!graphDownEnabled) off.Add("Graph API unreachable");
+        if (!tlsCertExpiringEnabled) off.Add("TLS listener certificate expiring");
+        if (!diskSpaceEnabled) off.Add("Low disk space");
+        if (!portDownEnabled) off.Add("SMTP port connectivity failure");
+        return off;
+    }
 
     /// <summary>
     /// Builds the snapshot from the ConfigTool's in-memory document. Mirrors the service-side
@@ -78,6 +113,16 @@ internal sealed record RecommendationInput
             TelemetryEnabled = doc.Monitoring.TelemetryEnabled,
             LogLevel = doc.Logging.DefaultLevel,
             HasAdminNotificationRecipients = doc.Notification.RecipientAddresses.Count > 0,
+            AdminNotificationsEnabled = doc.Notification.NotifEnabled,
+            DisabledCriticalNotifications = CollectDisabledCriticalNotifications(
+                graphUsesCertificate: !string.IsNullOrWhiteSpace(doc.GraphApi.ClientCertificateThumbprint)
+                                   || !string.IsNullOrWhiteSpace(doc.GraphApi.ClientCertificateSubjectName),
+                graphCertExpiringEnabled: doc.Notification.NotifGraphCertExpiring,
+                deliveryFailedEnabled: doc.Notification.NotifDeliveryFailed,
+                graphDownEnabled: doc.Notification.NotifGraphDown,
+                tlsCertExpiringEnabled: doc.Notification.NotifCertExpiring,
+                diskSpaceEnabled: doc.Notification.NotifDiskSpace,
+                portDownEnabled: doc.Notification.NotifPortDown),
         };
     }
 }

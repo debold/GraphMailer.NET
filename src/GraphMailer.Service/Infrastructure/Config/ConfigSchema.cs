@@ -17,7 +17,7 @@ namespace GraphMailer.Service.Infrastructure.Config;
 internal static class ConfigSchema
 {
     /// <summary>Config schema version understood by this build.</summary>
-    internal const int Current = 6;
+    internal const int Current = 7;
 
     internal const string VersionKey = "SchemaVersion";
 
@@ -41,7 +41,8 @@ internal static class ConfigSchema
         if (from < 4) MigrateTo4(root);
         if (from < 5) MigrateTo5(root);
         if (from < 6) MigrateTo6(root);
-        // if (from < 7) MigrateTo7(root);   // future steps go here, in order
+        if (from < 7) MigrateTo7(root);
+        // if (from < 8) MigrateTo8(root);   // future steps go here, in order
 
         root[VersionKey] = Current;
         return true;
@@ -125,6 +126,19 @@ internal static class ConfigSchema
 
         var recipients = notifications["RecipientAddresses"] as JsonArray;
         notifications["Enabled"] = recipients is { Count: > 0 };
+    }
+
+    /// <summary>
+    /// v6 → v7: additive only — <c>AdminNotifications.NotificationTypes.GraphCertificateExpiringWarning</c>
+    /// (bool, default true) was introduced for the advance warning before the Graph client certificate
+    /// expires. Older files without the key are already valid (the option binder falls back to the
+    /// default, i.e. the warning is on), so there is nothing to transform; the version bump records
+    /// which shape wrote the file.
+    /// </summary>
+    private static void MigrateTo7(JsonObject root)
+    {
+        // Intentionally empty: purely additive schema change.
+        _ = root;
     }
 }
 

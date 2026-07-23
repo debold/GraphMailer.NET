@@ -49,6 +49,13 @@ public sealed class AdminNotificationTypesOptions
     public BatchedNotificationTypeOptions EmailDeliveryFailed { get; init; } = new();
     public NotificationTypeOptions CertificateExpiringWarning { get; init; } = new();
     public NotificationTypeOptions CertificateExpired { get; init; } = new();
+
+    /// <summary>
+    /// Advance warning before the Graph client certificate (Entra app-only auth) expires. There is
+    /// deliberately no "expired" counterpart: once it lapses no Graph token can be acquired, so no
+    /// email could be sent — that case is logged and shown in the operations report instead.
+    /// </summary>
+    public NotificationTypeOptions GraphCertificateExpiringWarning { get; init; } = new();
     public ThresholdNotificationTypeOptions AuthenticationFailureAlert { get; init; } = new();
     public NotificationTypeOptions GraphApiConnectionError { get; init; } = new();
     public NotificationTypeOptions QueueProcessorFailure { get; init; } = new();

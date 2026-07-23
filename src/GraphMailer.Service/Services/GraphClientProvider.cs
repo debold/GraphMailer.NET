@@ -92,6 +92,15 @@ internal sealed class GraphClientProvider
     }
 
     /// <summary>
+    /// Resolves the certificate that <see cref="CreateCredential"/> would authenticate with, or
+    /// null when none is configured or none matches. Used by the certificate monitor so the
+    /// expiry warning always describes the certificate actually in use — resolving it a second
+    /// way would risk watching a different certificate than the one Entra sees.
+    /// </summary>
+    internal static X509Certificate2? TryGetClientCertificate(GraphApiOptions opts)
+        => opts.HasClientCertificate ? LoadClientCertificate(opts) : null;
+
+    /// <summary>
     /// Loads the client certificate from the Windows Certificate Store.
     ///
     /// Selection order:

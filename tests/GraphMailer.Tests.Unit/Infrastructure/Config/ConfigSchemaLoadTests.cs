@@ -589,6 +589,24 @@ public sealed class ConfigSchemaLoadTests : IDisposable
     // =========================================================================
 
     [Fact]
+    public void Load_AdminNotifications_GraphCertificateExpiringWarning_Disabled_AppearsInDocNotifGraphCertExpiring_False()
+    {
+        WriteJson("""{ "AdminNotifications": { "NotificationTypes": { "GraphCertificateExpiringWarning": { "Enabled": false } } } }""");
+
+        _sut.Load().Notification.NotifGraphCertExpiring.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Load_AdminNotifications_GraphCertificateExpiringWarning_Absent_DefaultsToEnabled()
+    {
+        // Pre-v7 config: the warning is the last one an operator gets before Graph auth dies, so
+        // it must default to on rather than silently staying off after an upgrade.
+        WriteJson("""{ "AdminNotifications": { "NotificationTypes": { } } }""");
+
+        _sut.Load().Notification.NotifGraphCertExpiring.Should().BeTrue();
+    }
+
+    [Fact]
     public void Load_AdminNotifications_Enabled_AppearsInDocNotificationNotifEnabled()
     {
         WriteJson("""{ "AdminNotifications": { "Enabled": false, "RecipientAddresses": [ "ops@corp.com" ] } }""");

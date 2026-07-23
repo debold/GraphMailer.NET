@@ -30,6 +30,8 @@ public sealed class RecommendationEngineTests
         TelemetryEnabled = true,
         LogLevel = "Information",
         HasAdminNotificationRecipients = true,
+        AdminNotificationsEnabled = true,
+        DisabledCriticalNotifications = [],
     };
 
     /// <summary>Ids of the suggestions that currently ask for action.</summary>
@@ -60,6 +62,7 @@ public sealed class RecommendationEngineTests
             RecommendationIds.Ndr,
             RecommendationIds.LogLevel,
             RecommendationIds.AdminNotifications,
+            RecommendationIds.CriticalNotifications,
             RecommendationIds.UpdateCheck,
             RecommendationIds.Telemetry,
         ]);
@@ -203,6 +206,53 @@ public sealed class RecommendationEngineTests
             .Should().ContainSingle().Which.Should().Be(RecommendationIds.AdminNotifications);
 
     [Fact]
+    public void Evaluate_CriticalNotificationsOff_RecommendsSwitchingThemOn()
+        => IdsFor(Ideal with { DisabledCriticalNotifications = ["Low disk space"] })
+            .Should().ContainSingle().Which.Should().Be(RecommendationIds.CriticalNotifications);
+
+    [Fact]
+    public void Evaluate_CriticalNotificationsHint_NamesTheDisabledAlerts()
+    {
+        var detail = RecommendationEngine.Evaluate(Ideal with
+            {
+                DisabledCriticalNotifications = ["Graph client certificate expiring", "Low disk space"],
+            })
+            .Open.Single(r => r.Id == RecommendationIds.CriticalNotifications).Detail;
+
+        detail.Should().Contain("Graph client certificate expiring").And.Contain("Low disk space");
+    }
+
+    [Fact]
+    public void Evaluate_CriticalNotificationsHint_IsRatedHighAndCallsOutTheGraphCertificate()
+    {
+        var hint = RecommendationEngine.Evaluate(
+                Ideal with { DisabledCriticalNotifications = ["Graph client certificate expiring"] })
+            .Open.Single();
+
+        hint.Severity.Should().Be(RecommendationSeverity.High);
+        hint.Impact.Should().Contain("can no longer send email",
+            "the Graph certificate is the one alert whose absence cannot be recovered from");
+    }
+
+    [Theory]
+    [InlineData(false, true)]   // master switch off
+    [InlineData(true, false)]   // no recipients
+    public void Evaluate_NotificationsCannotBeDelivered_OmitsTheCriticalNotificationsRule(
+        bool masterOn, bool hasRecipients)
+    {
+        // The admin-notifications rule already covers this; repeating it as a second hint would
+        // just be the same advice twice.
+        var summary = RecommendationEngine.Evaluate(Ideal with
+        {
+            AdminNotificationsEnabled = masterOn,
+            HasAdminNotificationRecipients = hasRecipients,
+            DisabledCriticalNotifications = ["Low disk space"],
+        });
+
+        summary.All.Select(r => r.Id).Should().NotContain(RecommendationIds.CriticalNotifications);
+    }
+
+    [Fact]
     public void Evaluate_UpdateCheckOff_RecommendsUpdateCheck()
         => IdsFor(Ideal with { UpdateCheckEnabled = false })
             .Should().ContainSingle().Which.Should().Be(RecommendationIds.UpdateCheck);
@@ -265,7 +315,9 @@ public sealed class RecommendationEngineTests
     public void Evaluate_EveryHint_CarriesATargetPageAndHelpPage()
     {
         // A hint the operator cannot act on is worse than no hint: both shortcuts must be filled.
-        var open = RecommendationEngine.Evaluate(new RecommendationInput
+        // Two inputs are needed because admin-notifications and critical-notifications are mutually
+        // exclusive by design — the second only applies once notifications can be delivered.
+        var unconfigured = RecommendationEngine.Evaluate(new RecommendationInput
         {
             GraphConfigured = true,
             GraphUsesClientSecret = true,
@@ -274,11 +326,17 @@ public sealed class RecommendationEngineTests
             LogLevel = "Debug",
         }).Open;
 
-        open.Should().HaveCount(9, "every rule in the catalog should fire for a fully unconfigured install");
-        open.Should().OnlyContain(r => !string.IsNullOrWhiteSpace(r.TargetPageName));
-        open.Should().OnlyContain(r => r.HelpPage.EndsWith(".html"));
-        open.Should().OnlyContain(r => !string.IsNullOrWhiteSpace(r.DoneSummary));
-        open.Select(r => r.Id).Should().OnlyHaveUniqueItems();
+        var withAlertsOff = RecommendationEngine.Evaluate(
+            Ideal with { DisabledCriticalNotifications = ["Low disk space"] }).Open;
+
+        var all = unconfigured.Concat(withAlertsOff).ToList();
+
+        unconfigured.Should().HaveCount(9);
+        all.Select(r => r.Id).Distinct().Should().HaveCount(10, "the catalog has ten rules");
+        all.Should().OnlyContain(r => !string.IsNullOrWhiteSpace(r.TargetPageName));
+        all.Should().OnlyContain(r => r.HelpPage.EndsWith(".html"));
+        all.Should().OnlyContain(r => !string.IsNullOrWhiteSpace(r.DoneSummary));
+        unconfigured.Select(r => r.Id).Should().OnlyHaveUniqueItems();
     }
 
     [Fact]
@@ -291,7 +349,7 @@ public sealed class RecommendationEngineTests
         summary.All.Select(r => r.Id).Should().OnlyHaveUniqueItems();
         summary.Open.Should().ContainSingle().Which.Id.Should().Be(RecommendationIds.ConfigBackup);
         summary.Dismissed.Should().ContainSingle().Which.Id.Should().Be(RecommendationIds.Telemetry);
-        summary.Done.Should().HaveCount(7);
+        summary.Done.Should().HaveCount(8);
     }
 
     // ── Dismissal ────────────────────────────────────────────────────────────

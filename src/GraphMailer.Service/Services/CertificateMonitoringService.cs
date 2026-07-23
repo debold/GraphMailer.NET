@@ -8,25 +8,37 @@ using Microsoft.Extensions.Options;
 namespace GraphMailer.Service.Services;
 
 /// <summary>
-/// BackgroundService that periodically checks TLS certificate expiration in the Windows
-/// Certificate Store. Sends admin notifications when a certificate is expiring or has expired.
+/// BackgroundService that periodically checks certificate expiration in the Windows Certificate
+/// Store. Two independent certificates are watched:
+/// <list type="bullet">
+///   <item>the <b>TLS listener</b> certificate securing the SMTP ports, and</item>
+///   <item>the <b>Graph client</b> certificate used for Entra app-only authentication.</item>
+/// </list>
+/// The distinction matters for what can be reported: when the TLS certificate lapses, Graph still
+/// works and both the warning and the expired alert are delivered. When the <i>Graph client</i>
+/// certificate lapses, GraphMailer can no longer authenticate and therefore cannot email anything
+/// about it — so that one is only ever useful as an advance warning, and the expired case is
+/// logged at Error and surfaced in the operations report instead of being sent.
 /// </summary>
 internal sealed class CertificateMonitoringService : BackgroundService
 {
     private readonly ICertificateLoader _loader;
     private readonly IAdminNotificationService _notify;
     private readonly IOptionsMonitor<CertificateMonitoringOptions> _options;
+    private readonly IOptionsMonitor<GraphApiOptions> _graphApi;
     private readonly ILogger<CertificateMonitoringService> _logger;
 
     public CertificateMonitoringService(
         ICertificateLoader loader,
         IAdminNotificationService notify,
         IOptionsMonitor<CertificateMonitoringOptions> options,
+        IOptionsMonitor<GraphApiOptions> graphApi,
         ILogger<CertificateMonitoringService> logger)
     {
         _loader = loader;
         _notify = notify;
         _options = options;
+        _graphApi = graphApi;
         _logger = logger;
     }
 
@@ -43,17 +55,81 @@ internal sealed class CertificateMonitoringService : BackgroundService
             opts.CheckIntervalHours, opts.WarningThresholdDays);
 
         // Check immediately on startup
-        await CheckCertificateAsync(opts, stoppingToken);
+        await CheckAllAsync(opts, stoppingToken);
 
         using var timer = new PeriodicTimer(TimeSpan.FromHours(opts.CheckIntervalHours));
         try
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
-                await CheckCertificateAsync(_options.CurrentValue, stoppingToken);
+                await CheckAllAsync(_options.CurrentValue, stoppingToken);
         }
         catch (OperationCanceledException) { }
 
         _logger.LogInformation("[CertMonitor] Stopped");
+    }
+
+    internal async Task CheckAllAsync(CertificateMonitoringOptions opts, CancellationToken ct)
+    {
+        await CheckCertificateAsync(opts, ct);
+        await CheckGraphClientCertificateAsync(opts, ct);
+    }
+
+    /// <summary>
+    /// Warns before the Graph client certificate expires, while Entra authentication still works
+    /// and the email can therefore still be sent. Once it has expired the alert is log-only: no
+    /// Graph token means no way to deliver it.
+    /// </summary>
+    private async Task CheckGraphClientCertificateAsync(CertificateMonitoringOptions opts, CancellationToken ct)
+    {
+        var graph = _graphApi.CurrentValue;
+        if (!graph.HasClientCertificate)
+        {
+            _logger.LogDebug("[CertMonitor] Graph API does not use certificate auth – skipping Graph certificate check");
+            return;
+        }
+
+        try
+        {
+            using var cert = GraphClientProvider.TryGetClientCertificate(graph);
+            if (cert is null)
+            {
+                // Selection by SubjectName only ever matches a currently-valid certificate, so a
+                // lapsed one simply disappears — the operator sees this rather than an expiry date.
+                _logger.LogError(
+                    "[CertMonitor] Graph client certificate not found in the certificate store — " +
+                    "Graph authentication will fail. Check the configured thumbprint/subject name.");
+                return;
+            }
+
+            var expiry = cert.NotAfter.ToUniversalTime();
+            var daysLeft = (expiry - DateTime.UtcNow).TotalDays;
+
+            if (daysLeft < 0)
+            {
+                _logger.LogError(
+                    "[CertMonitor] Graph client certificate EXPIRED: {Subject} (expired {Expiry:R}). " +
+                    "Mail delivery is down and no notification can be sent — renew the certificate and " +
+                    "re-register it in Entra.",
+                    cert.Subject, expiry);
+                return;
+            }
+
+            if (daysLeft <= opts.WarningThresholdDays)
+            {
+                _logger.LogWarning(
+                    "[CertMonitor] Graph client certificate expiring soon: {Subject} – {Days:F0} day(s) remaining",
+                    cert.Subject, daysLeft);
+                await _notify.NotifyGraphCertificateExpiringAsync(cert.Subject, expiry, ct);
+            }
+            else
+            {
+                _logger.LogDebug("[CertMonitor] Graph client certificate OK – {Days:F0} day(s) until expiry", daysLeft);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[CertMonitor] Graph client certificate check failed");
+        }
     }
 
     private async Task CheckCertificateAsync(CertificateMonitoringOptions opts, CancellationToken ct)

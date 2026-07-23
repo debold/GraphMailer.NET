@@ -114,6 +114,25 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         return SendAsync(opts, $"Certificate EXPIRED: {certSubject}", mail, "cert-expired", ct);
     }
 
+    public Task NotifyGraphCertificateExpiringAsync(string certSubject, DateTime notAfter, CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        if (!IsEnabled(opts, opts.NotificationTypes.GraphCertificateExpiringWarning, "graph-cert-expiring")) return Task.CompletedTask;
+
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Critical,
+            Title = "Graph client certificate is expiring soon",
+            Intro = "The certificate GraphMailer uses to authenticate against Microsoft Entra expires shortly. "
+                  + "When it lapses, mail delivery stops completely — and this warning is the last one you will "
+                  + "get: without a valid certificate GraphMailer cannot reach Graph and therefore cannot send "
+                  + "any further notification. Renew the certificate and register the new one in the Entra app "
+                  + "registration before the expiry date.",
+            Fields = [new("Subject", certSubject), new("Expires", $"{notAfter:R}")],
+        };
+        return SendAsync(opts, $"Graph client certificate expiring: {certSubject}", mail, "graph-cert-expiring", ct);
+    }
+
     public Task NotifyLowDiskSpaceAsync(string drivePath, double freePercent, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;

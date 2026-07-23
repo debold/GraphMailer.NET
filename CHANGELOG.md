@@ -2,15 +2,34 @@
 
 ## 1.3.2 — unreleased
 
-### Fixed
-
-- **The notification sender address could not be cleared while any recipient was configured**, even
-  with every notification switched off. The cross-page rule that guards the address keyed off the
-  recipient list alone, so an operator who had disabled all events, the NDR admin copy and emailed
-  backups still got "A sender email address is required" and had to empty the recipient list to get
-  rid of it. It now keys off whether admin notifications will actually be sent.
-
 ### Added
+
+- **The Graph client certificate is now monitored.** Until now only the TLS listener certificate
+  was watched. The certificate that authenticates GraphMailer against Entra was not — and it is the
+  one whose expiry is unrecoverable: when it lapses, no Graph token can be obtained, mail delivery
+  stops completely, and no notification can be sent about it, because sending one would need the
+  very certificate that just expired.
+
+  `CertificateMonitoringService` now checks both on the same schedule, resolving the Graph
+  certificate through the same selection logic the credential uses so it can never end up watching
+  a different certificate than Entra sees. A new **Graph client certificate expiring** alert (on by
+  default) warns while the certificate is still valid — that is deliberately the only alert for it:
+
+  | | TLS listener certificate | Graph client certificate |
+  |---|---|---|
+  | Expiring alert | yes | yes |
+  | Expired alert | yes | **impossible** — no Graph token, no email |
+  | Fallback when expired | — | log + **Graph Certificate** health row |
+
+  A `Graph Certificate` row joins the health checks in the operations report and on the Status
+  page, so the state is visible in the last report that did go out.
+
+- **A "Switch on the alerts that warn you before mail stops" recommendation** (High). It names
+  whichever early-warning alerts are switched off — Graph client certificate expiring, email
+  delivery failed, Graph API unreachable, TLS listener certificate expiring, low disk space, SMTP
+  port connectivity failure — and leaves the informational events (IP blocked, service start/stop,
+  backup result) alone. It only applies once admin notifications can actually be delivered;
+  before that the existing *Add a recipient* suggestion already covers the same ground.
 
 - **A master switch for admin notifications** (Notifications page). One toggle stops every admin
   alert at once while keeping the recipient list, the sender address and all the individual event
@@ -74,6 +93,14 @@
   button and does not create unsaved changes, so it never persists half-finished edits on other
   pages. The preference travels with configuration backups.
 
+### Fixed
+
+- **The notification sender address could not be cleared while any recipient was configured**, even
+  with every notification switched off. The cross-page rule that guards the address keyed off the
+  recipient list alone, so an operator who had disabled all events, the NDR admin copy and emailed
+  backups still got "A sender email address is required" and had to empty the recipient list to get
+  rid of it. It now keys off whether admin notifications will actually be sent.
+
 ### Changed
 
 - **The Notifications page is reordered** to follow how the settings depend on each other:
@@ -108,8 +135,10 @@
   carries **open** suggestions only — in a recurring report, a growing block of "nothing to do
   here" would train the reader to skip the box.
 
-- **Config schema v4 → v6.** v5 is additive: the new `Recommendations.Dismissed` key holds the
-  hidden tips, and an absent key means nothing is hidden. v6 turns `AdminNotifications.Enabled`
+- **Config schema v4 → v7.** v5 and v7 are additive: `Recommendations.Dismissed` holds the hidden
+  tips (absent = nothing hidden), and
+  `AdminNotifications.NotificationTypes.GraphCertificateExpiringWarning` carries the new Graph
+  certificate alert (absent = on). v6 turns `AdminNotifications.Enabled`
   from a derived value into an authoritative setting — the migration fills the key in from the
   recipient count where it is missing, so an existing installation does not come back from the
   upgrade with notifications silently off. Files that bypass the migration (a restored pre-v6

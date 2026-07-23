@@ -349,6 +349,7 @@ internal sealed class ReportDataCollector
             new HealthItem("SMTP Service", HealthStatus.Ok, "Running"),
             CheckSecrets(),
             CheckCertificate(),
+            CheckGraphCertificate(),
             CheckPorts(),
             CheckDisk(),
             CheckQueue(queuedNow, failedCount),
@@ -402,7 +403,22 @@ internal sealed class ReportDataCollector
             TelemetryEnabled = _telemetry.CurrentValue.Enabled,
             LogLevel = ReadSerilogLevel(),
             HasAdminNotificationRecipients = _adminNotifications.CurrentValue.RecipientAddresses.Count > 0,
+            AdminNotificationsEnabled = _adminNotifications.CurrentValue.Enabled,
+            DisabledCriticalNotifications = CollectDisabledCriticalNotifications(graph),
         };
+    }
+
+    private IReadOnlyList<string> CollectDisabledCriticalNotifications(GraphApiOptions graph)
+    {
+        var types = _adminNotifications.CurrentValue.NotificationTypes;
+        return RecommendationInput.CollectDisabledCriticalNotifications(
+            graphUsesCertificate: graph.HasClientCertificate,
+            graphCertExpiringEnabled: types.GraphCertificateExpiringWarning.Enabled,
+            deliveryFailedEnabled: types.EmailDeliveryFailed.Enabled,
+            graphDownEnabled: types.GraphApiConnectionError.Enabled,
+            tlsCertExpiringEnabled: types.CertificateExpiringWarning.Enabled,
+            diskSpaceEnabled: types.LowDiskSpaceWarning.Enabled,
+            portDownEnabled: types.PortMonitoringAlert.Enabled);
     }
 
     /// <summary>
@@ -493,6 +509,37 @@ internal sealed class ReportDataCollector
         catch (Exception ex)
         {
             return new HealthItem("TLS Certificate", HealthStatus.Unknown, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Expiry of the Graph client certificate. This row is the only channel left once that
+    /// certificate lapses: without it there is no Graph token, so no email — including this
+    /// report — can be sent. It is here so the state is at least visible in the last report that
+    /// did go out, and on the Status page.
+    /// </summary>
+    private HealthItem CheckGraphCertificate()
+    {
+        try
+        {
+            var graph = _graphApi.CurrentValue;
+            if (!graph.HasClientCertificate)
+                return new HealthItem("Graph Certificate", HealthStatus.Unknown, "Not using certificate authentication");
+
+            using var cert = GraphClientProvider.TryGetClientCertificate(graph);
+            if (cert is null)
+                return new HealthItem("Graph Certificate", HealthStatus.Error,
+                    "Configured certificate not found in the store — Graph authentication will fail");
+
+            var daysLeft = (int)(cert.NotAfter.ToUniversalTime() - DateTime.UtcNow).TotalDays;
+            var detail = $"{cert.Subject} — expires {cert.NotAfter:yyyy-MM-dd} ({daysLeft}d)";
+            return daysLeft < 0 ? new HealthItem("Graph Certificate", HealthStatus.Error, "EXPIRED: " + detail)
+                 : daysLeft < _certMon.CurrentValue.WarningThresholdDays ? new HealthItem("Graph Certificate", HealthStatus.Warning, detail)
+                 : new HealthItem("Graph Certificate", HealthStatus.Ok, detail);
+        }
+        catch (Exception ex)
+        {
+            return new HealthItem("Graph Certificate", HealthStatus.Unknown, ex.Message);
         }
     }
 

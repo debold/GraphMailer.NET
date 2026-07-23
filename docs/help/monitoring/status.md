@@ -66,6 +66,13 @@ page — each component (certificates, disk space, SMTP ports, Graph API) with i
 (OK / Warning / Error), a detail message, and when it was last checked. This is the quickest place
 to see *why* something is wrong.
 
+> [!IMPORTANT]
+> The **Graph Certificate** row matters more than it looks. When Graph API uses certificate
+> authentication and that certificate expires, GraphMailer cannot obtain a token — delivery stops
+> and no [notification email](../configuration/notifications.html) can be sent about it, because
+> sending one would need the very certificate that just lapsed. This row and the log are the only
+> places the condition shows up.
+
 ## Decryption warning banner
 
 If a stored secret cannot be decrypted (for example after restoring config to a different machine,

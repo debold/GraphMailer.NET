@@ -43,6 +43,7 @@ internal static class RecommendationIds
     internal const string Ndr = "ndr";
     internal const string LogLevel = "log-level";
     internal const string AdminNotifications = "admin-notifications";
+    internal const string CriticalNotifications = "critical-notifications";
     internal const string UpdateCheck = "update-check";
     internal const string Telemetry = "telemetry";
 }

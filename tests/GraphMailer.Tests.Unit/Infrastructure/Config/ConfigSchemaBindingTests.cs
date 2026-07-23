@@ -201,6 +201,16 @@ public sealed class ConfigSchemaBindingTests : IDisposable
     }
 
     [Fact]
+    public void Save_NotifGraphCertExpiring_False_BindsToGraphCertificateExpiringWarningEnabled_False()
+    {
+        _sut.Save(new ConfigDocument { Notification = new() { NotifGraphCertExpiring = false } });
+
+        var notif = Bind<AdminNotificationsOptions>(LoadServiceConfig(), AdminNotificationsOptions.SectionName);
+
+        notif.NotificationTypes.GraphCertificateExpiringWarning.Enabled.Should().BeFalse();
+    }
+
+    [Fact]
     public void Save_Servers_AuthModeBindsToSmtpServerEntry()
     {
         // AuthMode used to live only in the ConfigDocument; the recommendation engine needs the
