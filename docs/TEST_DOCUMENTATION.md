@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 937 tests** (872 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-07-25
+**Total: 941 tests** (876 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-07-25
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -413,6 +413,21 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `FromConfigDocument_PlainListenerAcceptingAuth_IsFlagged` (Theory) | Plain listener with AuthMode Optional / Required | Listed in `PlaintextAuthListeners` with name and port |
 | `FromConfigDocument_PlainListenerWithoutAuth_IsNotFlagged` | Default port-25 relay listener, AuthMode `None` | `PlaintextAuthListeners` empty — a supported setup must not raise a High-severity hint |
 | `FromConfigDocument_TlsListenerWithAuth_IsNotFlagged` | StartTls listener with AuthMode Required | `PlaintextAuthListeners` empty |
+
+---
+
+### RecommendationSummary — OpenByTarget (`Services/Advisor/RecommendationSummaryOpenByTargetTests.cs`)
+
+> The aggregation the ConfigTool sidebar uses to badge each navigation entry with a per-page count,
+> coloured by the most-severe open hint. Only **open** hints may light up the navigation, and the
+> colour must follow the worst hint on the page so a High hint is never hidden behind a Medium count.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `OpenByTarget_NothingOpen_ReturnsEmpty` | Baseline input satisfying every rule | Empty dictionary — nothing to badge |
+| `OpenByTarget_CountsOpenHintsPerPage` | Update check, log level and telemetry all off | `Monitoring` → count 3 |
+| `OpenByTarget_MixedSeverities_KeepsTheHighestPerPage` | NDR off (Medium) + a critical alert off (High) | `Notifications` → count 2, `MaxSeverity == High` |
+| `OpenByTarget_IgnoresDismissedAndDoneHints` | Only telemetry off, and it is dismissed | Empty dictionary — dismissed and satisfied hints never light up the nav |
 
 ---
 

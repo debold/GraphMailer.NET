@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Infrastructure.Config;
 using GraphMailer.Service.Services;
+using GraphMailer.Service.Services.Advisor;
 namespace GraphMailer.ConfigTool.Views;
 
 public partial class AccessControlPage : UserControl
@@ -47,6 +48,20 @@ public partial class AccessControlPage : UserControl
             else _syncStatusTimer.Stop();
         };
     }
+
+    private Action? _openRecommendations;
+
+    /// <summary>Badges the card that owns each open recommendation targeting this page; the badge
+    /// links to the Recommendations page via <paramref name="openRecommendations"/>.</summary>
+    internal void ApplyRecommendations(IReadOnlyList<Recommendation> open, Action openRecommendations)
+    {
+        _openRecommendations = openRecommendations;
+        RecommendationBadgeStyle.ApplyLabel(SenderValidationRecBadge, SenderValidationRecBadgeText,
+            [.. open.Where(r => r.Id == RecommendationIds.SenderValidation)]);
+    }
+
+    private void RecommendationBadge_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => _openRecommendations?.Invoke();
 
     // ── Sender validation sync status ─────────────────────────────────────
 

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Infrastructure.Config;
+using GraphMailer.Service.Services.Advisor;
 
 namespace GraphMailer.ConfigTool.Views;
 
@@ -34,6 +35,24 @@ public partial class NotificationsPage : UserControl
         // dependency of the sender) lives on another page and may have changed.
         IsVisibleChanged += (_, e) => { if (e.NewValue is true) UpdateSenderError(); };
     }
+
+    private Action? _openRecommendations;
+
+    /// <summary>Badges each card whose setting an open recommendation targets on this page; the
+    /// badges link to the Recommendations page via <paramref name="openRecommendations"/>.</summary>
+    internal void ApplyRecommendations(IReadOnlyList<Recommendation> open, Action openRecommendations)
+    {
+        _openRecommendations = openRecommendations;
+        RecommendationBadgeStyle.ApplyLabel(AdminNotificationsRecBadge, AdminNotificationsRecBadgeText,
+            [.. open.Where(r => r.Id == RecommendationIds.AdminNotifications)]);
+        RecommendationBadgeStyle.ApplyLabel(NdrRecBadge, NdrRecBadgeText,
+            [.. open.Where(r => r.Id == RecommendationIds.Ndr)]);
+        RecommendationBadgeStyle.ApplyLabel(CriticalNotificationsRecBadge, CriticalNotificationsRecBadgeText,
+            [.. open.Where(r => r.Id == RecommendationIds.CriticalNotifications)]);
+    }
+
+    private void RecommendationBadge_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => _openRecommendations?.Invoke();
 
     /// <summary>Live sender state for cross-page validation (used by the Backup page).</summary>
     internal bool HasSenderAddress => !string.IsNullOrWhiteSpace(NotifFrom.Text);

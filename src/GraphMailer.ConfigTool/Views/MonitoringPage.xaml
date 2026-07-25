@@ -12,8 +12,26 @@
                     Margin="0,0,0,16">
                 <StackPanel>
                     <Border Style="{StaticResource CardHeader}">
-                        <TextBlock Text="Update Check"
-                                   Style="{StaticResource SectionHeader}"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Update Check"
+                                       Style="{StaticResource SectionHeader}"
+                                       VerticalAlignment="Center"/>
+                            <Border x:Name="UpdateCheckRecBadge"
+                                    Visibility="Collapsed"
+                                    Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="10,2"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Cursor="Hand"
+                                    MouseLeftButtonUp="RecommendationBadge_Click"
+                                    ToolTip="Open the Recommendations page.">
+                                <TextBlock x:Name="UpdateCheckRecBadgeText"
+                                           Text="● Recommendation"
+                                           FontSize="11"
+                                           Foreground="#FF7A5700"/>
+                            </Border>
+                        </StackPanel>
                     </Border>
                     <Grid Margin="16,12,16,16">
                         <Grid.ColumnDefinitions>
@@ -50,8 +68,26 @@
                     Margin="0,0,0,16">
                 <StackPanel>
                     <Border Style="{StaticResource CardHeader}">
-                        <TextBlock Text="Anonymous Usage Telemetry"
-                                   Style="{StaticResource SectionHeader}"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Anonymous Usage Telemetry"
+                                       Style="{StaticResource SectionHeader}"
+                                       VerticalAlignment="Center"/>
+                            <Border x:Name="TelemetryRecBadge"
+                                    Visibility="Collapsed"
+                                    Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="10,2"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Cursor="Hand"
+                                    MouseLeftButtonUp="RecommendationBadge_Click"
+                                    ToolTip="Open the Recommendations page.">
+                                <TextBlock x:Name="TelemetryRecBadgeText"
+                                           Text="● Recommendation"
+                                           FontSize="11"
+                                           Foreground="#FF7A5700"/>
+                            </Border>
+                        </StackPanel>
                     </Border>
                     <Grid Margin="16,12,16,8">
                         <Grid.ColumnDefinitions>
@@ -93,6 +129,56 @@
                         <TextBlock Grid.Column="2"
                                    x:Name="TelemetryStatusText"
                                    Text="No telemetry sent yet."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Logging — kept with the other opt-in cards near the top, under Telemetry -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Logging"
+                                       Style="{StaticResource SectionHeader}"
+                                       VerticalAlignment="Center"/>
+                            <Border x:Name="LogLevelRecBadge"
+                                    Visibility="Collapsed"
+                                    Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="10,2"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Cursor="Hand"
+                                    MouseLeftButtonUp="RecommendationBadge_Click"
+                                    ToolTip="Open the Recommendations page.">
+                                <TextBlock x:Name="LogLevelRecBadgeText"
+                                           Text="● Recommendation"
+                                           FontSize="11"
+                                           Foreground="#FF7A5700"/>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                    <Grid Margin="16,12,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Log level"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <!-- Items come from MonitoringPage.LogLevels (single source) -->
+                            <ComboBox x:Name="LogLevel"
+                                      Width="160"
+                                      HorizontalAlignment="Left"
+                                      SelectionChanged="LogLevel_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Minimum log level written to the log files. Changes take effect immediately without restarting the service. Microsoft and System framework logs always use Warning."
                                    Style="{StaticResource HintText}"/>
                     </Grid>
                 </StackPanel>
@@ -407,38 +493,6 @@
                         <TextBlock Grid.Column="2"
                                    Margin="0,18,0,0"
                                    Text="Sampling interval for disk usage recordings."
-                                   Style="{StaticResource HintText}"/>
-                    </Grid>
-                </StackPanel>
-            </Border>
-
-            <!-- Logging -->
-            <Border Style="{StaticResource Card}"
-                    Margin="0,16,0,0">
-                <StackPanel>
-                    <Border Style="{StaticResource CardHeader}">
-                        <TextBlock Text="Logging"
-                                   Style="{StaticResource SectionHeader}"/>
-                    </Border>
-                    <Grid Margin="16,12,16,16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="200"/>
-                            <ColumnDefinition Width="24"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="Log level"
-                                       Style="{StaticResource LabelText}"
-                                       Margin="0,0,0,4"/>
-                            <!-- Items come from MonitoringPage.LogLevels (single source) -->
-                            <ComboBox x:Name="LogLevel"
-                                      Width="160"
-                                      HorizontalAlignment="Left"
-                                      SelectionChanged="LogLevel_Changed"/>
-                        </StackPanel>
-                        <TextBlock Grid.Column="2"
-                                   Margin="0,18,0,0"
-                                   Text="Minimum log level written to the log files. Changes take effect immediately without restarting the service. Microsoft and System framework logs always use Warning."
                                    Style="{StaticResource HintText}"/>
                     </Grid>
                 </StackPanel>

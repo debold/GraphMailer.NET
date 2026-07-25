@@ -18,9 +18,28 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0"
-                                       Text="SMTP Listeners"
-                                       Style="{StaticResource SectionHeader}"/>
+                            <StackPanel Grid.Column="0"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="SMTP Listeners"
+                                           Style="{StaticResource SectionHeader}"
+                                           VerticalAlignment="Center"/>
+                                <Border x:Name="TlsListenerRecBadge"
+                                        Visibility="Collapsed"
+                                        Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                        CornerRadius="12"
+                                        Padding="10,2"
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Cursor="Hand"
+                                        MouseLeftButtonUp="RecommendationBadge_Click"
+                                        ToolTip="Open the Recommendations page.">
+                                    <TextBlock x:Name="TlsListenerRecBadgeText"
+                                               Text="● Recommendation"
+                                               FontSize="11"
+                                               Foreground="#FF7A5700"/>
+                                </Border>
+                            </StackPanel>
                             <Button Grid.Column="1"
                                     Content="+ Add Listener"
                                     Style="{StaticResource SmallPrimaryButton}"

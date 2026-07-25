@@ -4,6 +4,17 @@
 
 ### Added
 
+- **Open recommendations are now flagged where you fix them.** Until now the sidebar showed a single
+  count on the *Recommendations* entry; you still had to open that page to learn which settings it
+  meant. Each configuration page now carries its own count badge in the navigation, coloured by the
+  most-severe open hint on that page, and the affected card on the page itself carries a clickable
+  **Recommendation** badge that jumps straight to the Recommendations page. Every badge uses the same
+  bordered-pill style as the toolbar's *Unsaved changes* / *Restart required* badges, so the whole app
+  speaks one badge language. The *Graph API* entry additionally shows a red **Required** badge until
+  the tenant and
+  client id are configured, so an unfinished setup is visible at a glance rather than only inside the
+  page.
+
 - **The recipient limit per message is now configurable** (Servers & TLS → Limits, default 500).
   It used to be a hard-coded 500 — Exchange Online's default for a mailbox's `RecipientLimits`, but
   a value an administrator can set anywhere from 1 to 1000. A tenant that had raised it saw

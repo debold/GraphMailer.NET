@@ -65,8 +65,26 @@
                 <StackPanel>
                     <Border Style="{StaticResource CardHeader}">
                         <StackPanel>
-                            <TextBlock Text="Non-Delivery Reports (NDR)"
-                                       Style="{StaticResource SectionHeader}"/>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Non-Delivery Reports (NDR)"
+                                           Style="{StaticResource SectionHeader}"
+                                           VerticalAlignment="Center"/>
+                                <Border x:Name="NdrRecBadge"
+                                        Visibility="Collapsed"
+                                        Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                        CornerRadius="12"
+                                        Padding="10,2"
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Cursor="Hand"
+                                        MouseLeftButtonUp="RecommendationBadge_Click"
+                                        ToolTip="Open the Recommendations page.">
+                                    <TextBlock x:Name="NdrRecBadgeText"
+                                               Text="● Recommendation"
+                                               FontSize="11"
+                                               Foreground="#FF7A5700"/>
+                                </Border>
+                            </StackPanel>
                             <TextBlock Text="When a message is accepted by SMTP but permanently rejected by Microsoft 365, GraphMailer can send a bounce notification to the original sender and/or the admin. Uses the sender address configured in Notification Settings."
                                        Style="{StaticResource HintText}"
                                        TextWrapping="Wrap"
@@ -155,8 +173,26 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="Admin Recipients"
-                                           Style="{StaticResource SectionHeader}"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Admin Recipients"
+                                               Style="{StaticResource SectionHeader}"
+                                               VerticalAlignment="Center"/>
+                                    <Border x:Name="AdminNotificationsRecBadge"
+                                            Visibility="Collapsed"
+                                            Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                            CornerRadius="12"
+                                            Padding="10,2"
+                                            Margin="8,0,0,0"
+                                            VerticalAlignment="Center"
+                                            Cursor="Hand"
+                                            MouseLeftButtonUp="RecommendationBadge_Click"
+                                            ToolTip="Open the Recommendations page.">
+                                        <TextBlock x:Name="AdminNotificationsRecBadgeText"
+                                                   Text="● Recommendation"
+                                                   FontSize="11"
+                                                   Foreground="#FF7A5700"/>
+                                    </Border>
+                                </StackPanel>
                                 <TextBlock Text="Email addresses that receive all system notification emails."
                                            Style="{StaticResource HintText}"
                                            Margin="0,2,0,0"/>
@@ -248,10 +284,28 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0"
-                                       Text="Notify on Events"
-                                       Style="{StaticResource SectionHeader}"
-                                       VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="0"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="Notify on Events"
+                                           Style="{StaticResource SectionHeader}"
+                                           VerticalAlignment="Center"/>
+                                <Border x:Name="CriticalNotificationsRecBadge"
+                                        Visibility="Collapsed"
+                                        Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                        CornerRadius="12"
+                                        Padding="10,2"
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Cursor="Hand"
+                                        MouseLeftButtonUp="RecommendationBadge_Click"
+                                        ToolTip="Open the Recommendations page.">
+                                    <TextBlock x:Name="CriticalNotificationsRecBadgeText"
+                                               Text="● Recommendation"
+                                               FontSize="11"
+                                               Foreground="#FF7A5700"/>
+                                </Border>
+                            </StackPanel>
                             <!-- Select-all: reflects "every event is on" and sets them all when
                                  toggled. Follows the master switch's enabled state. -->
                             <TextBlock Grid.Column="1"

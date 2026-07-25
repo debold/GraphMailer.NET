@@ -143,15 +143,14 @@
                                                              deliberately not the red error dot used on config pages. -->
                                                         <Border x:Name="NavRecommendationsBadge"
                                                                 Visibility="Collapsed"
-                                                                Background="#FFFFF4CE"
-                                                                CornerRadius="8"
-                                                                Padding="6,0"
+                                                                Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                                                CornerRadius="12"
+                                                                Padding="10,2"
                                                                 Margin="6,0,0,0"
                                                                 VerticalAlignment="Center">
                                                                 <TextBlock x:Name="NavRecommendationsBadgeText"
                                                                            Text="0"
-                                                                           FontSize="10"
-                                                                           FontWeight="SemiBold"
+                                                                           FontSize="11"
                                                                            Foreground="#FF7A5700"/>
                                                         </Border>
                                                 </StackPanel>
@@ -178,6 +177,19 @@
                                                                    FontSize="13"
                                                                    Foreground="#FFCCCCCC"
                                                                    Margin="10,0,0,0"/>
+                                                        <Border x:Name="NavSmtpRecBadge"
+                                                                Visibility="Collapsed"
+                                                                Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                                                CornerRadius="12"
+                                                                Padding="10,2"
+                                                                Margin="6,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                ToolTip="Open recommendations apply to a setting on this page.">
+                                                                <TextBlock x:Name="NavSmtpRecBadgeText"
+                                                                           Text="0"
+                                                                           FontSize="11"
+                                                                           Foreground="#FF7A5700"/>
+                                                        </Border>
                                                 </StackPanel>
                                         </Border>
                                         <Border x:Name="NavAccess"
@@ -193,6 +205,19 @@
                                                                    FontSize="13"
                                                                    Foreground="#FFCCCCCC"
                                                                    Margin="10,0,0,0"/>
+                                                        <Border x:Name="NavAccessRecBadge"
+                                                                Visibility="Collapsed"
+                                                                Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                                                CornerRadius="12"
+                                                                Padding="10,2"
+                                                                Margin="6,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                ToolTip="Open recommendations apply to a setting on this page.">
+                                                                <TextBlock x:Name="NavAccessRecBadgeText"
+                                                                           Text="0"
+                                                                           FontSize="11"
+                                                                           Foreground="#FF7A5700"/>
+                                                        </Border>
                                                         <TextBlock x:Name="NavAccessBadge"
                                                                    Text="&#x25CF;"
                                                                    Visibility="Collapsed"
@@ -232,6 +257,33 @@
                                                                    FontSize="13"
                                                                    Foreground="#FFCCCCCC"
                                                                    Margin="10,0,0,0"/>
+                                                        <Border x:Name="NavGraphApiRecBadge"
+                                                                Visibility="Collapsed"
+                                                                Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                                                CornerRadius="12"
+                                                                Padding="10,2"
+                                                                Margin="6,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                ToolTip="Open recommendations apply to a setting on this page.">
+                                                                <TextBlock x:Name="NavGraphApiRecBadgeText"
+                                                                           Text="0"
+                                                                           FontSize="11"
+                                                                           Foreground="#FF7A5700"/>
+                                                        </Border>
+                                                        <!-- Setup-incomplete marker: a red "Required" bubble, distinct
+                                                             from the recommendation badges, shown until Graph is configured. -->
+                                                        <Border x:Name="NavGraphApiSetupBadge"
+                                                                Visibility="Collapsed"
+                                                                Background="#FFD13438" BorderBrush="#FFB01B1E" BorderThickness="1"
+                                                                CornerRadius="12"
+                                                                Padding="10,2"
+                                                                Margin="6,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                ToolTip="Graph API is not configured yet — mail cannot be delivered until a tenant and client id are set.">
+                                                                <TextBlock Text="Required"
+                                                                           FontSize="11"
+                                                                           Foreground="White"/>
+                                                        </Border>
                                                         <TextBlock x:Name="NavGraphApiBadge"
                                                                    Text="&#x25CF;"
                                                                    Visibility="Collapsed"
@@ -271,6 +323,19 @@
                                                                    FontSize="13"
                                                                    Foreground="#FFCCCCCC"
                                                                    Margin="10,0,0,0"/>
+                                                        <Border x:Name="NavMonitoringRecBadge"
+                                                                Visibility="Collapsed"
+                                                                Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                                                CornerRadius="12"
+                                                                Padding="10,2"
+                                                                Margin="6,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                ToolTip="Open recommendations apply to a setting on this page.">
+                                                                <TextBlock x:Name="NavMonitoringRecBadgeText"
+                                                                           Text="0"
+                                                                           FontSize="11"
+                                                                           Foreground="#FF7A5700"/>
+                                                        </Border>
                                                 </StackPanel>
                                         </Border>
                                         <Border x:Name="NavNotifications"
@@ -286,6 +351,19 @@
                                                                    FontSize="13"
                                                                    Foreground="#FFCCCCCC"
                                                                    Margin="10,0,0,0"/>
+                                                        <Border x:Name="NavNotificationsRecBadge"
+                                                                Visibility="Collapsed"
+                                                                Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                                                CornerRadius="12"
+                                                                Padding="10,2"
+                                                                Margin="6,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                ToolTip="Open recommendations apply to a setting on this page.">
+                                                                <TextBlock x:Name="NavNotificationsRecBadgeText"
+                                                                           Text="0"
+                                                                           FontSize="11"
+                                                                           Foreground="#FF7A5700"/>
+                                                        </Border>
                                                 </StackPanel>
                                         </Border>
                                         <Border x:Name="NavBackup"
@@ -301,6 +379,19 @@
                                                                    FontSize="13"
                                                                    Foreground="#FFCCCCCC"
                                                                    Margin="10,0,0,0"/>
+                                                        <Border x:Name="NavBackupRecBadge"
+                                                                Visibility="Collapsed"
+                                                                Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                                                CornerRadius="12"
+                                                                Padding="10,2"
+                                                                Margin="6,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                ToolTip="Open recommendations apply to a setting on this page.">
+                                                                <TextBlock x:Name="NavBackupRecBadgeText"
+                                                                           Text="0"
+                                                                           FontSize="11"
+                                                                           Foreground="#FF7A5700"/>
+                                                        </Border>
                                                 </StackPanel>
                                         </Border>
                                         <!-- Monitoring (read-only runtime data: stats, mail folders, logs) -->

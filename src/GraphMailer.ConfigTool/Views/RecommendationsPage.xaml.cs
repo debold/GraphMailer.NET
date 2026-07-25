@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Services.Advisor;
 
 namespace GraphMailer.ConfigTool.Views;
@@ -127,8 +128,10 @@ public partial class RecommendationsPage : UserControl
 
         /// <summary>
         /// Severity chip colours. A handled suggestion drops to neutral grey: keeping a red "HIGH"
-        /// chip on a card that is already done would read as an unresolved problem.
-        /// Deliberately not red/green — the palette pairs amber/blue/grey so it survives a
+        /// chip on a card that is already done would read as an unresolved problem. These chips
+        /// carry a text label (HIGH/MEDIUM/LOW), so they stay pale — unlike the number-only count
+        /// bubbles in the navigation, which need the saturated <see cref="RecommendationBadgeStyle"/>
+        /// fills to be told apart. Deliberately not red/green — amber/blue/grey survives a
         /// colour-vision check, and the glyph carries the state independently of hue.
         /// </summary>
         private static (Brush Background, Brush Foreground) SeverityColours(

@@ -7,6 +7,7 @@ using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Infrastructure;
 using GraphMailer.Service.Infrastructure.Backup;
 using GraphMailer.Service.Infrastructure.Config;
+using GraphMailer.Service.Services.Advisor;
 using Microsoft.Win32;
 
 namespace GraphMailer.ConfigTool.Views;
@@ -41,6 +42,20 @@ public partial class BackupPage : UserControl
         // of emailed backups) lives on the Notifications page and may have changed.
         IsVisibleChanged += (_, e) => { if (e.NewValue is true) ValidateEmail(); };
     }
+
+    private Action? _openRecommendations;
+
+    /// <summary>Badges the card that owns each open recommendation targeting this page; the badge
+    /// links to the Recommendations page via <paramref name="openRecommendations"/>.</summary>
+    internal void ApplyRecommendations(IReadOnlyList<Recommendation> open, Action openRecommendations)
+    {
+        _openRecommendations = openRecommendations;
+        RecommendationBadgeStyle.ApplyLabel(ConfigBackupRecBadge, ConfigBackupRecBadgeText,
+            [.. open.Where(r => r.Id == RecommendationIds.ConfigBackup)]);
+    }
+
+    private void RecommendationBadge_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => _openRecommendations?.Invoke();
 
     /// <summary>Live toggle state for cross-page validation (used by the Notifications page).</summary>
     internal bool IsEmailBackupEnabled => EmailEnabledToggle.IsChecked == true;

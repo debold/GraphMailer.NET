@@ -219,12 +219,63 @@ public partial class MainWindow : Window
     {
         if (!_pagesInitialized) return;
 
-        // The badge counts open suggestions only — "done" and "hidden" are not something to act on.
-        var count = LoadRecommendations().Open.Count;
-        NavRecommendationsBadgeText.Text = count.ToString();
-        NavRecommendationsBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var summary = LoadRecommendations();
+        var byTarget = summary.OpenByTarget();
+
+        // Aggregate badge on the Recommendations entry: open count, coloured by the most-severe
+        // open hint anywhere (High wins). "done" and "hidden" are not something to act on.
+        if (summary.Open.Count > 0)
+            RecommendationBadgeStyle.Apply(
+                NavRecommendationsBadge, NavRecommendationsBadgeText,
+                summary.Open.Count, summary.Open.Min(r => r.Severity));
+        else
+            NavRecommendationsBadge.Visibility = Visibility.Collapsed;
+
+        // Per-page count badges, coloured by the worst open hint on that page.
+        foreach (var (target, badge, text) in NavRecommendationBadges)
+        {
+            if (byTarget.TryGetValue(target, out var agg))
+                RecommendationBadgeStyle.Apply(badge, text, agg.Count, agg.MaxSeverity);
+            else
+                badge.Visibility = Visibility.Collapsed;
+        }
+
+        // Setup-incomplete marker: Graph has no recommendations until it is configured, so a
+        // distinct red dot (not the amber recommendation palette) flags the missing setup.
+        var graphConfigured = !string.IsNullOrWhiteSpace(_currentDoc.GraphApi.TenantId)
+                           && !string.IsNullOrWhiteSpace(_currentDoc.GraphApi.ClientId);
+        NavGraphApiSetupBadge.Visibility = graphConfigured ? Visibility.Collapsed : Visibility.Visible;
+
+        // Hand every config page the open hints that target it so it can badge the owning card;
+        // each card badge links back to the Recommendations page.
+        _smtpPage.ApplyRecommendations(OpenFor(summary, RecommendationTarget.ServersAndTls), OpenRecommendationsPage);
+        _accessPage.ApplyRecommendations(OpenFor(summary, RecommendationTarget.AccessControl), OpenRecommendationsPage);
+        _graphApiPage.ApplyRecommendations(OpenFor(summary, RecommendationTarget.GraphApi), OpenRecommendationsPage);
+        _monitoringPage.ApplyRecommendations(OpenFor(summary, RecommendationTarget.Monitoring), OpenRecommendationsPage);
+        _notificationsPage.ApplyRecommendations(OpenFor(summary, RecommendationTarget.Notifications), OpenRecommendationsPage);
+        _backupPage.ApplyRecommendations(OpenFor(summary, RecommendationTarget.BackupAndRestore), OpenRecommendationsPage);
+
         _recommendationsPage?.Refresh();
     }
+
+    /// <summary>Opens the Recommendations page — the target of the per-card badge links.</summary>
+    private void OpenRecommendationsPage()
+        => NavRecommendations_Click(this, new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left));
+
+    /// <summary>The open hints that a single ConfigTool page is responsible for fixing.</summary>
+    private static IReadOnlyList<Recommendation> OpenFor(RecommendationSummary summary, RecommendationTarget target)
+        => [.. summary.Open.Where(r => r.Target == target)];
+
+    /// <summary>Sidebar count badges keyed by the page they represent — the one place the wiring lives.</summary>
+    private IEnumerable<(RecommendationTarget Target, Border Badge, TextBlock Text)> NavRecommendationBadges =>
+    [
+        (RecommendationTarget.ServersAndTls, NavSmtpRecBadge, NavSmtpRecBadgeText),
+        (RecommendationTarget.AccessControl, NavAccessRecBadge, NavAccessRecBadgeText),
+        (RecommendationTarget.GraphApi, NavGraphApiRecBadge, NavGraphApiRecBadgeText),
+        (RecommendationTarget.Monitoring, NavMonitoringRecBadge, NavMonitoringRecBadgeText),
+        (RecommendationTarget.Notifications, NavNotificationsRecBadge, NavNotificationsRecBadgeText),
+        (RecommendationTarget.BackupAndRestore, NavBackupRecBadge, NavBackupRecBadgeText),
+    ];
 
     private RecommendationSummary LoadRecommendations()
         => RecommendationEngine.Evaluate(

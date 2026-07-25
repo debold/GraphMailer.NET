@@ -12,6 +12,21 @@ internal sealed record RecommendationSummary(
 {
     /// <summary>Every relevant rule, whatever its state — open first, then done, then hidden.</summary>
     internal IReadOnlyList<Recommendation> All => [.. Open, .. Done, .. Dismissed];
+
+    /// <summary>
+    /// Groups the <see cref="Open"/> suggestions by the ConfigTool screen that fixes them, so the
+    /// sidebar can show a per-page count badge next to each navigation entry. The badge colour
+    /// follows <c>MaxSeverity</c> — the most consequential open hint on that page — because a
+    /// single indicator has to represent the worst thing waiting there.
+    ///
+    /// "Most severe" is the smallest enum value (<see cref="RecommendationSeverity.High"/> = 0),
+    /// so <c>Min</c> is the correct aggregate. Only <see cref="Open"/> is considered; done and
+    /// dismissed suggestions are nothing to act on and must not light up the navigation.
+    /// </summary>
+    internal IReadOnlyDictionary<RecommendationTarget, (int Count, RecommendationSeverity MaxSeverity)> OpenByTarget()
+        => Open
+            .GroupBy(r => r.Target)
+            .ToDictionary(g => g.Key, g => (g.Count(), g.Min(r => r.Severity)));
 }
 
 /// <summary>

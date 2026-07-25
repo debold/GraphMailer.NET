@@ -12,7 +12,24 @@
                 <StackPanel>
                     <Border Style="{StaticResource CardHeader}">
                         <StackPanel>
-                            <TextBlock Text="Automatic Backups" Style="{StaticResource SectionHeader}"/>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Automatic Backups" Style="{StaticResource SectionHeader}" VerticalAlignment="Center"/>
+                                <Border x:Name="ConfigBackupRecBadge"
+                                        Visibility="Collapsed"
+                                        Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                                        CornerRadius="12"
+                                        Padding="10,2"
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Cursor="Hand"
+                                        MouseLeftButtonUp="RecommendationBadge_Click"
+                                        ToolTip="Open the Recommendations page.">
+                                    <TextBlock x:Name="ConfigBackupRecBadgeText"
+                                               Text="● Recommendation"
+                                               FontSize="11"
+                                               Foreground="#FF7A5700"/>
+                                </Border>
+                            </StackPanel>
                             <TextBlock Text="The service writes an encrypted, portable backup of the configuration (including secrets) on a schedule. Backups are protected by a separate password and can be restored on any machine."
                                        Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,2,0,0"/>
                         </StackPanel>

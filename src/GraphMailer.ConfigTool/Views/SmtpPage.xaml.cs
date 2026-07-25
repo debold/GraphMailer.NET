@@ -8,6 +8,7 @@ using System.Windows.Media;
 using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Infrastructure.Certificates;
 using GraphMailer.Service.Infrastructure.Config;
+using GraphMailer.Service.Services.Advisor;
 
 namespace GraphMailer.ConfigTool.Views;
 
@@ -23,6 +24,20 @@ public partial class SmtpPage : UserControl
         ListenersGrid.ItemsSource = _listeners;
         LoadCertificates(TlsCertList);
     }
+
+    private Action? _openRecommendations;
+
+    /// <summary>Badges the card that owns each open recommendation targeting this page; the badge
+    /// links to the Recommendations page via <paramref name="openRecommendations"/>.</summary>
+    internal void ApplyRecommendations(IReadOnlyList<Recommendation> open, Action openRecommendations)
+    {
+        _openRecommendations = openRecommendations;
+        RecommendationBadgeStyle.ApplyLabel(TlsListenerRecBadge, TlsListenerRecBadgeText,
+            [.. open.Where(r => r.Id == RecommendationIds.TlsListener)]);
+    }
+
+    private void RecommendationBadge_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => _openRecommendations?.Invoke();
 
     internal void LoadFrom(ConfigDocument doc)
     {

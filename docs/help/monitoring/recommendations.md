@@ -22,6 +22,34 @@ OVERVIEW
 The count is the number of **open** suggestions only — handled and hidden ones are not something
 to act on.
 
+## Badges throughout the tool
+
+You do not have to open this page to see where a suggestion applies. Each **configuration page**
+that has an open suggestion shows its own count badge in the sidebar, and on the page itself the
+affected card carries a clickable **Recommendation** badge next to its title — click it to jump
+straight back here:
+
+```
+CONFIGURATION
+  📨 Servers & TLS
+  🔐 Access Control
+  ☁ Graph API        [Required]   ← red: Graph is not configured yet
+  📥 Mail Queue
+  🔍 Monitoring       ②           ← two open suggestions on this page
+  🔔 Notifications    ①
+  💾 Backup & Restore ①
+```
+
+A page badge is coloured by the **most-severe** open suggestion on that page (High peach, Medium
+yellow, Low blue — the same bordered-pill style as the toolbar's *Unsaved changes* badge), so the
+worst item is never hidden behind a lower one. Like the count on **Recommendations**, these badges
+reflect what is **saved** on disk, so they clear when you save the setting that resolves the
+suggestion.
+
+The red **Required** badge on **Graph API** is different: it is not a suggestion but a
+*setup-incomplete* marker, shown until a tenant ID and client ID are configured — mail cannot be
+delivered before that. It disappears once Graph is set up.
+
 ## The three sections
 
 The page is split into three collapsible sections:

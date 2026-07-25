@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Infrastructure.Config;
+using GraphMailer.Service.Services.Advisor;
 
 namespace GraphMailer.ConfigTool.Views;
 
@@ -34,6 +36,24 @@ public partial class MonitoringPage : UserControl
             }
         };
     }
+
+    private Action? _openRecommendations;
+
+    /// <summary>Badges each card whose setting an open recommendation targets on this page; the
+    /// badges link to the Recommendations page via <paramref name="openRecommendations"/>.</summary>
+    internal void ApplyRecommendations(IReadOnlyList<Recommendation> open, Action openRecommendations)
+    {
+        _openRecommendations = openRecommendations;
+        RecommendationBadgeStyle.ApplyLabel(UpdateCheckRecBadge, UpdateCheckRecBadgeText,
+            [.. open.Where(r => r.Id == RecommendationIds.UpdateCheck)]);
+        RecommendationBadgeStyle.ApplyLabel(LogLevelRecBadge, LogLevelRecBadgeText,
+            [.. open.Where(r => r.Id == RecommendationIds.LogLevel)]);
+        RecommendationBadgeStyle.ApplyLabel(TelemetryRecBadge, TelemetryRecBadgeText,
+            [.. open.Where(r => r.Id == RecommendationIds.Telemetry)]);
+    }
+
+    private void RecommendationBadge_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => _openRecommendations?.Invoke();
 
     // All valid Serilog levels; sole source of the LogLevel ComboBox items.
     private static readonly string[] LogLevels = ["Verbose", "Debug", "Information", "Warning", "Error", "Fatal"];
