@@ -48,6 +48,11 @@
   Older files migrate automatically on service start / ConfigTool open, with a backup in
   `config\backups\`.
 
+- **The "configuration migrated" notice now shows the backup path as selectable text** with
+  *Copy path* and *Open folder* buttons, instead of a plain message box you had to read and retype.
+  The backup file is named after the *source* schema version (e.g. `graphmailer.json.v7-….bak` for a
+  v7 → v8 migration) and timestamped in UTC, so "reveal in Explorer" is the reliable way to find it.
+
 ## 1.3.2.1058 — 2026-07-23
 
 ### Added

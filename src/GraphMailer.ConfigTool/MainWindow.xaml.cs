@@ -77,10 +77,7 @@ public partial class MainWindow : Window
                 "It is shown as-is, but settings added by the newer version are not editable here. Please update GraphMailer.",
                 "Newer configuration", MessageBoxButton.OK, MessageBoxImage.Warning);
         else if (migration.Migrated)
-            MessageBox.Show(
-                $"The configuration was migrated from schema v{migration.From} to v{migration.To}.\n\n" +
-                $"A backup of the original was saved to:\n{migration.BackupPath}",
-                "Configuration migrated", MessageBoxButton.OK, MessageBoxImage.Information);
+            new MigrationInfoDialog(migration.From, migration.To, migration.BackupPath!).ShowDialog();
 
         _currentDoc = LoadConfig();
         // Assume the running service uses the config currently on disk

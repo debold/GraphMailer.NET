@@ -1,0 +1,45 @@
+<Window x:Class="GraphMailer.ConfigTool.Views.MigrationInfoDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Configuration migrated"
+        Width="460"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Icon="/Assets/graphmailer.ico"
+        Background="{StaticResource BackgroundBrush}">
+    <StackPanel Margin="24">
+        <TextBlock x:Name="MessageLabel"
+                   Style="{StaticResource LabelText}"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,12"/>
+        <TextBlock Text="A backup of the original was saved to:"
+                   Style="{StaticResource LabelText}"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,6"/>
+        <TextBox x:Name="PathBox"
+                 IsReadOnly="True"
+                 IsReadOnlyCaretVisible="True"
+                 TextWrapping="Wrap"
+                 FontFamily="Consolas"
+                 FontSize="12"
+                 Padding="6"/>
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,16,0,0">
+            <Button Content="Copy path"
+                    Style="{StaticResource SecondaryButton}"
+                    Margin="0,0,8,0"
+                    Click="CopyPath_Click"/>
+            <Button Content="Open folder"
+                    Style="{StaticResource SecondaryButton}"
+                    Margin="0,0,8,0"
+                    Click="OpenFolder_Click"/>
+            <Button Content="OK"
+                    Style="{StaticResource PrimaryButton}"
+                    IsDefault="True"
+                    IsCancel="True"
+                    Click="Ok_Click"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
