@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.DataProtection;
 namespace GraphMailer.Tests.Unit.Infrastructure.Encryption;
 
 /// <summary>
-/// Lifetime contract of the standalone config protector.
+/// Lifetime and key-ring contract of the standalone config protector.
 ///
 /// Regression: <see cref="DataProtectionExtensions.BuildConfigProtector"/> used to dispose
 /// the backing <see cref="System.IServiceProvider"/> (a `using`) before returning the
@@ -13,6 +13,12 @@ namespace GraphMailer.Tests.Unit.Infrastructure.Encryption;
 /// (inner: ObjectDisposedException) — which is why the ConfigTool could open a
 /// configuration but not save it. The provider must stay alive for the process lifetime.
 /// Windows-only, like the product itself.
+///
+/// Key-ring contract: persistence is the shared HKLM registry ring only — there is NO
+/// file-based fallback. When the ring is unreachable (a non-elevated run) the build throws
+/// <see cref="KeyRingUnavailableException"/> instead of silently switching to a divergent
+/// throwaway key. The reachable-ring path is covered here; the unreachable branch cannot be
+/// forced in an elevated test host, so only the exception contract is asserted directly.
 /// </summary>
 public sealed class DataProtectionExtensionsTests
 {
@@ -35,5 +41,19 @@ public sealed class DataProtectionExtensionsTests
         var b = DataProtectionExtensions.BuildConfigProtector();
 
         b.Unprotect(a.Protect("shared-secret")).Should().Be("shared-secret");
+    }
+
+    [Fact]
+    public void KeyRingUnavailableException_PreservesMessageAndInnerCause()
+    {
+        // The ConfigTool surfaces Message to the operator and the service logs the inner
+        // cause; both must survive so a non-elevated start yields an actionable diagnosis
+        // rather than a bare, causeless failure.
+        var cause = new UnauthorizedAccessException("registry denied");
+
+        var ex = new KeyRingUnavailableException("Cannot access the shared key ring.", cause);
+
+        ex.Message.Should().Be("Cannot access the shared key ring.");
+        ex.InnerException.Should().BeSameAs(cause);
     }
 }

@@ -5,7 +5,6 @@ namespace GraphMailer.Service.Infrastructure;
 ///
 /// Fixed paths (always under BaseDir, not user-configurable):
 ///   BaseDir\config\graphmailer.json  – user-writable configuration file
-///   BaseDir\config\keys\             – DataProtection fallback key storage
 ///   BaseDir\logs\                    – rolling log files
 ///   BaseDir\data\                    – SQLite metrics database
 ///
@@ -35,9 +34,6 @@ internal static class AppPaths
 
     /// <summary>Directory for the SQLite metrics database.</summary>
     internal static string DataDir => Path.Combine(_baseDir, "data");
-
-    /// <summary>DataProtection fallback key directory (used when the Registry is unavailable).</summary>
-    internal static string KeysDir => Path.Combine(ConfigDir, "keys");
 
     /// <summary>Default parent directory for mail queue subdirectories.</summary>
     internal static string MailDir => Path.Combine(_baseDir, "mail");

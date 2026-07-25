@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Infrastructure;
+using GraphMailer.Service.Infrastructure.Encryption;
 
 namespace GraphMailer.ConfigTool;
 
@@ -51,6 +52,22 @@ public partial class App : Application
         // Catch unhandled exceptions on the UI thread
         DispatcherUnhandledException += (_, ex) =>
         {
+            // The shared Data Protection key ring is unreachable — almost always a non-elevated
+            // start. There is no file-key fallback by design (that would silently encrypt secrets
+            // with a divergent key the service cannot decrypt), so present the actionable message
+            // and close cleanly rather than framing it as an unexpected crash.
+            if (ex.Exception is KeyRingUnavailableException keyRing)
+            {
+                ConfigToolLog.Fatal("App", keyRing, "Data Protection key ring unavailable");
+                MessageBox.Show(
+                    keyRing.Message + "\n\nThe Config Tool cannot read or save encrypted settings " +
+                    "without the shared key ring and will now close.",
+                    "Data Protection key ring unavailable", MessageBoxButton.OK, MessageBoxImage.Error);
+                ex.Handled = true;
+                Shutdown(1);   // triggers OnExit → releases the single-instance lock
+                return;
+            }
+
             ConfigToolLog.Fatal("App", ex.Exception, "DispatcherUnhandledException");
             WriteCrashLog("DispatcherUnhandledException", ex.Exception);
 

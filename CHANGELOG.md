@@ -53,6 +53,18 @@
   The backup file is named after the *source* schema version (e.g. `graphmailer.json.v7-….bak` for a
   v7 → v8 migration) and timestamped in UTC, so "reveal in Explorer" is the reliable way to find it.
 
+- **The Data Protection key ring no longer falls back to file-based keys.** Secrets in
+  `graphmailer.json` are encrypted with the machine-DPAPI registry ring
+  (`HKLM\SOFTWARE\GraphMailer\DataProtection`), which both real processes always reach — the service
+  runs as SYSTEM and the ConfigTool's manifest forces elevation. The previous fallback to a
+  file-based ring under `config\keys` could only ever trigger for a *non-elevated* start, and it was
+  dangerous: the ConfigTool would encrypt a secret with a throwaway key the SYSTEM service could not
+  decrypt, silently corrupting the shared config. The fallback is removed; an unreachable ring now
+  fails fast with a clear message (the service aborts startup, the ConfigTool shows a dialog and does
+  not save) instead of diverging in silence. Existing installations are unaffected — they have always
+  used the registry ring. A leftover `config\keys` folder from an earlier non-elevated run can be
+  deleted.
+
 ## 1.3.2.1058 — 2026-07-23
 
 ### Added

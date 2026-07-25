@@ -165,7 +165,7 @@ try
     // Data Protection (for dashboard encrypt/decrypt in Phase 5, same key ring as above)
     builder.Services.AddDataProtection()
         .SetApplicationName(DataProtectionExtensions.ApplicationName)
-        .PersistToRegistryOrFallback();
+        .PersistKeysToSharedRegistry();
 
     // Phase 2 – Security infrastructure
     builder.Services.AddSingleton<IpBlockingService>();
@@ -251,6 +251,14 @@ try
     host.Run();
 
     return 0;
+}
+catch (KeyRingUnavailableException ex)
+{
+    // No file-key fallback by design: an unreachable shared key ring means no ENC[...] secret can be
+    // decrypted, so the service is non-functional. Fail loudly with an actionable message rather than
+    // start with silently-broken secrets. The service runs as SYSTEM, which always reaches HKLM.
+    Log.Fatal(ex, "[GraphMailer] Cannot access the shared Data Protection key ring — the service must run as SYSTEM (or elevated)");
+    return 1;
 }
 catch (Exception ex)
 {

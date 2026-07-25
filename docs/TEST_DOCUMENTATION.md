@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 941 tests** (876 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-07-25
+**Total: 942 tests** (877 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-07-25
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -818,12 +818,15 @@ backups. The rule feeds the inline error on the Notifications page and the save-
 
 Regression for the ConfigTool save failure: `BuildConfigProtector` must keep its backing
 ServiceProvider alive, or `Protect()` throws "An error occurred while trying to encrypt the
-provided data" (disposed provider). Windows-only.
+provided data" (disposed provider). Also pins the key-ring contract: registry-only, no file
+fallback — an unreachable ring throws `KeyRingUnavailableException` rather than diverging
+silently. Windows-only. (3 tests)
 
 | Test | Scenario | Expected result |
 |---|---|---|
 | `BuildConfigProtector_CanProtectAfterReturn_NotOnlyUnprotect` | Build the protector, then `Protect` → `Unprotect` | Round-trips (regression: `Protect` used to throw after the provider was disposed) |
 | `BuildConfigProtector_TwoInstances_ShareTheSameKeyRing` | Two independently built protectors (service + ConfigTool) | A value encrypted by one decrypts with the other |
+| `KeyRingUnavailableException_PreservesMessageAndInnerCause` | Construct the exception with a message + inner cause | Both survive, so the ConfigTool message and the service log stay actionable |
 
 ---
 
