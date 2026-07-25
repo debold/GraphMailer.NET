@@ -19,11 +19,18 @@ namespace GraphMailer.Service.Infrastructure.Validation;
 /// Validation rules:
 ///   • MaxSizeBytes ≤ 0 → startup failure (misconfiguration)
 ///   • MaxSizeBytes > 150 MB → startup warning (messages will be undeliverable)
+///   • MaxRecipients outside 1–1000 → startup failure (outside Microsoft's range)
 /// </summary>
 internal sealed class SmtpOptionsValidator : IValidateOptions<SmtpOptions>
 {
     /// <summary>Exchange Online absolute hard maximum (150 MB).</summary>
     internal const long ExchangeOnlineMaxBytes = 150L * 1024 * 1024; // 157,286,400
+
+    /// <summary>Smallest recipient limit Exchange Online accepts for a mailbox.</summary>
+    internal const int MinRecipients = 1;
+
+    /// <summary>Largest recipient limit Exchange Online accepts for a mailbox.</summary>
+    internal const int MaxRecipients = 1000;
 
     private readonly ILogger<SmtpOptionsValidator> _logger;
 
@@ -45,6 +52,15 @@ internal sealed class SmtpOptionsValidator : IValidateOptions<SmtpOptions>
                 "hard limit of {Limit:N0} B (150 MB). Messages larger than 150 MB cannot be " +
                 "delivered via Microsoft Graph API and will remain stuck in the queue indefinitely.",
                 options.MaxSizeBytes, options.MaxSizeBytes / 1_048_576.0, ExchangeOnlineMaxBytes);
+
+        // Hard failure rather than a clamp: a value outside Microsoft's range means the
+        // operator misread their tenant setting, and silently substituting 500 would hide
+        // that — either rejecting mail Exchange accepts or accepting mail it rejects.
+        if (options.MaxRecipients is < MinRecipients or > MaxRecipients)
+            return ValidateOptionsResult.Fail(
+                $"Smtp.MaxRecipients must be between {MinRecipients} and {MaxRecipients} " +
+                $"(configured: {options.MaxRecipients}). Exchange Online allows a mailbox's " +
+                "RecipientLimits only within that range; the default is 500.");
 
         return ValidateOptionsResult.Success;
     }

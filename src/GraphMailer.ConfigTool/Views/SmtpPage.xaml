@@ -217,6 +217,8 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="16"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="16"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="Max message size (MB)"
@@ -226,16 +228,37 @@
                                      Text="25"
                                      Width="120"
                                      HorizontalAlignment="Left"
-                                     h:NumericField.Min="0"
+                                     h:NumericField.Min="1"
                                      h:NumericField.Max="150"
-                                     ToolTip="Maximum message size accepted by the SMTP server (MB).&#x0a;Exchange Online enforces a hard limit of 150 MB.&#x0a;Set to 0 to disable the limit."
+                                     ToolTip="Maximum message size accepted by the SMTP server (MB).&#x0a;Match your tenant's MaxSendSize (Get-Mailbox); 150 MB is the Exchange Online ceiling.&#x0a;When unsure, set it higher rather than lower."
                                      TextChanged="AnyField_Changed"/>
                         </StackPanel>
                         <TextBlock Grid.Column="1"
                                    Margin="16,18,0,0"
-                                   Text="Set 0 to disable the limit."
+                                   Text="Your tenant's MaxSendSize decides — often 35 MB. Read it with Get-Mailbox; when unsure, set it higher rather than lower."
+                                   TextWrapping="Wrap"
                                    Style="{StaticResource HintText}"/>
                         <StackPanel Grid.Row="2"
+                                    Grid.Column="0">
+                            <TextBlock Text="Max recipients per message"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="MaxRecipients"
+                                     Text="500"
+                                     Width="120"
+                                     HorizontalAlignment="Left"
+                                     h:NumericField.Min="1"
+                                     h:NumericField.Max="1000"
+                                     ToolTip="Maximum number of envelope recipients accepted for one message.&#x0a;Match your tenant's RecipientLimits (Get-Mailbox); Exchange Online allows 1-1000, default 500.&#x0a;When unsure, set it higher rather than lower."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="2"
+                                   Grid.Column="1"
+                                   Margin="16,18,0,0"
+                                   Text="Your tenant's RecipientLimits decides — default 500. Set too low, GraphMailer rejects mail Exchange would have accepted."
+                                   TextWrapping="Wrap"
+                                   Style="{StaticResource HintText}"/>
+                        <StackPanel Grid.Row="4"
                                     Grid.Column="0">
                             <TextBlock Text="SMTP banner"
                                        Style="{StaticResource LabelText}"
@@ -247,7 +270,7 @@
                                      ToolTip="The server name announced in the SMTP greeting (EHLO response). Clients see this string; it does not affect mail delivery."
                                      TextChanged="AnyField_Changed"/>
                         </StackPanel>
-                        <TextBlock Grid.Row="2"
+                        <TextBlock Grid.Row="4"
                                    Grid.Column="1"
                                    Margin="16,18,0,0"
                                    Text="Shown in the SMTP greeting (EHLO). Does not affect mail delivery."

@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.3.3 — unreleased
+
+### Added
+
+- **The recipient limit per message is now configurable** (Servers & TLS → Limits, default 500).
+  It used to be a hard-coded 500 — Exchange Online's default for a mailbox's `RecipientLimits`, but
+  a value an administrator can set anywhere from 1 to 1000. A tenant that had raised it saw
+  GraphMailer reject mail with an immediate NDR that Exchange would have accepted, and nothing
+  could be done about it short of a new build.
+
+  The value cannot be read from the tenant: no Microsoft Graph permission the service holds
+  (`Mail.Send`, `Mail.ReadWrite`, `User.Read.All`) exposes it, and the ones that do — the Exchange
+  admin API and Tenant Configuration Management — require `Exchange.ManageAsApp` plus a directory
+  role, i.e. tenant-wide Exchange administration rights for an SMTP relay. That trade is not worth
+  making, so the limit is configured instead, validated against Microsoft's 1–1000 range at startup.
+  Same for the message size, whose real ceiling is the mailbox's `MaxSendSize` (typically 35 MB).
+
+  The help now shows how to read both values (`Get-Mailbox … | Format-List MaxSendSize,
+  RecipientLimits`), explains that `RecipientLimits: Unlimited` means the 500 default rather than
+  "no limit", and says to err on the high side: too high costs an Exchange rejection you can see and
+  fix, too low silently refuses mail the tenant would have taken.
+
+### Fixed
+
+- **"Set 0 to disable the limit" for the message size never worked.** The ConfigTool hint, its
+  tooltip and the help all documented it, but a `MaxSizeBytes` of 0 fails options validation and the
+  SMTP listeners never start — so following the documentation took the service down. There is no
+  unlimited setting (Microsoft 365 rejects anything above 150 MB anyway), so the field now starts at
+  1 MB and the misleading hints are gone. A config that already carries 0 is lifted to 150 MB by the
+  schema migration, which brings such an installation back up.
+
+### Changed
+
+- Config schema **v8**: adds `Smtp.MaxRecipients` (default 500) and repairs `Smtp.MaxSizeBytes = 0`.
+  Older files migrate automatically on service start / ConfigTool open, with a backup in
+  `config\backups\`.
+
 ## 1.3.2.1058 — 2026-07-23
 
 ### Added

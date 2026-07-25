@@ -30,9 +30,18 @@ can additionally constrain senders per-user and globally on
 
 ## What's the largest message it can send?
 
-Up to **150 MB**, the Microsoft 365 ceiling. The default accepted size is 25 MB; raise it on
-[Servers & TLS](../configuration/servers-tls.md) if needed. Messages above 150 MB cannot be
-delivered via Graph.
+Up to **150 MB**, the Microsoft 365 ceiling — but the value that actually applies is your sender
+mailbox's `MaxSendSize`, typically **35 MB**. The default accepted size is 25 MB; adjust it on
+[Servers & TLS](../configuration/servers-tls.md), which also shows how to read your tenant's real
+value. Messages above 150 MB cannot be delivered via Graph at all.
+
+## How many recipients can one message have?
+
+**500** by default — the Exchange Online default for a mailbox's `RecipientLimits`, which your
+administrator can set anywhere from 1 to 1000. GraphMailer cannot read the value from your tenant,
+so if yours was changed, match it under *Max recipients per message* on
+[Servers & TLS](../configuration/servers-tls.md). Messages above the configured limit are rejected
+immediately with an NDR, because Exchange would reject them too.
 
 ## Which parts of a message survive the relay?
 

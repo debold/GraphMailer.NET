@@ -376,6 +376,26 @@ public sealed class ConfigSchemaBindingTests : IDisposable
     }
 
     // =========================================================================
+    // SmtpOptions – limits
+    // =========================================================================
+
+    [Fact]
+    public void Save_SmtpLimits_BindToSmtpOptions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            Smtp = new() { MaxSizeBytes = 52_428_800, MaxRecipients = 800, Banner = "Relay" }
+        });
+
+        var opts = Bind<SmtpOptions>(LoadServiceConfig(), SmtpOptions.SectionName);
+
+        opts.MaxSizeBytes.Should().Be(52_428_800);
+        opts.MaxRecipients.Should().Be(800,
+            "a tenant that raised RecipientLimits must reach the service, not just the ConfigTool");
+        opts.Banner.Should().Be("Relay");
+    }
+
+    // =========================================================================
     // SmtpOptions – AuthMode backward compatibility
     // =========================================================================
 

@@ -655,4 +655,25 @@ public sealed class ConfigSchemaLoadTests : IDisposable
 
         _sut.Load().Recommendations.Dismissed.Should().BeEmpty("every applicable hint is shown until hidden");
     }
+
+    // =========================================================================
+    // Smtp  (SectionName = "Smtp")
+    // =========================================================================
+
+    [Fact]
+    public void Load_Smtp_MaxRecipients_AppearsInDocSmtpMaxRecipients()
+    {
+        WriteJson("""{ "Smtp": { "MaxRecipients": 800 } }""");
+
+        _sut.Load().Smtp.MaxRecipients.Should().Be(800);
+    }
+
+    [Fact]
+    public void Load_Smtp_MaxRecipientsAbsent_DefaultsTo500()
+    {
+        WriteJson("""{ "Smtp": { "Banner": "test" } }""");
+
+        _sut.Load().Smtp.MaxRecipients.Should().Be(500,
+            "500 is Exchange Online's own default for a mailbox's RecipientLimits");
+    }
 }

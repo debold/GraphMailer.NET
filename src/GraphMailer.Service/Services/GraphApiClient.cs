@@ -36,8 +36,9 @@ internal sealed class GraphApiClient : IGraphApiClient
     // stays under the 4 MB per-request cap.
     private const int UploadSliceSize = 320 * 1024 * 12;
 
-    // Exchange Online rejects messages with more envelope recipients than this.
-    internal const int MaxRecipients = 500;
+    // The recipient ceiling is a per-mailbox Exchange Online setting (RecipientLimits) that
+    // no Graph permission exposes, so it comes from Smtp.MaxRecipients (default 500) rather
+    // than a constant — see SmtpOptions.MaxRecipients.
 
     // Graph rejects a message carrying more custom internet headers than this with
     // 400 InvalidInternetMessageHeaderCollection ("Maximum number of headers in one
@@ -52,15 +53,18 @@ internal sealed class GraphApiClient : IGraphApiClient
         string Name, string ContentType, byte[] Content, string? ContentId, bool IsInline);
 
     private readonly IOptionsMonitor<GraphApiOptions> _options;
+    private readonly IOptionsMonitor<SmtpOptions> _smtpOptions;
     private readonly GraphClientProvider _clientProvider;
     private readonly ILogger<GraphApiClient> _logger;
 
     public GraphApiClient(
         IOptionsMonitor<GraphApiOptions> options,
+        IOptionsMonitor<SmtpOptions> smtpOptions,
         GraphClientProvider clientProvider,
         ILogger<GraphApiClient> logger)
     {
         _options = options;
+        _smtpOptions = smtpOptions;
         _clientProvider = clientProvider;
         _logger = logger;
     }
@@ -77,13 +81,7 @@ internal sealed class GraphApiClient : IGraphApiClient
                 "[GraphApi] Graph API is not configured – cannot deliver message. " +
                 "Set TenantId, ClientId and ClientSecret in config/graphmailer.json.");
 
-        // Fail fast on the recipient limit: Graph would reject the message anyway, and
-        // without the permanent classification the sender's NDR would be needlessly late.
-        if (envelopeRecipients.Count > MaxRecipients)
-            throw new GraphDeliveryException(
-                $"Message has {envelopeRecipients.Count} envelope recipients — Exchange Online allows at most {MaxRecipients} per message. " +
-                "Split the distribution list or use a group address.",
-                isPermanent: true);
+        EnsureRecipientLimit(envelopeRecipients.Count, _smtpOptions.CurrentValue.MaxRecipients);
 
         var client = GetOrCreateClient(opts);
         var sendAs = senderAddress;
@@ -269,6 +267,24 @@ internal sealed class GraphApiClient : IGraphApiClient
         && (code.Equals("InvalidInternetMessageHeaderCollection", StringComparison.OrdinalIgnoreCase)
             || code.Equals("ErrorSendAsDenied", StringComparison.OrdinalIgnoreCase)
             || code.Equals("ErrorInvalidSender", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Fails fast when a message carries more envelope recipients than the sender mailbox
+    /// accepts. Exchange would reject it anyway, and without the permanent classification the
+    /// sender's NDR would be needlessly late. <paramref name="max"/> mirrors the mailbox's
+    /// <c>RecipientLimits</c> (<c>Smtp.MaxRecipients</c>) because no Graph permission the
+    /// service holds can read that value.
+    /// </summary>
+    internal static void EnsureRecipientLimit(int count, int max)
+    {
+        if (count <= max) return;
+
+        throw new GraphDeliveryException(
+            $"Message has {count} envelope recipients — the configured limit is {max} per message " +
+            "(Smtp.MaxRecipients, which must match the sender mailbox's Exchange Online RecipientLimits). " +
+            "Split the distribution list or use a group address.",
+            isPermanent: true);
+    }
 
     private static bool IsRequestTooLarge(ODataError ex) =>
         ex.ResponseStatusCode == 413

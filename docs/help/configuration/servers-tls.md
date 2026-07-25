@@ -81,14 +81,48 @@ certificate is missing. Changing the option requires a **service restart**.
 
 | Setting | Default | Notes |
 |---|---|---|
-| Max message size (MB) | `25` | Largest message accepted during SMTP DATA. Range 0–150; **0 disables** the limit. |
+| Max message size (MB) | `25` | Largest message accepted during SMTP DATA. Range 1–150. |
+| Max recipients per message | `500` | Most envelope recipients accepted for one message. Range 1–1000. |
 | SMTP banner | `GraphMailer` | The name announced in the SMTP greeting (EHLO). Cosmetic — does not affect delivery. |
 
+Both limits mirror settings **your tenant owns**, and GraphMailer cannot read them: no Microsoft
+Graph permission the service holds exposes them, and one that did would mean granting the relay
+tenant-wide Exchange administration rights. So you configure them here to match your tenant.
+
+### Reading your tenant's real values
+
+In [Exchange Online PowerShell](https://learn.microsoft.com/powershell/exchange/connect-to-exchange-online-powershell),
+ask the mailbox GraphMailer sends as:
+
+```powershell
+Connect-ExchangeOnline
+Get-Mailbox relay@contoso.com | Format-List MaxSendSize, RecipientLimits
+```
+
+```
+MaxSendSize     : 35 MB (36,700,160 bytes)
+RecipientLimits : Unlimited
+```
+
+- **`MaxSendSize`** → the *Max message size* value. Round down to whole MB (`35 MB` → enter `35`).
+- **`RecipientLimits`** → the *Max recipients per message* value. **`Unlimited` does not mean
+  unlimited** — it means the mailbox uses the Exchange Online service default of **500**, so enter
+  `500`. A number means the administrator set a custom limit (Microsoft allows 1–1000).
+
+Different senders can have different limits. If GraphMailer relays for several mailboxes, take the
+**highest** value of each — for the same reason:
+
+> [!TIP]
+> **When unsure, set both higher rather than lower.** Too high only means Exchange rejects the
+> message itself — GraphMailer reports the rejection and sends an NDR, and you can correct the
+> setting. Too low means GraphMailer refuses mail that your tenant would have accepted, and no
+> Exchange setting can rescue it: the sender simply gets a rejection for a message that was fine.
+
 > [!NOTE]
-> Microsoft 365 enforces a hard **150 MB** ceiling, so setting the limit higher cannot help —
-> messages above 150 MB are undeliverable via Graph and the service warns about it at startup.
-> Internally, messages up to ~3 MB are sent directly; larger ones are uploaded in a streaming
-> session.
+> Microsoft 365 enforces a hard **150 MB** ceiling on message size regardless of `MaxSendSize`, so
+> setting the limit higher cannot help — messages above 150 MB are undeliverable via Graph and the
+> service warns about it at startup. Internally, messages up to ~3 MB are sent directly; larger ones
+> are uploaded in a streaming session.
 
 ## Related
 

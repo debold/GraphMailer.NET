@@ -119,19 +119,30 @@ public sealed class GraphApiClientTests
     // Recipient-count guard
     // =========================================================================
 
-    [Fact]
-    public async Task SendAsync_TooManyRecipients_ThrowsPermanentWithoutGraphCall()
+    private static GraphApiClient MakeClient(int maxRecipients)
     {
         var opts = Substitute.For<IOptionsMonitor<GraphApiOptions>>();
         opts.CurrentValue.Returns(new GraphApiOptions
         {
             TenantId = "tenant", ClientId = "client", ClientSecret = "s3cr3t"
         });
-        var sut = new GraphApiClient(
+        var smtp = Substitute.For<IOptionsMonitor<SmtpOptions>>();
+        smtp.CurrentValue.Returns(new SmtpOptions { MaxRecipients = maxRecipients });
+
+        return new GraphApiClient(
             opts,
+            smtp,
             new GraphClientProvider(NullLogger<GraphClientProvider>.Instance),
             NullLogger<GraphApiClient>.Instance);
-        var recipients = Enumerable.Range(0, GraphApiClient.MaxRecipients + 1)
+    }
+
+    [Fact]
+    public async Task SendAsync_TooManyRecipients_ThrowsPermanentWithoutGraphCall()
+    {
+        // A non-default limit: this also proves SendAsync reads Smtp.MaxRecipients
+        // rather than a hard-coded 500.
+        var sut = MakeClient(maxRecipients: 10);
+        var recipients = Enumerable.Range(0, 11)
             .Select(i => $"rcpt{i}@example.com").ToList();
 
         var act = () => sut.SendAsync([1, 2, 3], "sender@example.com", recipients, "msg-too-many", saveToSentItems: true);
@@ -139,6 +150,33 @@ public sealed class GraphApiClientTests
         (await act.Should().ThrowAsync<GraphDeliveryException>(
                 "over-limit messages must fail fast instead of a doomed Graph call"))
             .Which.IsPermanent.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(500, 500)]    // exactly at the limit — must pass
+    [InlineData(499, 500)]
+    [InlineData(700, 800)]    // tenant raised RecipientLimits: mail Exchange accepts must not be rejected here
+    [InlineData(1, 1)]
+    public void EnsureRecipientLimit_WithinConfiguredLimit_DoesNotThrow(int count, int max)
+    {
+        var act = () => GraphApiClient.EnsureRecipientLimit(count, max);
+
+        act.Should().NotThrow(
+            $"{count} recipients are within the configured limit of {max}");
+    }
+
+    [Theory]
+    [InlineData(501, 500)]    // default limit, one over
+    [InlineData(200, 100)]    // tenant lowered RecipientLimits
+    [InlineData(1001, 1000)]  // Microsoft's ceiling, one over
+    public void EnsureRecipientLimit_AboveConfiguredLimit_ThrowsPermanent(int count, int max)
+    {
+        var act = () => GraphApiClient.EnsureRecipientLimit(count, max);
+
+        act.Should().Throw<GraphDeliveryException>(
+                "over-limit messages must fail fast instead of a doomed Graph call")
+            .Which.IsPermanent.Should().BeTrue(
+                "no retry can make an over-limit message deliverable");
     }
 
     // =========================================================================

@@ -17,6 +17,7 @@ public class GraphDeliveryLiveTests
         => new(
             new StaticOptionsMonitor<GraphApiOptions>(
                 LiveTestSettings.Current.ToGraphApiOptions()),
+            new StaticOptionsMonitor<SmtpOptions>(new SmtpOptions()),
             new GraphClientProvider(NullLogger<GraphClientProvider>.Instance),
             NullLogger<GraphApiClient>.Instance);
 

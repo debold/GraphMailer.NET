@@ -41,8 +41,8 @@ public partial class SmtpPage : UserControl
                 AuthMode = s.AuthMode,
             });
 
-        // Bytes → MB (0 means "no limit", show as 0)
         MaxSizeMb.Text = (doc.Smtp.MaxSizeBytes / 1_048_576).ToString();
+        MaxRecipients.Text = doc.Smtp.MaxRecipients.ToString();
         SmtpBanner.Text = string.IsNullOrWhiteSpace(doc.Smtp.Banner) ? "GraphMailer" : doc.Smtp.Banner;
 
         // Re-select saved TLS certificate by CN
@@ -71,9 +71,14 @@ public partial class SmtpPage : UserControl
                 AuthMode = r.AuthMode,
             }).ToList();
 
-        doc.Smtp.MaxSizeBytes = long.TryParse(MaxSizeMb.Text, out var mb) && mb >= 0
+        // A size of 0 would fail SmtpOptionsValidator and keep the listeners down, so the
+        // field is bounded at 1 MB — there is no "unlimited" setting.
+        doc.Smtp.MaxSizeBytes = long.TryParse(MaxSizeMb.Text, out var mb) && mb >= 1
             ? mb * 1_048_576
             : 26_214_400;
+        doc.Smtp.MaxRecipients = int.TryParse(MaxRecipients.Text, out var rcpt) && rcpt is >= 1 and <= 1000
+            ? rcpt
+            : 500;
         doc.Smtp.Banner = string.IsNullOrWhiteSpace(SmtpBanner.Text) ? "GraphMailer" : SmtpBanner.Text.Trim();
 
         if (TlsCertList.SelectedItem is CertItem cert)

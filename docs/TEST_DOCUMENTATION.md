@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 914 tests** (849 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-07-23
+**Total: 937 tests** (872 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-07-25
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -148,7 +148,11 @@
 | `Validate_ValidMaxSizeBytes_Succeeds` _(Theory)_ | Values 1 byte, 1 KB, 25 MB, ~35 MB, 150 MB | Each succeeds |
 | `Validate_ZeroOrNegativeMaxSizeBytes_Fails` _(Theory)_ | `MaxSizeBytes` = 0, -1, `long.MinValue` | Validation fails; error message contains `"MaxSizeBytes"` |
 | `Validate_AboveExchangeOnlineLimit_SucceedsWithWarning` _(Theory)_ | Values > 150 MB (e.g. 200 MB) | Validation succeeds (warning logged, no startup failure) |
+| `Validate_ValidMaxRecipients_Succeeds` (Theory, 3 cases) | `MaxRecipients` = 1, 500, 1000 | Each succeeds — the range Exchange Online allows for a mailbox's `RecipientLimits` |
+| `Validate_MaxRecipientsOutsideMicrosoftRange_Fails` (Theory, 4 cases) | `MaxRecipients` = 0, -1, 1001, `int.MaxValue` | Validation fails; error message contains `"MaxRecipients"` (a silent clamp would hide the misread tenant setting) |
+| `Validate_DefaultMaxRecipients_Is500` | Untouched `SmtpOptions` | `MaxRecipients == 500` — matches Exchange Online's own default, so making it configurable changed no behaviour |
 | `ExchangeOnlineMaxBytes_Is150Mb` | Constant value check | `SmtpOptionsValidator.ExchangeOnlineMaxBytes == 150 * 1024 * 1024` |
+| `RecipientRange_MatchesMicrosoftLimits` | Constant value check | `MinRecipients == 1`, `MaxRecipients == 1000` |
 
 ---
 
@@ -531,7 +535,9 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Rebalance_IndividuallySmallButCollectivelyLarge_MovesLargestUntilFit` | Three attachments < 3 MB each, > 4 MB total after base64 | Largest attachment(s) moved until the direct payload fits (regression: was rejected with 413) |
 | `Rebalance_HugeBodyAloneOverCap_MovesAllAttachmentsAndStops` | 5 MB body, one small attachment | Loop terminates; all attachments moved (body alone cannot be fixed) |
 | `Rebalance_MovedInlineAttachment_KeepsContentIdAndInlineFlag` | Inline attachment moved to the upload-session path | `ContentId` and `IsInline` survive the move (cid: reference keeps working) |
-| `SendAsync_TooManyRecipients_ThrowsPermanentWithoutGraphCall` | 501 envelope recipients | `GraphDeliveryException` with `IsPermanent == true`, thrown before any Graph call |
+| `SendAsync_TooManyRecipients_ThrowsPermanentWithoutGraphCall` | 11 envelope recipients against a configured `Smtp.MaxRecipients` of 10 | `GraphDeliveryException` with `IsPermanent == true`, thrown before any Graph call; the non-default limit proves the option is read instead of a hard-coded 500 |
+| `EnsureRecipientLimit_WithinConfiguredLimit_DoesNotThrow` (Theory, 4 cases) | 500/500, 499/500, 700/800 (tenant raised `RecipientLimits`), 1/1 | No throw — mail the tenant accepts must not be rejected here |
+| `EnsureRecipientLimit_AboveConfiguredLimit_ThrowsPermanent` (Theory, 3 cases) | 501/500, 200/100 (tenant lowered the limit), 1001/1000 | `GraphDeliveryException` with `IsPermanent == true` — fail fast instead of a doomed Graph call |
 | `BuildMessage_HighImportance_IsMapped` | MIME `Importance: high` | Graph `Importance.High` |
 | `BuildMessage_XPriorityFallback_IsMapped` | `X-Priority: 1`, no Importance header | Graph `Importance.High` (legacy priority signal) |
 | `BuildMessage_MessageIdAndThreadingHeaders_AreForwarded` | Message-ID, In-Reply-To, References set | `internetMessageId` + MAPI extended properties `0x1042`/`0x1039` populated |
@@ -1258,6 +1264,10 @@ Daily opt-in heartbeat scheduler: persists cadence + install id + counter waterm
 | `Migrate_V5_ToV6_ExistingEnabledFlag_IsNotOverwritten` | v5 doc with `Enabled: false` and recipients | Stays `false` — re-deriving would re-enable what somebody switched off |
 | `Migrate_V5_ToV6_NoAdminNotificationsSection_IsLeftAlone` | v5 doc without the section | Section not created; unrelated content untouched |
 | `Migrate_V6_ToV7_IsAdditiveOnly_ContentUnchangedExceptVersion` | v6 doc (v7 only added `GraphCertificateExpiringWarning`) | Version stamped to current; existing content untouched; the absent key stays absent (binder default = warning on) |
+| `Migrate_V7_ToV8_AddsNoKeys_MaxRecipientsFallsBackToDefault` | v7 doc with an `Smtp` section but no `MaxRecipients` | Version stamped to current; the absent key stays absent (binder default = 500); `MaxSizeBytes`/`Banner` untouched |
+| `Migrate_V7_ToV8_ZeroMaxSizeBytes_IsLiftedToExchangeCeiling` | v7 doc with `Smtp.MaxSizeBytes = 0`, written when 0 was documented as "no limit" | Raised to 157 286 400 (150 MB) — 0 fails the validator, so the listeners would never start after the upgrade |
+| `Migrate_V7_ToV8_PositiveMaxSizeBytes_IsLeftAlone` | v7 doc with `MaxSizeBytes = 10 MB` | Unchanged — a configured size is the operator's decision |
+| `Migrate_V7_ToV8_NoSmtpSection_IsLeftAlone` | v7 doc without an `Smtp` section | Section not created; version stamped to current |
 | `Migrate_AlreadyCurrent_IsNoOp` | Doc already at current version | `false` (no change) |
 | `Migrate_Idempotent` | Migrate twice | First `true`, second `false` |
 | `Migrate_NewerThanBuild_LeavesFileAlone` | `SchemaVersion = Current + 1` | `false`; version left untouched |
@@ -1326,6 +1336,8 @@ Verifies that every JSON key written by the service (`graphmailer.json`) is corr
 | `Load_Server_AuthMode_AppearsInDocServerAuthMode` | `Servers[0].AuthMode = "None"` | `doc.Servers[0].AuthMode == "None"` |
 | `Load_Recommendations_Dismissed_AppearsInDocRecommendationsDismissed` | `Recommendations.Dismissed: ["telemetry","log-level"]` | `doc.Recommendations.Dismissed` holds both ids in order |
 | `Load_Recommendations_Absent_DefaultsToNothingDismissed` | No `Recommendations` section (pre-v5 config) | `doc.Recommendations.Dismissed` empty — every applicable hint is shown until hidden |
+| `Load_Smtp_MaxRecipients_AppearsInDocSmtpMaxRecipients` | `Smtp.MaxRecipients = 800` | `doc.Smtp.MaxRecipients == 800` |
+| `Load_Smtp_MaxRecipientsAbsent_DefaultsTo500` | `Smtp` section without the key (pre-v8 config) | `doc.Smtp.MaxRecipients == 500` — Exchange Online's own default for `RecipientLimits` |
 
 ---
 
@@ -1346,6 +1358,7 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `Save_RecipientAddressesEmpty_DisablesAdminNotifications` | Empty recipient list | `AdminNotifications:Enabled == false` |
 | `Save_NotifGraphCertExpiring_False_BindsToGraphCertificateExpiringWarningEnabled_False` | `NotifGraphCertExpiring = false` | `GraphCertificateExpiringWarning:Enabled == false` |
 | `Save_Servers_AuthModeBindsToSmtpServerEntry` | Two listeners with AuthMode `None` / `Required` | `SmtpServerEntry.AuthMode` binds, and `AcceptsCredentials`/`IsPlaintext` reflect it |
+| `Save_SmtpLimits_BindToSmtpOptions` | `doc.Smtp` with 50 MB / 800 recipients / banner `Relay` saved | `Smtp:MaxSizeBytes`, `Smtp:MaxRecipients`, `Smtp:Banner` all bind — a raised tenant `RecipientLimits` must reach the service, not just the ConfigTool |
 | `Save_SubjectPrefix_BindsToAdminNotificationsSubjectPrefix` | `SubjectPrefix = "[PROD]"` | `AdminNotifications:SubjectPrefix == "[PROD]"` |
 | `Save_ScheduledReport_BindsToAdminNotificationsScheduledReport` | `doc.Notification.Report*` set (Monthly, 08:30, Friday, day 5) saved | `AdminNotifications:ScheduledReport` binds to `ScheduledReportOptions` (Enabled, Frequency, TimeOfDay, DayOfWeek, DayOfMonth) |
 | `Save_NotifIpBlocked_False_BindsToIpBlockedAlertEnabled_False` | `NotifIpBlocked = false` | `IpBlockedAlert:Enabled == false` |

@@ -164,6 +164,59 @@ public sealed class ConfigSchemaTests
     }
 
     [Fact]
+    public void Migrate_V7_ToV8_AddsNoKeys_MaxRecipientsFallsBackToDefault()
+    {
+        // The additive half of v8: Smtp.MaxRecipients is absent and must stay absent —
+        // the options binder falls back to 500, Exchange Online's own default.
+        var root = JsonNode.Parse("""{ "SchemaVersion": 7, "Smtp": { "MaxSizeBytes": 26214400, "Banner": "test" } }""")!.AsObject();
+
+        var changed = ConfigSchema.Migrate(root);
+
+        changed.Should().BeTrue();
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+        root["Smtp"]!.AsObject().ContainsKey("MaxRecipients").Should().BeFalse(
+            "the absent key is valid — the options binder falls back to the default of 500");
+        root["Smtp"]!["MaxSizeBytes"]!.GetValue<long>().Should().Be(26_214_400);
+        root["Smtp"]!["Banner"]!.GetValue<string>().Should().Be("test");
+    }
+
+    [Fact]
+    public void Migrate_V7_ToV8_ZeroMaxSizeBytes_IsLiftedToExchangeCeiling()
+    {
+        // A config written by an older ConfigTool that documented 0 as "no limit". The
+        // validator rejects 0, so the service never starts its listeners — the migration
+        // has to heal it, otherwise the upgrade leaves the install dead.
+        var root = JsonNode.Parse("""{ "SchemaVersion": 7, "Smtp": { "MaxSizeBytes": 0, "Banner": "test" } }""")!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        root["Smtp"]!["MaxSizeBytes"]!.GetValue<long>().Should().Be(157_286_400,
+            "0 meant 'no limit'; 150 MB is the largest value Exchange Online can actually deliver");
+    }
+
+    [Fact]
+    public void Migrate_V7_ToV8_PositiveMaxSizeBytes_IsLeftAlone()
+    {
+        var root = JsonNode.Parse("""{ "SchemaVersion": 7, "Smtp": { "MaxSizeBytes": 10485760 } }""")!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        root["Smtp"]!["MaxSizeBytes"]!.GetValue<long>().Should().Be(10_485_760,
+            "a configured size is the operator's decision and must survive the migration");
+    }
+
+    [Fact]
+    public void Migrate_V7_ToV8_NoSmtpSection_IsLeftAlone()
+    {
+        var root = JsonNode.Parse("""{ "SchemaVersion": 7, "Certificate": { "SubjectName": "smtp.local" } }""")!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        root.ContainsKey("Smtp").Should().BeFalse("the migration must not materialise sections that were never there");
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+    }
+
+    [Fact]
     public void Migrate_AlreadyCurrent_IsNoOp()
         => ConfigSchema.Migrate(new JsonObject { ["SchemaVersion"] = ConfigSchema.Current }).Should().BeFalse();
 

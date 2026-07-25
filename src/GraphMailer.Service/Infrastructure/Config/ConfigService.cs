@@ -323,6 +323,7 @@ internal sealed class ConfigService
         return new ConfigDocument.SmtpSection
         {
             MaxSizeBytes = s["MaxSizeBytes"]?.GetValue<long>() ?? 26_214_400,
+            MaxRecipients = s["MaxRecipients"]?.GetValue<int>() ?? 500,
             Banner = Str(s, "Banner") ?? "GraphMailer",
         };
     }
@@ -430,6 +431,7 @@ internal sealed class ConfigService
     {
         var o = EnsureSection(root, "Smtp");
         o["MaxSizeBytes"] = s.MaxSizeBytes;
+        o["MaxRecipients"] = s.MaxRecipients;
         o["Banner"] = s.Banner;
     }
 

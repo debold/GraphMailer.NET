@@ -77,13 +77,62 @@ public sealed class SmtpOptionsValidatorTests
     }
 
     // =========================================================================
-    // ExchangeOnlineMaxBytes constant
+    // MaxRecipients — must stay inside Microsoft's per-mailbox range
+    // =========================================================================
+
+    [Theory]
+    [InlineData(1)]      // Microsoft's minimum
+    [InlineData(500)]    // Exchange Online default
+    [InlineData(1000)]   // Microsoft's maximum
+    public void Validate_ValidMaxRecipients_Succeeds(int maxRecipients)
+    {
+        var sut = BuildSut();
+        var opts = new SmtpOptions { MaxRecipients = maxRecipients };
+
+        sut.Validate(null, opts).Succeeded.Should().BeTrue(
+            $"MaxRecipients = {maxRecipients} is within the range Exchange Online allows");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(1001)]
+    [InlineData(int.MaxValue)]
+    public void Validate_MaxRecipientsOutsideMicrosoftRange_Fails(int maxRecipients)
+    {
+        var sut = BuildSut();
+        var opts = new SmtpOptions { MaxRecipients = maxRecipients };
+
+        var result = sut.Validate(null, opts);
+
+        result.Failed.Should().BeTrue(
+            $"MaxRecipients = {maxRecipients} is outside the 1-1000 range Exchange Online allows");
+        result.FailureMessage.Should().Contain("MaxRecipients");
+    }
+
+    [Fact]
+    public void Validate_DefaultMaxRecipients_Is500()
+    {
+        // The default must match Exchange Online's own default, so an operator who never
+        // touches the setting behaves exactly as before it was configurable.
+        new SmtpOptions().MaxRecipients.Should().Be(500);
+    }
+
+    // =========================================================================
+    // Range constants
     // =========================================================================
 
     [Fact]
     public void ExchangeOnlineMaxBytes_Is150Mb()
     {
         SmtpOptionsValidator.ExchangeOnlineMaxBytes.Should().Be(150L * 1024 * 1024);
+    }
+
+    [Fact]
+    public void RecipientRange_MatchesMicrosoftLimits()
+    {
+        SmtpOptionsValidator.MinRecipients.Should().Be(1);
+        SmtpOptionsValidator.MaxRecipients.Should().Be(1000);
     }
 
     // =========================================================================

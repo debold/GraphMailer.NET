@@ -46,5 +46,22 @@ public sealed class SmtpOptions
     /// undeliverable via Microsoft Graph API – SmtpOptionsValidator warns at startup.
     /// </summary>
     public long MaxSizeBytes { get; init; } = 26_214_400;
+
+    /// <summary>
+    /// Maximum number of envelope recipients accepted for a single message.
+    /// Default: 500 – the Exchange Online default for a mailbox's <c>RecipientLimits</c>,
+    /// which an administrator can change per mailbox (Microsoft allows 1–1000).
+    ///
+    /// The value cannot be discovered at runtime: no Microsoft Graph permission the service
+    /// holds (Mail.Send, Mail.ReadWrite, User.Read.All) exposes it, and reading it would
+    /// require tenant-wide Exchange administration rights. It is therefore configured, and
+    /// <c>SmtpOptionsValidator</c> keeps it inside Microsoft's range.
+    ///
+    /// Set too low, GraphMailer rejects mail Exchange would have accepted; set too high,
+    /// Exchange rejects it with <c>ErrorRecipientLimitExceeded</c> and the sender gets an NDR
+    /// – so erring on the high side is the safer mistake.
+    /// </summary>
+    public int MaxRecipients { get; init; } = 500;
+
     public string Banner { get; init; } = "GraphMailer";
 }

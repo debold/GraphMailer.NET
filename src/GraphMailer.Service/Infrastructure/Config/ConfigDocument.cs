@@ -59,6 +59,7 @@ internal sealed class ConfigDocument
     internal sealed class SmtpSection
     {
         public long MaxSizeBytes { get; set; } = 26_214_400;
+        public int MaxRecipients { get; set; } = 500;
         public string Banner { get; set; } = "GraphMailer";
     }
 

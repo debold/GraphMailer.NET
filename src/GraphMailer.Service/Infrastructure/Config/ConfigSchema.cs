@@ -17,7 +17,7 @@ namespace GraphMailer.Service.Infrastructure.Config;
 internal static class ConfigSchema
 {
     /// <summary>Config schema version understood by this build.</summary>
-    internal const int Current = 7;
+    internal const int Current = 8;
 
     internal const string VersionKey = "SchemaVersion";
 
@@ -42,7 +42,8 @@ internal static class ConfigSchema
         if (from < 5) MigrateTo5(root);
         if (from < 6) MigrateTo6(root);
         if (from < 7) MigrateTo7(root);
-        // if (from < 8) MigrateTo8(root);   // future steps go here, in order
+        if (from < 8) MigrateTo8(root);
+        // if (from < 9) MigrateTo9(root);   // future steps go here, in order
 
         root[VersionKey] = Current;
         return true;
@@ -139,6 +140,27 @@ internal static class ConfigSchema
     {
         // Intentionally empty: purely additive schema change.
         _ = root;
+    }
+
+    /// <summary>
+    /// v7 → v8: <c>Smtp.MaxRecipients</c> (int, default 500) was introduced so the envelope
+    /// recipient ceiling can follow the sender mailbox's Exchange Online <c>RecipientLimits</c>
+    /// instead of a hard-coded 500. Older files without the key fall back to that same default,
+    /// so nothing has to be transformed for the additive part.
+    ///
+    /// The one real fix: <c>Smtp.MaxSizeBytes = 0</c> used to be documented as "no limit", but
+    /// <c>SmtpOptionsValidator</c> rejects it and the SMTP listeners never start. Such a file can
+    /// only have been written by an older ConfigTool, and it leaves the service dead on every
+    /// boot — so 0 is lifted to the 150 MB Exchange Online ceiling, the closest working reading
+    /// of "no limit".
+    /// </summary>
+    private static void MigrateTo8(JsonObject root)
+    {
+        if (root["Smtp"] is not JsonObject smtp) return;
+        if (smtp["MaxSizeBytes"] is not JsonValue v) return;
+        if (!v.TryGetValue<long>(out var bytes) || bytes > 0) return;
+
+        smtp["MaxSizeBytes"] = 150L * 1024 * 1024;
     }
 }
 
