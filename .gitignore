@@ -27,6 +27,8 @@ CLAUDE.local.md
 # so it is ignored in place instead of moved into internal/.
 internal/
 CLAUDE.md
+# Scratch list of incoming ideas; the tracked counterpart lives in internal/.
+FeatureRequests.md
 
 # ── Local-only configuration (never commit credentials or machine state) ─────
 *.local.json
