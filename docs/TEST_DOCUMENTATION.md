@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1067 tests** (1002 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-08
+**Total: 1068 tests** (1003 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-08
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -1325,11 +1325,12 @@ rows above only check that each condition is wired into it.
 
 | Test | Scenario | Expected result |
 |---|---|---|
+| `ExecuteAsync_Enabled_RunsTheCheckOnStartup` | Hosted service started with monitoring enabled | The check runs — awaited via the notification call itself, not a fixed delay, so a loaded agent cannot fail it |
 | `ExecuteAsync_Disabled_DoesNotCheckCertificate` | `Enabled = false` | `ICertificateLoader.LoadCertificate` never called |
-| `ExecuteAsync_NoCertificate_DoesNotNotify` | No cert configured (loader returns null) | Neither `NotifyCertificateExpiringAsync` nor `NotifyCertificateExpiredAsync` called |
-| `ExecuteAsync_ExpiringCertificate_NotifiesExpiringSoon` | Self-signed cert expiring in 5 days; threshold = 14 days | `NotifyCertificateExpiringAsync` called |
-| `ExecuteAsync_ExpiredCertificate_NotifiesExpired` | Self-signed cert expired 1 day ago | `NotifyCertificateExpiredAsync` called |
-| `ExecuteAsync_HealthyCertificate_ReportsRenewedState` | Self-signed cert valid for 200 days; threshold = 14 days | `NotifyCertificateRenewedAsync` called (clears any prior alert), no expiring warning |
+| `CheckAll_NoCertificate_DoesNotNotify` | No cert configured (loader returns null) | Neither `NotifyCertificateExpiringAsync` nor `NotifyCertificateExpiredAsync` called |
+| `CheckAll_ExpiringCertificate_NotifiesExpiringSoon` | Self-signed cert expiring in 5 days; threshold = 14 days | `NotifyCertificateExpiringAsync` called |
+| `CheckAll_ExpiredCertificate_NotifiesExpired` | Self-signed cert expired 1 day ago | `NotifyCertificateExpiredAsync` called |
+| `CheckAll_HealthyCertificate_ReportsRenewedState` | Self-signed cert valid for 200 days; threshold = 14 days | `NotifyCertificateRenewedAsync` called (clears any prior alert), no expiring warning |
 | `CheckAll_GraphUsesClientSecret_DoesNotWarnAboutTheGraphCertificate` | Graph configured with a client secret | `NotifyGraphCertificateExpiringAsync` never called — there is no certificate to expire |
 | `CheckAll_GraphCertificateNotInStore_DoesNotNotifyAndDoesNotThrow` | Thumbprint that resolves to nothing | No notification, no exception — logged as an operator error, and the TLS check must still run |
 | `CheckAll_TlsCertificateExpiring_StillWarnsWhileGraphUsesACertificate` | TLS cert expiring + Graph on certificate auth | `NotifyCertificateExpiringAsync` still called — the two certificates are independent |
