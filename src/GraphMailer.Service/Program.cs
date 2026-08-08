@@ -199,7 +199,9 @@ try
     builder.Services.AddSingleton<IMetricsService>(sp => sp.GetRequiredService<MetricsService>());
     builder.Services.AddHostedService<MetricsCollectorService>();
 
-    // Phase 4 – Admin notifications
+    // Phase 4 – Admin notifications. The alert state store is what makes every state-based
+    // monitor share one notification cadence, so it must be a singleton.
+    builder.Services.AddSingleton<IAlertStateStore, AlertStateStore>();
     builder.Services.AddSingleton<IAdminNotificationService, AdminNotificationService>();
 
     // Periodic operations report (weekly/monthly HTML email to admin recipients)

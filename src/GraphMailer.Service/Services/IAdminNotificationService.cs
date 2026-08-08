@@ -4,6 +4,14 @@ namespace GraphMailer.Service.Services;
 /// Sends administrative alert emails when notable events occur.
 /// All methods are safe to call unconditionally: if admin notifications are disabled
 /// or Graph API is not configured, the call returns immediately.
+///
+/// The <c>Notify…</c>/<c>Notify…Recovered</c> pairs are <i>state-based</i>: monitors report the
+/// current state on every check and this service decides what to send, so no monitor keeps
+/// notification state of its own. Calling the raise method repeatedly while the condition persists
+/// is expected and produces at most one mail per
+/// <see cref="Configuration.AdminNotificationsOptions.RenotifyMinutes"/>; calling the recovery
+/// method on every healthy check is equally expected and only mails if the condition had been
+/// reported before.
 /// </summary>
 internal interface IAdminNotificationService
 {
@@ -19,16 +27,29 @@ internal interface IAdminNotificationService
     Task NotifyCertificateExpiringAsync(string certSubject, DateTime notAfter, CancellationToken ct = default);
     Task NotifyCertificateExpiredAsync(string certSubject, DateTime notAfter, CancellationToken ct = default);
 
+    /// <summary>Clears the TLS listener certificate alert — expiring and expired share one condition.</summary>
+    Task NotifyCertificateRenewedAsync(string certSubject, DateTime notAfter, CancellationToken ct = default);
+
     /// <summary>
     /// Advance warning that the Graph client certificate (Entra app-only auth) is about to expire.
     /// There is no "expired" counterpart on purpose: once it lapses no Graph token can be acquired,
     /// so the message could never be delivered.
     /// </summary>
     Task NotifyGraphCertificateExpiringAsync(string certSubject, DateTime notAfter, CancellationToken ct = default);
+    Task NotifyGraphCertificateRenewedAsync(string certSubject, DateTime notAfter, CancellationToken ct = default);
     Task NotifyLowDiskSpaceAsync(string drivePath, double freePercent, CancellationToken ct = default);
+    Task NotifyDiskSpaceRecoveredAsync(string drivePath, double freePercent, CancellationToken ct = default);
     Task NotifyIpBlockedAsync(string ip, CancellationToken ct = default);
     Task NotifyAuthFailureAsync(string ip, string username, CancellationToken ct = default);
     Task NotifyGraphApiErrorAsync(string error, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reports that the Entra app registration is missing required application permissions.
+    /// <paramref name="missingRoles"/> is the bare role list used to detect a changed gap;
+    /// <paramref name="detail"/> is the human-readable version including what each is needed for.
+    /// </summary>
+    Task NotifyGraphPermissionsMissingAsync(IReadOnlyList<string> missingRoles, string detail, CancellationToken ct = default);
+    Task NotifyGraphPermissionsRestoredAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Alerts that one or more <c>ENC[...]</c> values in <c>graphmailer.json</c> cannot be

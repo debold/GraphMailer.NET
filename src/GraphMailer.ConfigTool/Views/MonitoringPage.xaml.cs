@@ -60,9 +60,16 @@ public partial class MonitoringPage : UserControl
 
     internal void LoadFrom(ConfigDocument doc)
     {
+        CertMonitoringEnabled.IsChecked = doc.Monitoring.CertMonitoringEnabled;
+        CertCheckInterval.Text = doc.Monitoring.CertCheckIntervalHours.ToString();
         CertWarnDays.Text = doc.Monitoring.CertWarnDays.ToString();
+        DiskMonitoringEnabled.IsChecked = doc.Monitoring.DiskMonitoringEnabled;
+        DiskCheckInterval.Text = doc.Monitoring.DiskCheckIntervalMinutes.ToString();
         DiskWarnPct.Text = doc.Monitoring.DiskWarnPct.ToString();
+        PortMonitoringEnabled.IsChecked = doc.Monitoring.PortMonitoringEnabled;
         PortCheckInterval.Text = doc.Monitoring.PortCheckIntervalMinutes.ToString();
+        PortOutageThreshold.Text = doc.Monitoring.PortOutageThresholdMinutes.ToString();
+        GraphMonitoringEnabled.IsChecked = doc.Monitoring.GraphMonitoringEnabled;
         GraphCheckInterval.Text = doc.Monitoring.GraphCheckIntervalMinutes.ToString();
         UpdateCheckEnabled.IsChecked = doc.Monitoring.UpdateCheckEnabled;
         TelemetryEnabled.IsChecked = doc.Monitoring.TelemetryEnabled;
@@ -83,9 +90,16 @@ public partial class MonitoringPage : UserControl
 
     internal void CollectTo(ConfigDocument doc)
     {
+        doc.Monitoring.CertMonitoringEnabled = CertMonitoringEnabled.IsChecked == true;
+        doc.Monitoring.CertCheckIntervalHours = int.TryParse(CertCheckInterval.Text, out var cci) ? cci : 24;
         doc.Monitoring.CertWarnDays = int.TryParse(CertWarnDays.Text, out var cw) ? cw : 14;
+        doc.Monitoring.DiskMonitoringEnabled = DiskMonitoringEnabled.IsChecked == true;
+        doc.Monitoring.DiskCheckIntervalMinutes = int.TryParse(DiskCheckInterval.Text, out var di) ? di : 60;
         doc.Monitoring.DiskWarnPct = int.TryParse(DiskWarnPct.Text, out var dw) ? dw : 10;
+        doc.Monitoring.PortMonitoringEnabled = PortMonitoringEnabled.IsChecked == true;
         doc.Monitoring.PortCheckIntervalMinutes = int.TryParse(PortCheckInterval.Text, out var pc) ? pc : 5;
+        doc.Monitoring.PortOutageThresholdMinutes = int.TryParse(PortOutageThreshold.Text, out var po) ? po : 10;
+        doc.Monitoring.GraphMonitoringEnabled = GraphMonitoringEnabled.IsChecked == true;
         doc.Monitoring.GraphCheckIntervalMinutes = int.TryParse(GraphCheckInterval.Text, out var gc) ? gc : 15;
         doc.Monitoring.UpdateCheckEnabled = UpdateCheckEnabled.IsChecked == true;
         doc.Monitoring.TelemetryEnabled = TelemetryEnabled.IsChecked == true;

@@ -520,6 +520,74 @@
                 </StackPanel>
             </Border>
 
+            <!-- Repeat & recovery card: one cadence for every monitored condition -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,16,0,0">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <StackPanel>
+                            <TextBlock Text="Repeat &amp; Recovery"
+                                       Style="{StaticResource SectionHeader}"/>
+                            <TextBlock Text="Applies to every lasting condition alike — low disk space, expiring or expired certificates, unreachable ports, Graph connectivity and permission gaps. One-off events (backup result, new version, service start/stop, delivery failures) are reported as they happen and are not affected."
+                                       Style="{StaticResource HintText}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Grid Margin="16,12,16,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Repeat after (minutes)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="RenotifyMinutes"
+                                     Text="1440"
+                                     h:NumericField.Min="0"
+                                     h:NumericField.Max="10080"
+                                     ToolTip="How long a condition that is still present stays quiet before it is reported again.&#x0a;0 reports it once and stays silent until it clears.&#x0a;Range: 0 – 10080 min (7 days)."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Reminder interval while a problem persists. Set to 0 to be told exactly once per occurrence."
+                                   Style="{StaticResource HintText}"
+                                   TextWrapping="Wrap"/>
+                    </Grid>
+                    <Grid Margin="16,4,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="All-clear notifications"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox x:Name="SendRecoveryNotification"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          IsChecked="True"
+                                          Checked="AnyCheckbox_Changed"
+                                          Unchecked="AnyCheckbox_Changed"/>
+                                <TextBlock Text="Enabled"
+                                           Style="{StaticResource BodyText}"
+                                           Margin="10,0,0,0"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,4,0,0"
+                                   Text="Send a follow-up email when a reported problem is resolved. Only ever sent for conditions that were reported before."
+                                   Style="{StaticResource HintText}"
+                                   TextWrapping="Wrap"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- Periodic report card -->
             <Border Style="{StaticResource Card}"
                     Margin="0,16,0,0">

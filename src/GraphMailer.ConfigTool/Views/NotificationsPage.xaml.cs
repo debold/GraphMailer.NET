@@ -65,6 +65,8 @@ public partial class NotificationsPage : UserControl
         NotifFrom.Text = doc.Notification.NotifFrom ?? "";
         ValidateEmailField(NotifFrom);
         SubjectPrefix.Text = doc.Notification.SubjectPrefix;
+        RenotifyMinutes.Text = doc.Notification.RenotifyMinutes.ToString();
+        SendRecoveryNotification.IsChecked = doc.Notification.SendRecoveryNotification;
         NotifEnabled.IsChecked = doc.Notification.NotifEnabled;
         NotifIpBlocked.IsChecked = doc.Notification.NotifIpBlocked;
         NotifDeliveryFailed.IsChecked = doc.Notification.NotifDeliveryFailed;
@@ -154,6 +156,8 @@ public partial class NotificationsPage : UserControl
         doc.Notification.RecipientAddresses = _adminRecipients.Select(r => r.Pattern).ToList();
         doc.Notification.NotifFrom = string.IsNullOrWhiteSpace(NotifFrom.Text) ? null : NotifFrom.Text.Trim();
         doc.Notification.SubjectPrefix = SubjectPrefix.Text;
+        doc.Notification.RenotifyMinutes = ClampInt(RenotifyMinutes.Text, 0, 10080, 1440);
+        doc.Notification.SendRecoveryNotification = SendRecoveryNotification.IsChecked == true;
         doc.Notification.NotifEnabled = NotifEnabled.IsChecked == true;
         doc.Notification.NotifIpBlocked = NotifIpBlocked.IsChecked == true;
         doc.Notification.NotifDeliveryFailed = NotifDeliveryFailed.IsChecked == true;

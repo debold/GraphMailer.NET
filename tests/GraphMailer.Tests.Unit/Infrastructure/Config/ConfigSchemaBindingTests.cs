@@ -93,6 +93,21 @@ public sealed class ConfigSchemaBindingTests : IDisposable
         opts.WarningThresholdDays.Should().Be(21);
     }
 
+    [Fact]
+    public void Save_CertMonitoringEnabledAndInterval_BindToCertificateMonitoringOptions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            Monitoring = new() { CertMonitoringEnabled = false, CertCheckIntervalHours = 6 }
+        });
+
+        var opts = Bind<CertificateMonitoringOptions>(
+            LoadServiceConfig(), CertificateMonitoringOptions.SectionName);
+
+        opts.Enabled.Should().BeFalse();
+        opts.CheckIntervalHours.Should().Be(6);
+    }
+
     // =========================================================================
     // DiskSpaceMonitoring
     // =========================================================================
@@ -106,6 +121,21 @@ public sealed class ConfigSchemaBindingTests : IDisposable
             LoadServiceConfig(), DiskSpaceMonitoringOptions.SectionName);
 
         opts.ThresholdPercent.Should().Be(20);
+    }
+
+    [Fact]
+    public void Save_DiskMonitoringEnabledAndInterval_BindToDiskSpaceMonitoringOptions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            Monitoring = new() { DiskMonitoringEnabled = false, DiskCheckIntervalMinutes = 15 }
+        });
+
+        var opts = Bind<DiskSpaceMonitoringOptions>(
+            LoadServiceConfig(), DiskSpaceMonitoringOptions.SectionName);
+
+        opts.Enabled.Should().BeFalse();
+        opts.CheckIntervalMinutes.Should().Be(15);
     }
 
     // =========================================================================
@@ -123,6 +153,21 @@ public sealed class ConfigSchemaBindingTests : IDisposable
         opts.CheckIntervalMinutes.Should().Be(3);
     }
 
+    [Fact]
+    public void Save_PortMonitoringEnabledAndOutageThreshold_BindToPortMonitoringOptions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            Monitoring = new() { PortMonitoringEnabled = false, PortOutageThresholdMinutes = 30 }
+        });
+
+        var opts = Bind<PortMonitoringOptions>(
+            LoadServiceConfig(), PortMonitoringOptions.SectionName);
+
+        opts.Enabled.Should().BeFalse();
+        opts.OutageAlertThresholdMinutes.Should().Be(30);
+    }
+
     // =========================================================================
     // GraphApiMonitoring
     // =========================================================================
@@ -136,6 +181,17 @@ public sealed class ConfigSchemaBindingTests : IDisposable
             LoadServiceConfig(), GraphApiMonitoringOptions.SectionName);
 
         opts.CheckIntervalMinutes.Should().Be(30);
+    }
+
+    [Fact]
+    public void Save_GraphMonitoringEnabled_BindsToGraphApiMonitoringEnabled()
+    {
+        _sut.Save(new ConfigDocument { Monitoring = new() { GraphMonitoringEnabled = false } });
+
+        var opts = Bind<GraphApiMonitoringOptions>(
+            LoadServiceConfig(), GraphApiMonitoringOptions.SectionName);
+
+        opts.Enabled.Should().BeFalse();
     }
 
     // =========================================================================
@@ -161,6 +217,32 @@ public sealed class ConfigSchemaBindingTests : IDisposable
         opts.RecipientAddresses.Should().ContainSingle("admin@corp.com");
         opts.SenderAddress.Should().Be("relay@corp.com");
         opts.Enabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Save_RepeatAndRecovery_BindToAdminNotificationsOptions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            Notification = new() { RenotifyMinutes = 60, SendRecoveryNotification = false }
+        });
+
+        var opts = Bind<AdminNotificationsOptions>(
+            LoadServiceConfig(), AdminNotificationsOptions.SectionName);
+
+        opts.RenotifyMinutes.Should().Be(60);
+        opts.SendRecoveryNotification.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Save_RenotifyZero_BindsAsReportOnce()
+    {
+        _sut.Save(new ConfigDocument { Notification = new() { RenotifyMinutes = 0 } });
+
+        var opts = Bind<AdminNotificationsOptions>(
+            LoadServiceConfig(), AdminNotificationsOptions.SectionName);
+
+        opts.RenotifyMinutes.Should().Be(0, "0 means 'report once until it clears', not 'unset'");
     }
 
     [Fact]

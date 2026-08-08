@@ -518,9 +518,16 @@ internal sealed class ConfigService
         var telemetry = root["Telemetry"] as JsonObject ?? new JsonObject();
         return new ConfigDocument.MonitoringSection
         {
+            CertMonitoringEnabled = cert["Enabled"]?.GetValue<bool>() ?? true,
+            CertCheckIntervalHours = cert["CheckIntervalHours"]?.GetValue<int>() ?? 24,
             CertWarnDays = cert["WarningThresholdDays"]?.GetValue<int>() ?? 14,
+            DiskMonitoringEnabled = disk["Enabled"]?.GetValue<bool>() ?? true,
+            DiskCheckIntervalMinutes = disk["CheckIntervalMinutes"]?.GetValue<int>() ?? 60,
             DiskWarnPct = disk["ThresholdPercent"]?.GetValue<int>() ?? 10,
+            PortMonitoringEnabled = port["Enabled"]?.GetValue<bool>() ?? true,
             PortCheckIntervalMinutes = port["CheckIntervalMinutes"]?.GetValue<int>() ?? 5,
+            PortOutageThresholdMinutes = port["OutageAlertThresholdMinutes"]?.GetValue<int>() ?? 10,
+            GraphMonitoringEnabled = graph["Enabled"]?.GetValue<bool>() ?? true,
             GraphCheckIntervalMinutes = graph["CheckIntervalMinutes"]?.GetValue<int>() ?? 15,
             UpdateCheckEnabled = update["Enabled"]?.GetValue<bool>() ?? false,
             TelemetryEnabled = telemetry["Enabled"]?.GetValue<bool>() ?? false,
@@ -549,6 +556,8 @@ internal sealed class ConfigService
             RecipientAddresses = recipientList,
             NotifFrom = Str(o, "SenderAddress"),
             SubjectPrefix = Str(o, "SubjectPrefix") ?? "[GraphMailer]",
+            RenotifyMinutes = o["RenotifyMinutes"]?.GetValue<int>() ?? 1440,
+            SendRecoveryNotification = o["SendRecoveryNotification"]?.GetValue<bool>() ?? true,
             NotifIpBlocked = GetTypeEnabled(types, "IpBlockedAlert", true),
             NotifDeliveryFailed = GetTypeEnabled(types, "EmailDeliveryFailed", true),
             NotifCertExpiring = GetTypeEnabled(types, "CertificateExpiringWarning", true),
@@ -584,10 +593,25 @@ internal sealed class ConfigService
 
     private static void WriteMonitoring(JsonObject root, ConfigDocument.MonitoringSection s)
     {
-        EnsureSection(root, "CertificateMonitoring")["WarningThresholdDays"] = s.CertWarnDays;
-        EnsureSection(root, "DiskSpaceMonitoring")["ThresholdPercent"] = s.DiskWarnPct;
-        EnsureSection(root, "PortMonitoring")["CheckIntervalMinutes"] = s.PortCheckIntervalMinutes;
-        EnsureSection(root, "GraphApiMonitoring")["CheckIntervalMinutes"] = s.GraphCheckIntervalMinutes;
+        var cert = EnsureSection(root, "CertificateMonitoring");
+        cert["Enabled"] = s.CertMonitoringEnabled;
+        cert["CheckIntervalHours"] = s.CertCheckIntervalHours;
+        cert["WarningThresholdDays"] = s.CertWarnDays;
+
+        var disk = EnsureSection(root, "DiskSpaceMonitoring");
+        disk["Enabled"] = s.DiskMonitoringEnabled;
+        disk["CheckIntervalMinutes"] = s.DiskCheckIntervalMinutes;
+        disk["ThresholdPercent"] = s.DiskWarnPct;
+
+        var port = EnsureSection(root, "PortMonitoring");
+        port["Enabled"] = s.PortMonitoringEnabled;
+        port["CheckIntervalMinutes"] = s.PortCheckIntervalMinutes;
+        port["OutageAlertThresholdMinutes"] = s.PortOutageThresholdMinutes;
+
+        var graph = EnsureSection(root, "GraphApiMonitoring");
+        graph["Enabled"] = s.GraphMonitoringEnabled;
+        graph["CheckIntervalMinutes"] = s.GraphCheckIntervalMinutes;
+
         EnsureSection(root, "UpdateCheck")["Enabled"] = s.UpdateCheckEnabled;
         EnsureSection(root, "Telemetry")["Enabled"] = s.TelemetryEnabled;
     }
@@ -598,6 +622,8 @@ internal sealed class ConfigService
         o["Enabled"] = s.NotifEnabled;
         o["SenderAddress"] = string.IsNullOrWhiteSpace(s.NotifFrom) ? null : (JsonNode)s.NotifFrom!;
         o["SubjectPrefix"] = s.SubjectPrefix;
+        o["RenotifyMinutes"] = s.RenotifyMinutes;
+        o["SendRecoveryNotification"] = s.SendRecoveryNotification;
 
         var arr = new JsonArray();
         foreach (var addr in s.RecipientAddresses) arr.Add(addr);

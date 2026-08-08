@@ -8,8 +8,10 @@ using Microsoft.Extensions.Options;
 namespace GraphMailer.Service.Services;
 
 /// <summary>
-/// BackgroundService that monitors available disk space on the mail queue drive.
-/// Sends an admin notification when free space falls below <see cref="DiskSpaceMonitoringOptions.ThresholdPercent"/>.
+/// BackgroundService that monitors available disk space on the mail queue drive and reports the
+/// result to <see cref="IAdminNotificationService"/> on every check — below
+/// <see cref="DiskSpaceMonitoringOptions.ThresholdPercent"/> raises the alert, above it clears it.
+/// How often that turns into an actual email is decided centrally, not here.
 /// </summary>
 internal sealed class DiskSpaceMonitoringService : BackgroundService
 {
@@ -30,33 +32,38 @@ internal sealed class DiskSpaceMonitoringService : BackgroundService
         _logger = logger;
     }
 
+    /// <summary>Guards against a hand-edited 0/negative interval turning into an invalid timer period.</summary>
+    internal static TimeSpan Interval(int minutes) => TimeSpan.FromMinutes(Math.Clamp(minutes, 1, 1440));
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var opts = _options.CurrentValue;
-        if (!opts.Enabled)
-        {
-            _logger.LogDebug("[DiskMonitor] Disk space monitoring disabled");
-            return;
-        }
+        _logger.LogInformation("[DiskMonitor] Started (enabled: {Enabled}, interval: {Min}min, threshold: {Pct}%)",
+            opts.Enabled, opts.CheckIntervalMinutes, opts.ThresholdPercent);
 
-        _logger.LogInformation("[DiskMonitor] Started (interval: {Min}min, threshold: {Pct}%)",
-            opts.CheckIntervalMinutes, opts.ThresholdPercent);
+        if (opts.Enabled)
+            await CheckDiskSpaceAsync(opts, stoppingToken);   // check immediately on startup
 
-        // Check immediately on startup
-        await CheckDiskSpaceAsync(opts, stoppingToken);
-
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(opts.CheckIntervalMinutes));
+        // The loop runs even while disabled so switching the monitor on takes effect without a
+        // service restart — same for the interval, which is re-read on every tick.
+        using var timer = new PeriodicTimer(Interval(opts.CheckIntervalMinutes));
         try
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
-                await CheckDiskSpaceAsync(_options.CurrentValue, stoppingToken);
+            {
+                var current = _options.CurrentValue;
+                timer.Period = Interval(current.CheckIntervalMinutes);
+                if (!current.Enabled) continue;
+
+                await CheckDiskSpaceAsync(current, stoppingToken);
+            }
         }
         catch (OperationCanceledException) { }
 
         _logger.LogInformation("[DiskMonitor] Stopped");
     }
 
-    private async Task CheckDiskSpaceAsync(DiskSpaceMonitoringOptions opts, CancellationToken ct)
+    internal async Task CheckDiskSpaceAsync(DiskSpaceMonitoringOptions opts, CancellationToken ct)
     {
         try
         {
@@ -80,8 +87,16 @@ internal sealed class DiskSpaceMonitoringService : BackgroundService
 
             if (freePct < opts.ThresholdPercent)
             {
-                _logger.LogWarning("[DiskMonitor] Low disk space: {Free:F1}% free on {Drive}", freePct, driveRoot);
+                _logger.LogWarning("[DiskMonitor] Low disk space: {Free:F1}% free on {Drive} (threshold {Pct}%)",
+                    freePct, driveRoot, opts.ThresholdPercent);
                 await _notify.NotifyLowDiskSpaceAsync(driveRoot, freePct, ct);
+            }
+            else
+            {
+                // Reported on every healthy check, not only on the transition: the alert store knows
+                // whether anything was raised, and this way an alert that predates a service restart
+                // still gets its recovery mail.
+                await _notify.NotifyDiskSpaceRecoveredAsync(driveRoot, freePct, ct);
             }
         }
         catch (Exception ex)

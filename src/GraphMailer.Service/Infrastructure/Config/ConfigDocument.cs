@@ -132,11 +132,26 @@ internal sealed class ConfigDocument
         public int BlockDurationSeconds { get; set; } = 600;
     }
 
+    /// <summary>
+    /// The four periodic monitors. Every one of them exposes the same three controls — on/off,
+    /// how often it checks, and what counts as a problem — so none of them behaves differently
+    /// from the others for reasons the operator cannot see.
+    /// </summary>
     internal sealed class MonitoringSection
     {
+        public bool CertMonitoringEnabled { get; set; } = true;
+        public int CertCheckIntervalHours { get; set; } = 24;
         public int CertWarnDays { get; set; } = 14;
+
+        public bool DiskMonitoringEnabled { get; set; } = true;
+        public int DiskCheckIntervalMinutes { get; set; } = 60;
         public int DiskWarnPct { get; set; } = 10;
+
+        public bool PortMonitoringEnabled { get; set; } = true;
         public int PortCheckIntervalMinutes { get; set; } = 5;
+        public int PortOutageThresholdMinutes { get; set; } = 10;
+
+        public bool GraphMonitoringEnabled { get; set; } = true;
         public int GraphCheckIntervalMinutes { get; set; } = 15;
         /// <summary>Opt-in weekly GitHub release check (queries api.github.com).</summary>
         public bool UpdateCheckEnabled { get; set; } = false;
@@ -211,6 +226,17 @@ internal sealed class ConfigDocument
         public List<string> RecipientAddresses { get; set; } = [];
         public string? NotifFrom { get; set; }
         public string SubjectPrefix { get; set; } = "[GraphMailer]";
+
+        /// <summary>
+        /// Minutes before a still-active condition (disk, certificate, port, Graph) is reported
+        /// again; 0 = report once until it clears. Global on purpose — see
+        /// <see cref="Configuration.AdminNotificationsOptions.RenotifyMinutes"/>.
+        /// </summary>
+        public int RenotifyMinutes { get; set; } = 1440;
+
+        /// <summary>Send a follow-up mail when a reported condition clears.</summary>
+        public bool SendRecoveryNotification { get; set; } = true;
+
         public bool NotifIpBlocked { get; set; } = true;
         public bool NotifDeliveryFailed { get; set; } = true;
         public bool NotifCertExpiring { get; set; } = true;

@@ -100,6 +100,30 @@ public sealed class CertificateMonitoringServiceTests
             Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task ExecuteAsync_HealthyCertificate_ReportsRenewedState()
+    {
+        var cert = CreateSelfSignedCert(expiresInDays: 200);
+        var loader = Substitute.For<ICertificateLoader>();
+        loader.LoadCertificate().Returns(cert);
+
+        var notify = Substitute.For<IAdminNotificationService>();
+        var opts = Monitor(new CertificateMonitoringOptions { Enabled = true, WarningThresholdDays = 14, CheckIntervalHours = 24 });
+        var svc = new CertificateMonitoringService(loader, notify, opts, NoGraphCert, NullLogger<CertificateMonitoringService>.Instance);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        await svc.StartAsync(cts.Token);
+        await Task.Delay(150);
+        await svc.StopAsync(CancellationToken.None);
+
+        // The healthy state is reported unconditionally; the alert store decides whether that
+        // becomes an all-clear mail. Without it a renewal after an expiry alert would go unnoticed.
+        await notify.Received().NotifyCertificateRenewedAsync(
+            Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+        await notify.DidNotReceive().NotifyCertificateExpiringAsync(
+            Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+    }
+
     // -------------------------------------------------------------------------
     // Graph client certificate (Entra auth) — a different certificate from the TLS one
     // -------------------------------------------------------------------------

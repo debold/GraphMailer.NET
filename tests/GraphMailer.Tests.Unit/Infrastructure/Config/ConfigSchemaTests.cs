@@ -217,6 +217,112 @@ public sealed class ConfigSchemaTests
     }
 
     [Fact]
+    public void Migrate_V8_ToV9_RemovesNotificationTypesThatNeverHadACaller()
+    {
+        var root = JsonNode.Parse("""
+            {
+              "SchemaVersion": 8,
+              "AdminNotifications": {
+                "NotificationTypes": {
+                  "QueueProcessorFailure": { "Enabled": true },
+                  "PortMonitoringSustainedOutage": { "Enabled": true },
+                  "PortMonitoringAlert": { "Enabled": false }
+                }
+              }
+            }
+            """)!.AsObject();
+
+        ConfigSchema.Migrate(root).Should().BeTrue();
+
+        var types = root["AdminNotifications"]!["NotificationTypes"]!.AsObject();
+        types.ContainsKey("QueueProcessorFailure").Should().BeFalse();
+        types.ContainsKey("PortMonitoringSustainedOutage").Should().BeFalse();
+        types["PortMonitoringAlert"]!["Enabled"]!.GetValue<bool>().Should().BeFalse(
+            "a real switch the operator set must survive the clean-up");
+    }
+
+    [Fact]
+    public void Migrate_V8_ToV9_RemovesUnreadPortAlertCooldown()
+    {
+        var root = JsonNode.Parse("""
+            { "SchemaVersion": 8, "PortMonitoring": { "CheckIntervalMinutes": 3, "AlertCooldownMinutes": 60 } }
+            """)!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        var port = root["PortMonitoring"]!.AsObject();
+        port.ContainsKey("AlertCooldownMinutes").Should().BeFalse("no code ever read it");
+        port["CheckIntervalMinutes"]!.GetValue<int>().Should().Be(3);
+    }
+
+    [Fact]
+    public void Migrate_V8_ToV9_SilencedRecoveryToggle_CarriesOverToGlobalSwitch()
+    {
+        // The two per-monitor recovery toggles are folded into one global switch. An operator who
+        // hand-edited either to false must not start receiving all-clear mails after the upgrade.
+        var root = JsonNode.Parse("""
+            {
+              "SchemaVersion": 8,
+              "AdminNotifications": {
+                "NotificationTypes": { "PortMonitoringRecovery": { "Enabled": false } }
+              }
+            }
+            """)!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        root["AdminNotifications"]!["SendRecoveryNotification"]!.GetValue<bool>().Should().BeFalse();
+        root["AdminNotifications"]!["NotificationTypes"]!.AsObject()
+            .ContainsKey("PortMonitoringRecovery").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Migrate_V8_ToV9_RecoveryTogglesLeftAtDefault_DoesNotWriteGlobalSwitch()
+    {
+        var root = JsonNode.Parse("""
+            {
+              "SchemaVersion": 8,
+              "AdminNotifications": {
+                "NotificationTypes": {
+                  "PortMonitoringRecovery": { "Enabled": true },
+                  "GraphApiConnectivityRestored": { "Enabled": true }
+                }
+              }
+            }
+            """)!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        root["AdminNotifications"]!.AsObject().ContainsKey("SendRecoveryNotification").Should().BeFalse(
+            "the absent key is valid — the options binder falls back to the default (all-clear on)");
+    }
+
+    [Fact]
+    public void Migrate_V8_ToV9_AddsNoKeys_RepeatSettingsFallBackToDefaults()
+    {
+        var root = JsonNode.Parse("""{ "SchemaVersion": 8, "AdminNotifications": { "SubjectPrefix": "[GM]" } }""")!.AsObject();
+
+        ConfigSchema.Migrate(root).Should().BeTrue();
+
+        var notifications = root["AdminNotifications"]!.AsObject();
+        notifications["SubjectPrefix"]!.GetValue<string>().Should().Be("[GM]");
+        notifications.ContainsKey("RenotifyMinutes").Should().BeFalse(
+            "the absent key is valid — the options binder falls back to the default (1440)");
+    }
+
+    [Fact]
+    public void Migrate_V8_ToV9_NoAdminNotificationsSection_IsLeftAlone()
+    {
+        var root = JsonNode.Parse("""{ "SchemaVersion": 8, "Certificate": { "SubjectName": "smtp.local" } }""")!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        root.ContainsKey("AdminNotifications").Should().BeFalse(
+            "the migration must not materialise sections that were never there");
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+    }
+
+    [Fact]
     public void Migrate_AlreadyCurrent_IsNoOp()
         => ConfigSchema.Migrate(new JsonObject { ["SchemaVersion"] = ConfigSchema.Current }).Should().BeFalse();
 

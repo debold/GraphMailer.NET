@@ -8,16 +8,28 @@ using System.Text;
 namespace GraphMailer.Service.Services;
 
 /// <summary>
-/// Routes monitoring alerts to the admin via Graph API.
+/// Routes monitoring alerts to the admin via Graph API. Three delivery models, picked by what the
+/// notification actually reports:
 ///
-/// Batching (EmailDeliveryFailed): accumulates failures for <see cref="BatchedNotificationTypeOptions.BatchDelaySeconds"/>
-/// seconds before sending a single summary message. Subsequent calls reset the timer.
+/// <b>State-based</b> (disk space, certificates, ports, Graph connectivity and permissions): the
+/// condition either holds or it does not. <see cref="IAlertStateStore"/> owns the cadence — one mail
+/// when the condition appears or changes, a repeat only after
+/// <see cref="AdminNotificationsOptions.RenotifyMinutes"/>, and one recovery mail when it clears
+/// (<see cref="AdminNotificationsOptions.SendRecoveryNotification"/>). The monitors report the
+/// current state on every check and hold no notification state of their own.
 ///
-/// Threshold (IpBlocked, AuthFailure): only notifies when the event count inside a rolling
+/// <b>Batching</b> (EmailDeliveryFailed): accumulates failures for
+/// <see cref="BatchedNotificationTypeOptions.BatchDelaySeconds"/> seconds before sending a single
+/// summary message. Subsequent calls reset the timer.
+///
+/// <b>Threshold</b> (IpBlocked, AuthFailure): only notifies when the event count inside a rolling
 /// <see cref="ThresholdNotificationTypeOptions.TimeWindowSeconds"/> window reaches
 /// <see cref="ThresholdNotificationTypeOptions.FailureThreshold"/>.
 ///
-/// Cooldown: per notification type, a minimum 60-second gap is enforced to prevent flooding.
+/// The batched and threshold models plus the one-shot event mails (backup, update, service
+/// start/stop, config decryption) share a minimum 60-second per-type gap to prevent flooding.
+/// State-based alerts do not use it — their repetition is governed entirely by
+/// <see cref="AdminNotificationsOptions.RenotifyMinutes"/>.
 /// </summary>
 internal sealed class AdminNotificationService : IAdminNotificationService, IDisposable
 {
@@ -25,6 +37,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
 
     private readonly IGraphApiClient _graph;
     private readonly MailQueueWriter _queueWriter;
+    private readonly IAlertStateStore _alertState;
     private readonly IOptionsMonitor<AdminNotificationsOptions> _options;
     private readonly IOptionsMonitor<NdrOptions> _ndrOptions;
     private readonly ILogger<AdminNotificationService> _logger;
@@ -44,12 +57,14 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
     public AdminNotificationService(
         IGraphApiClient graph,
         MailQueueWriter queueWriter,
+        IAlertStateStore alertState,
         IOptionsMonitor<AdminNotificationsOptions> options,
         IOptionsMonitor<NdrOptions> ndrOptions,
         ILogger<AdminNotificationService> logger)
     {
         _graph = graph;
         _queueWriter = queueWriter;
+        _alertState = alertState;
         _options = options;
         _ndrOptions = ndrOptions;
         _logger = logger;
@@ -87,7 +102,8 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
     public Task NotifyCertificateExpiringAsync(string certSubject, DateTime notAfter, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
-        if (!IsEnabled(opts, opts.NotificationTypes.CertificateExpiringWarning, "cert-expiring")) return Task.CompletedTask;
+        if (!ShouldRaise(opts, opts.NotificationTypes.CertificateExpiringWarning, AlertKeys.TlsCertificate, $"expiring:{certSubject}"))
+            return Task.CompletedTask;
 
         var mail = new NotificationEmail
         {
@@ -96,13 +112,14 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Intro = "A certificate used by GraphMailer expires shortly. Renew or replace it before the expiry date to avoid a service degradation.",
             Fields = [new("Subject", certSubject), new("Expires", $"{notAfter:R}")],
         };
-        return SendAsync(opts, $"Certificate expiring: {certSubject}", mail, "cert-expiring", ct);
+        return SendAsync(opts, $"Certificate expiring: {certSubject}", mail, ct);
     }
 
     public Task NotifyCertificateExpiredAsync(string certSubject, DateTime notAfter, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
-        if (!IsEnabled(opts, opts.NotificationTypes.CertificateExpired, "cert-expired")) return Task.CompletedTask;
+        if (!ShouldRaise(opts, opts.NotificationTypes.CertificateExpired, AlertKeys.TlsCertificate, $"expired:{certSubject}"))
+            return Task.CompletedTask;
 
         var mail = new NotificationEmail
         {
@@ -111,13 +128,29 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Intro = "A certificate used by GraphMailer has expired and must be renewed or replaced now.",
             Fields = [new("Subject", certSubject), new("Expired", $"{notAfter:R}")],
         };
-        return SendAsync(opts, $"Certificate EXPIRED: {certSubject}", mail, "cert-expired", ct);
+        return SendAsync(opts, $"Certificate EXPIRED: {certSubject}", mail, ct);
+    }
+
+    public Task NotifyCertificateRenewedAsync(string certSubject, DateTime notAfter, CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        if (!ShouldClear(opts, AlertKeys.TlsCertificate)) return Task.CompletedTask;
+
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Success,
+            Title = "Certificate is valid again",
+            Intro = "The certificate that was reported as expiring or expired is no longer a concern — a certificate with a sufficient remaining lifetime is now in use.",
+            Fields = [new("Subject", certSubject), new("Expires", $"{notAfter:R}")],
+        };
+        return SendAsync(opts, $"Certificate renewed: {certSubject}", mail, ct);
     }
 
     public Task NotifyGraphCertificateExpiringAsync(string certSubject, DateTime notAfter, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
-        if (!IsEnabled(opts, opts.NotificationTypes.GraphCertificateExpiringWarning, "graph-cert-expiring")) return Task.CompletedTask;
+        if (!ShouldRaise(opts, opts.NotificationTypes.GraphCertificateExpiringWarning, AlertKeys.GraphCertificate, certSubject))
+            return Task.CompletedTask;
 
         var mail = new NotificationEmail
         {
@@ -130,13 +163,29 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
                   + "registration before the expiry date.",
             Fields = [new("Subject", certSubject), new("Expires", $"{notAfter:R}")],
         };
-        return SendAsync(opts, $"Graph client certificate expiring: {certSubject}", mail, "graph-cert-expiring", ct);
+        return SendAsync(opts, $"Graph client certificate expiring: {certSubject}", mail, ct);
+    }
+
+    public Task NotifyGraphCertificateRenewedAsync(string certSubject, DateTime notAfter, CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        if (!ShouldClear(opts, AlertKeys.GraphCertificate)) return Task.CompletedTask;
+
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Success,
+            Title = "Graph client certificate is valid again",
+            Intro = "The Entra authentication certificate that was reported as expiring now has a sufficient remaining lifetime again.",
+            Fields = [new("Subject", certSubject), new("Expires", $"{notAfter:R}")],
+        };
+        return SendAsync(opts, $"Graph client certificate renewed: {certSubject}", mail, ct);
     }
 
     public Task NotifyLowDiskSpaceAsync(string drivePath, double freePercent, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
-        if (!IsEnabled(opts, opts.NotificationTypes.LowDiskSpaceWarning, "disk-low")) return Task.CompletedTask;
+        if (!ShouldRaise(opts, opts.NotificationTypes.LowDiskSpaceWarning, AlertKeys.DiskSpace, drivePath))
+            return Task.CompletedTask;
 
         var mail = new NotificationEmail
         {
@@ -145,7 +194,22 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Intro = "Free space on the drive holding the GraphMailer data directory is running low. The mail queue and logs stop working when the disk is full.",
             Fields = [new("Drive", drivePath), new("Free", $"{freePercent:F1}%")],
         };
-        return SendAsync(opts, $"Low disk space: {freePercent:F1}% free on {drivePath}", mail, "disk-low", ct);
+        return SendAsync(opts, $"Low disk space: {freePercent:F1}% free on {drivePath}", mail, ct);
+    }
+
+    public Task NotifyDiskSpaceRecoveredAsync(string drivePath, double freePercent, CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        if (!ShouldClear(opts, AlertKeys.DiskSpace)) return Task.CompletedTask;
+
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Success,
+            Title = "Disk space is back to normal",
+            Intro = "Free space on the drive holding the GraphMailer data directory is above the warning threshold again.",
+            Fields = [new("Drive", drivePath), new("Free", $"{freePercent:F1}%")],
+        };
+        return SendAsync(opts, $"Disk space recovered: {freePercent:F1}% free on {drivePath}", mail, ct);
     }
 
     public Task NotifyIpBlockedAsync(string ip, CancellationToken ct = default)
@@ -164,7 +228,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Intro = "An SMTP client exceeded the failure limit and has been blocked temporarily. Repeated blocks may indicate an attack or a misconfigured application.",
             Fields = [new("Blocked IP", ip)],
         };
-        return SendAsync(opts, $"IP blocked: {ip}", mail, "ip-blocked", ct);
+        return SendAsync(opts, $"IP blocked: {ip}", mail, ct);
     }
 
     public Task NotifyAuthFailureAsync(string ip, string username, CancellationToken ct = default)
@@ -183,13 +247,16 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Intro = "Repeated SMTP authentication failures were detected. Check whether this is a misconfigured application or a password-guessing attempt.",
             Fields = [new("IP", ip), new("Username", username)],
         };
-        return SendAsync(opts, $"Auth failures from {ip}", mail, "auth-failure", ct);
+        return SendAsync(opts, $"Auth failures from {ip}", mail, ct);
     }
 
     public Task NotifyGraphApiErrorAsync(string error, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
-        if (!IsEnabled(opts, opts.NotificationTypes.GraphApiConnectionError, "graph-error")) return Task.CompletedTask;
+        // The error text carries request ids and timestamps that differ on every probe, so the alert
+        // detail is the plain condition — otherwise each check would read as a new problem.
+        if (!ShouldRaise(opts, opts.NotificationTypes.GraphApiConnectionError, AlertKeys.GraphApi, "unreachable"))
+            return Task.CompletedTask;
 
         var mail = new NotificationEmail
         {
@@ -198,13 +265,13 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Intro = "GraphMailer cannot reach the Microsoft Graph API. Queued mail is retried automatically and delivered once connectivity returns.",
             Fields = [new("Error", error)],
         };
-        return SendAsync(opts, "Graph API connection error", mail, "graph-error", ct);
+        return SendAsync(opts, "Graph API connection error", mail, ct);
     }
 
     public Task NotifyGraphApiRestoredAsync(CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
-        if (!IsEnabled(opts, opts.NotificationTypes.GraphApiConnectivityRestored, "graph-restored")) return Task.CompletedTask;
+        if (!ShouldClear(opts, AlertKeys.GraphApi)) return Task.CompletedTask;
 
         var mail = new NotificationEmail
         {
@@ -212,7 +279,42 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Title = "Graph API connection restored",
             Intro = "Graph API connectivity has been restored. Queued mail is being delivered again.",
         };
-        return SendAsync(opts, "Graph API connection restored", mail, "graph-restored", ct);
+        return SendAsync(opts, "Graph API connection restored", mail, ct);
+    }
+
+    public Task NotifyGraphPermissionsMissingAsync(IReadOnlyList<string> missingRoles, string detail, CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        // Keyed on the set of missing roles: a changed gap (one more permission revoked) is a new
+        // situation and is reported immediately, the same gap follows the normal repeat interval.
+        var roleKey = string.Join(",", missingRoles);
+        if (!ShouldRaise(opts, opts.NotificationTypes.GraphApiConnectionError, AlertKeys.GraphPermissions, roleKey))
+            return Task.CompletedTask;
+
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Critical,
+            Title = "Graph application permissions are missing",
+            Intro = "The Entra app registration does not grant every permission GraphMailer needs. "
+                  + "Re-run the Entra setup wizard or grant them in Entra ID (admin consent required).",
+            ItemsTitle = "Missing permissions",
+            Items = [detail],
+        };
+        return SendAsync(opts, "Missing Graph application permissions", mail, ct);
+    }
+
+    public Task NotifyGraphPermissionsRestoredAsync(CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        if (!ShouldClear(opts, AlertKeys.GraphPermissions)) return Task.CompletedTask;
+
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Success,
+            Title = "Graph application permissions are complete again",
+            Intro = "The Entra app registration now grants every permission GraphMailer needs.",
+        };
+        return SendAsync(opts, "Graph application permissions restored", mail, ct);
     }
 
     public Task NotifyConfigDecryptionFailedAsync(IReadOnlyList<string> fieldPaths, CancellationToken ct = default)
@@ -231,7 +333,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Items = [.. fieldPaths],
             Note = "Likely cause: the key ring (HKLM\\SOFTWARE\\GraphMailer\\DataProtection) differs from the one that encrypted the config — e.g. after restoring graphmailer.json to a different machine. Re-enter the affected values in the ConfigTool to re-encrypt them with the current key.",
         };
-        return SendAsync(opts, "Config secrets cannot be decrypted", mail, "config-decrypt-error", ct);
+        return SendAsync(opts, "Config secrets cannot be decrypted", mail, ct);
     }
 
     public Task NotifyBackupResultAsync(bool succeeded, string detail, CancellationToken ct = default)
@@ -249,7 +351,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
                 : "A scheduled configuration backup failed. Check the service log for details and verify the backup settings.",
             Items = detail.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
         };
-        return SendAsync(opts, subject, mail, "backup-result", ct);
+        return SendAsync(opts, subject, mail, ct);
     }
 
     public Task NotifyUpdateAvailableAsync(string currentVersion, string latestVersion, string? releaseUrl, CancellationToken ct = default)
@@ -265,13 +367,16 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             LinkUrl = releaseUrl,
             LinkLabel = "Release notes & download",
         };
-        return SendAsync(opts, $"Update available: {latestVersion}", mail, "update-available", ct);
+        return SendAsync(opts, $"Update available: {latestVersion}", mail, ct);
     }
 
     public Task NotifyPortOutageAsync(int port, string reason, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
-        if (!IsEnabled(opts, opts.NotificationTypes.PortMonitoringAlert, $"port-outage-{port}")) return Task.CompletedTask;
+        // "down" rather than the reason: it contains the running outage duration, which would make
+        // every check look like a new condition.
+        if (!ShouldRaise(opts, opts.NotificationTypes.PortMonitoringAlert, AlertKeys.Port(port), "down"))
+            return Task.CompletedTask;
 
         var mail = new NotificationEmail
         {
@@ -280,13 +385,13 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Intro = "A monitored SMTP listener port failed its connectivity check.",
             Fields = [new("Port", port.ToString()), new("Reason", reason)],
         };
-        return SendAsync(opts, $"Port {port} outage", mail, $"port-outage-{port}", ct);
+        return SendAsync(opts, $"Port {port} outage", mail, ct);
     }
 
     public Task NotifyPortRestoredAsync(int port, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
-        if (!IsEnabled(opts, opts.NotificationTypes.PortMonitoringRecovery, $"port-restored-{port}")) return Task.CompletedTask;
+        if (!ShouldClear(opts, AlertKeys.Port(port))) return Task.CompletedTask;
 
         var mail = new NotificationEmail
         {
@@ -294,7 +399,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Title = $"Port {port} is reachable again",
             Intro = "The monitored SMTP listener port passed its connectivity check again.",
         };
-        return SendAsync(opts, $"Port {port} restored", mail, $"port-restored-{port}", ct);
+        return SendAsync(opts, $"Port {port} restored", mail, ct);
     }
 
     public Task NotifyServiceStartedAsync(CancellationToken ct = default)
@@ -308,7 +413,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Title = "GraphMailer service started",
             Fields = [new("Started at", $"{DateTimeOffset.UtcNow:R}")],
         };
-        return SendAsync(opts, "Service started", mail, "service-started", ct);
+        return SendAsync(opts, "Service started", mail, ct);
     }
 
     public Task NotifyServiceStoppedAsync(CancellationToken ct = default)
@@ -322,7 +427,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             Title = "GraphMailer service is stopping",
             Fields = [new("Stopping at", $"{DateTimeOffset.UtcNow:R}")],
         };
-        return SendAsync(opts, "Service stopping", mail, "service-stopped", ct);
+        return SendAsync(opts, "Service stopping", mail, ct);
     }
 
     public async Task SendNdrAsync(MailMetadata meta, string deliveryError, CancellationToken ct = default)
@@ -455,8 +560,31 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
     // Internals
     // -------------------------------------------------------------------------
 
+    /// <summary>Gate for one-shot event notifications: enabled, plus the anti-flood cooldown.</summary>
     private bool IsEnabled(AdminNotificationsOptions opts, NotificationTypeOptions typeOpts, string cooldownKey)
         => opts.Enabled && typeOpts.Enabled && CanSend(cooldownKey);
+
+    /// <summary>
+    /// Gate for a state-based alert. The alert store is only consulted once the type is enabled, so a
+    /// suppressed condition never records state — otherwise switching the type back on could produce a
+    /// recovery mail for something that was never announced.
+    /// </summary>
+    private bool ShouldRaise(AdminNotificationsOptions opts, NotificationTypeOptions typeOpts, string alertKey, string detail)
+        => opts.Enabled
+           && typeOpts.Enabled
+           && _alertState.ShouldNotify(alertKey, detail, opts.RenotifyMinutes);
+
+    /// <summary>
+    /// Gate for a recovery notification. The alert is always cleared — even with notifications off —
+    /// so stale state cannot linger and mute the next real occurrence. The mail itself only goes out
+    /// when the condition had actually been reported, which implies its type was enabled at the time;
+    /// no separate per-type check is needed here.
+    /// </summary>
+    private bool ShouldClear(AdminNotificationsOptions opts, string alertKey)
+    {
+        var wasActive = _alertState.Clear(alertKey);
+        return wasActive && opts.Enabled && opts.SendRecoveryNotification;
+    }
 
     private bool CanSend(string key)
     {
@@ -497,7 +625,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         }
     }
 
-    private async Task SendAsync(AdminNotificationsOptions opts, string subject, NotificationEmail mail, string cooldownKey, CancellationToken ct)
+    private async Task SendAsync(AdminNotificationsOptions opts, string subject, NotificationEmail mail, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(opts.SenderAddress) || opts.RecipientAddresses.Count == 0)
         {
@@ -545,6 +673,6 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         };
 
         _logger.LogInformation("[AdminNotify] Flushing {Count} delivery failure(s) as batched notification", count);
-        await SendAsync(opts, subject, mail, "delivery-failed-batch", CancellationToken.None);
+        await SendAsync(opts, subject, mail, CancellationToken.None);
     }
 }

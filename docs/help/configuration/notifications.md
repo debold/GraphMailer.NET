@@ -101,8 +101,9 @@ The **All** switch in the card header turns every event on or off at once. It sh
 while every single event is enabled, so it also tells you at a glance whether anything is switched
 off.
 
-The thresholds behind several of these (certificate warning days, disk-space percentage, port and
-Graph check intervals) are set on the [Monitoring](monitoring.md) page.
+The thresholds behind several of these (certificate warning days, disk-space percentage, port
+outage threshold, check intervals) are set on the [Monitoring](monitoring.md) page. *How often* an
+alert repeats is set under [Repeat & Recovery](#repeat--recovery) below.
 
 ### The two certificates are not the same thing
 
@@ -135,6 +136,46 @@ with a client secret the alert never fires.
 > The *New GraphMailer version available* alert additionally requires the weekly **update check**
 > to be enabled on the [Monitoring](monitoring.md) page. You receive **one email per new
 > release**, not a weekly reminder.
+
+## Repeat & Recovery
+
+Some problems are a **lasting condition** rather than a one-off event: the disk stays full, the
+certificate stays expired, the port stays unreachable. These two settings decide what happens while
+such a condition persists, and they apply to **every** monitor identically — one cadence, no
+per-monitor surprises.
+
+| Setting | Default | Range | Meaning |
+|---|---|---|---|
+| Repeat after (minutes) | `1440` (daily) | 0–10080 | How long a condition that is still present stays quiet before you are reminded. `0` reports it exactly once and stays silent until it clears. |
+| All-clear notifications | On | — | Send a follow-up email when a reported problem is resolved. |
+
+Covered by these settings:
+
+- Low disk space
+- TLS listener certificate expiring / expired
+- Graph client certificate expiring
+- SMTP port unreachable
+- Graph API unreachable
+- Missing Graph application permissions
+
+**Not** covered — these report a moment in time, not a state, so repeating them makes no sense:
+configuration backup result, new version available, service started/stopped, and failed mail
+delivery (which is batched into one summary email instead).
+
+Three details worth knowing:
+
+- A condition that **changes** is reported straight away rather than waiting out the interval. A
+  certificate going from *expiring* to *expired*, or a second Graph permission being revoked, is a
+  new situation, not a repeat.
+- An **all-clear is only ever sent for something that was actually reported**. Switching an alert
+  off cannot produce a stray "resolved" email, and a brief blip that never crossed the port outage
+  threshold produces neither an alert nor an all-clear.
+- The state survives a **service restart**. Restarting during an outage does not re-alert, and an
+  outage that started before the restart still produces its all-clear when it ends.
+
+> [!TIP]
+> The default reminds you once a day while something is broken. If your monitoring is elsewhere and
+> you only want to be told once per incident, set **Repeat after** to `0`.
 
 ## Periodic Reports
 

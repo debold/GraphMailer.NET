@@ -52,8 +52,11 @@ public sealed class AdminNotificationServiceNdrTests : IDisposable
         queueOpts.CurrentValue.Returns(new MailQueueOptions { MailDir = _tempDir });
         var queueWriter = new MailQueueWriter(queueOpts, NullLogger<MailQueueWriter>.Instance);
 
+        var alertState = new AlertStateStore(
+            Path.Combine(_tempDir, "alert-state.json"), NullLogger<AlertStateStore>.Instance);
+
         return new AdminNotificationService(
-            _graph, queueWriter, adminMonitor, ndrMonitor, NullLogger<AdminNotificationService>.Instance);
+            _graph, queueWriter, alertState, adminMonitor, ndrMonitor, NullLogger<AdminNotificationService>.Instance);
     }
 
     private static MailMetadata MakeMeta(string from = "sender@example.com") => new()

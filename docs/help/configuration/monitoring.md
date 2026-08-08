@@ -68,6 +68,16 @@ so no country, region or city is recorded either.
 > The data is sent to the developer's Microsoft Azure telemetry endpoint (Application Insights,
 > EU region) over HTTPS. A failed transmission is retried hourly and never affects mail delivery.
 
+## The four monitors
+
+The next four cards all work the same way and expose the same controls: an **on/off switch**, a
+**check interval**, and — where it applies — a **threshold** for what counts as a problem. All three
+take effect without restarting the service.
+
+How often a detected problem turns into an *email* is deliberately **not** set here. That is one
+shared setting for all monitors, on the [Notifications](notifications.md) page under
+**Repeat & Recovery**.
+
 ## Certificate Monitoring
 
 Warns before a certificate (the TLS listener certificate or the Entra authentication certificate)
@@ -75,6 +85,8 @@ expires, so you can renew in time.
 
 | Setting | Default | Range | Meaning |
 |---|---|---|---|
+| Enable this monitor | On | — | Master switch for the certificate check. |
+| Check interval (hours) | `24` | 1–168 | How often the certificate store is inspected. |
 | Warning threshold (days) | `14` | 1–60 | Raise a notification when a certificate expires within this many days. |
 
 ## Disk Space Monitoring
@@ -84,6 +96,8 @@ queued to disk.
 
 | Setting | Default | Range | Meaning |
 |---|---|---|---|
+| Enable this monitor | On | — | Master switch for the disk space check. |
+| Check interval (minutes) | `60` | 1–1440 | How often free disk space is measured. |
 | Warning threshold (%) | `10` | 1–100 | Notify when free disk space falls below this percentage. |
 
 ## Port Connectivity Checks
@@ -93,7 +107,9 @@ accepting connections.
 
 | Setting | Default | Range | Meaning |
 |---|---|---|---|
-| Check interval (minutes) | `5` | 1–1440 | How often each listener port is probed. A failed probe raises an alert. |
+| Enable this monitor | On | — | Master switch for the port check. |
+| Check interval (minutes) | `5` | 1–1440 | How often each listener port is probed. |
+| Outage threshold (minutes) | `10` | 1–1440 | How long a port must stay unreachable before it is reported. Keeps a brief service restart from raising an alert. |
 
 ## Graph API Monitoring
 
@@ -102,7 +118,8 @@ required permissions are present.
 
 | Setting | Default | Range | Meaning |
 |---|---|---|---|
-| Check interval (minutes) | `15` | 1–1440 | How often the Graph connection is verified. A failure raises an alert. |
+| Enable this monitor | On | — | Master switch for the Graph health probe. |
+| Check interval (minutes) | `15` | 1–1440 | How often the Graph connection is verified. |
 
 > [!TIP]
 > This check is what warns you when admin consent was revoked, a client secret expired, or a

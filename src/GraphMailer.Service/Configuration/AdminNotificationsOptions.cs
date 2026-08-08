@@ -57,14 +57,16 @@ public sealed class AdminNotificationTypesOptions
     /// </summary>
     public NotificationTypeOptions GraphCertificateExpiringWarning { get; init; } = new();
     public ThresholdNotificationTypeOptions AuthenticationFailureAlert { get; init; } = new();
+
+    /// <summary>
+    /// Covers both Graph API faults reported by <see cref="Services.GraphApiMonitoringService"/>:
+    /// connectivity loss and missing application permissions. They share one switch because both
+    /// mean the same thing operationally — Graph is not usable as configured.
+    /// </summary>
     public NotificationTypeOptions GraphApiConnectionError { get; init; } = new();
-    public NotificationTypeOptions QueueProcessorFailure { get; init; } = new();
     public NotificationTypeOptions LowDiskSpaceWarning { get; init; } = new();
     public ThresholdNotificationTypeOptions IpBlockedAlert { get; init; } = new() { FailureThreshold = 10 };
     public NotificationTypeOptions PortMonitoringAlert { get; init; } = new();
-    public NotificationTypeOptions PortMonitoringRecovery { get; init; } = new();
-    public NotificationTypeOptions PortMonitoringSustainedOutage { get; init; } = new();
-    public NotificationTypeOptions GraphApiConnectivityRestored { get; init; } = new();
     public NotificationTypeOptions ConfigDecryptionError { get; init; } = new();
     public NotificationTypeOptions BackupResult { get; init; } = new();
     public NotificationTypeOptions ServiceStartStopAlert { get; init; } = new() { Enabled = false };
@@ -85,6 +87,28 @@ public sealed class AdminNotificationsOptions
     public string? SenderAddress { get; init; }
     public List<string> RecipientAddresses { get; init; } = [];
     public string SubjectPrefix { get; init; } = "[GraphMailer]";
+
+    /// <summary>
+    /// How long a <i>state-based</i> alert stays quiet before it is reported again while the
+    /// condition is still present — low disk space, an expiring/expired certificate, an
+    /// unreachable port, Graph connectivity or permission gaps. <c>0</c> reports each condition
+    /// exactly once and stays silent until it clears.
+    ///
+    /// Deliberately global: every monitor is supposed to behave identically here, and a per-monitor
+    /// setting is what made the cadence unpredictable before. Event-based notifications (backup
+    /// result, update available, service start/stop, delivery failures) are unaffected — they
+    /// report a moment in time, not a lasting state.
+    /// </summary>
+    public int RenotifyMinutes { get; init; } = 1440;
+
+    /// <summary>
+    /// Send a follow-up mail when a state-based alert clears (disk space recovered, certificate
+    /// renewed, port reachable again, Graph connectivity or permissions restored). Only ever sent
+    /// for conditions that were actually reported before, so switching an alert off cannot produce
+    /// a stray "resolved" mail.
+    /// </summary>
+    public bool SendRecoveryNotification { get; init; } = true;
+
     public AdminNotificationTypesOptions NotificationTypes { get; init; } = new();
 
     /// <summary>Periodic operations report (weekly/monthly) sent to <see cref="RecipientAddresses"/>.</summary>

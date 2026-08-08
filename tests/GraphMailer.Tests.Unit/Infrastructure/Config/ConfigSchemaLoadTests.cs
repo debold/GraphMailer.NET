@@ -83,6 +83,17 @@ public sealed class ConfigSchemaLoadTests : IDisposable
         doc.Monitoring.CertWarnDays.Should().Be(7);
     }
 
+    [Fact]
+    public void Load_CertificateMonitoring_EnabledAndInterval_AppearInDocMonitoring()
+    {
+        WriteJson("""{ "CertificateMonitoring": { "Enabled": false, "CheckIntervalHours": 6 } }""");
+
+        var doc = _sut.Load();
+
+        doc.Monitoring.CertMonitoringEnabled.Should().BeFalse();
+        doc.Monitoring.CertCheckIntervalHours.Should().Be(6);
+    }
+
     // =========================================================================
     // DiskSpaceMonitoring  (SectionName = "DiskSpaceMonitoring")
     // =========================================================================
@@ -95,6 +106,17 @@ public sealed class ConfigSchemaLoadTests : IDisposable
         var doc = _sut.Load();
 
         doc.Monitoring.DiskWarnPct.Should().Be(25);
+    }
+
+    [Fact]
+    public void Load_DiskSpaceMonitoring_EnabledAndInterval_AppearInDocMonitoring()
+    {
+        WriteJson("""{ "DiskSpaceMonitoring": { "Enabled": false, "CheckIntervalMinutes": 15 } }""");
+
+        var doc = _sut.Load();
+
+        doc.Monitoring.DiskMonitoringEnabled.Should().BeFalse();
+        doc.Monitoring.DiskCheckIntervalMinutes.Should().Be(15);
     }
 
     // =========================================================================
@@ -111,6 +133,17 @@ public sealed class ConfigSchemaLoadTests : IDisposable
         doc.Monitoring.PortCheckIntervalMinutes.Should().Be(3);
     }
 
+    [Fact]
+    public void Load_PortMonitoring_EnabledAndOutageThreshold_AppearInDocMonitoring()
+    {
+        WriteJson("""{ "PortMonitoring": { "Enabled": false, "OutageAlertThresholdMinutes": 30 } }""");
+
+        var doc = _sut.Load();
+
+        doc.Monitoring.PortMonitoringEnabled.Should().BeFalse();
+        doc.Monitoring.PortOutageThresholdMinutes.Should().Be(30);
+    }
+
     // =========================================================================
     // GraphApiMonitoring  (SectionName = "GraphApiMonitoring")
     // =========================================================================
@@ -123,6 +156,27 @@ public sealed class ConfigSchemaLoadTests : IDisposable
         var doc = _sut.Load();
 
         doc.Monitoring.GraphCheckIntervalMinutes.Should().Be(30);
+    }
+
+    [Fact]
+    public void Load_GraphApiMonitoring_Enabled_AppearsInDocMonitoring()
+    {
+        WriteJson("""{ "GraphApiMonitoring": { "Enabled": false } }""");
+
+        _sut.Load().Monitoring.GraphMonitoringEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Load_Monitoring_AllSectionsAbsent_EveryMonitorDefaultsToEnabled()
+    {
+        WriteJson("""{ "Smtp": { "Banner": "test" } }""");
+
+        var m = _sut.Load().Monitoring;
+
+        m.CertMonitoringEnabled.Should().BeTrue();
+        m.DiskMonitoringEnabled.Should().BeTrue();
+        m.PortMonitoringEnabled.Should().BeTrue();
+        m.GraphMonitoringEnabled.Should().BeTrue();
     }
 
     // =========================================================================
@@ -169,6 +223,38 @@ public sealed class ConfigSchemaLoadTests : IDisposable
     // AdminNotifications  (SectionName = "AdminNotifications")
     // Maps to ConfigDocument.NotificationSection
     // =========================================================================
+
+    [Fact]
+    public void Load_AdminNotifications_RepeatAndRecovery_AppearInDocNotification()
+    {
+        WriteJson("""{ "AdminNotifications": { "RenotifyMinutes": 60, "SendRecoveryNotification": false } }""");
+
+        var doc = _sut.Load();
+
+        doc.Notification.RenotifyMinutes.Should().Be(60);
+        doc.Notification.SendRecoveryNotification.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Load_AdminNotifications_RepeatAndRecoveryAbsent_DefaultToDailyRepeatWithAllClear()
+    {
+        WriteJson("""{ "AdminNotifications": { "SubjectPrefix": "[GM]" } }""");
+
+        var doc = _sut.Load();
+
+        doc.Notification.RenotifyMinutes.Should().Be(1440);
+        doc.Notification.SendRecoveryNotification.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Load_AdminNotifications_RenotifyZero_IsPreservedAsReportOnce()
+    {
+        // 0 is a meaningful setting ("tell me once"), not a missing value — it must not be
+        // mistaken for "unset" and replaced by the default.
+        WriteJson("""{ "AdminNotifications": { "RenotifyMinutes": 0 } }""");
+
+        _sut.Load().Notification.RenotifyMinutes.Should().Be(0);
+    }
 
     [Fact]
     public void Load_AdminNotifications_RecipientAddresses_AppearsInDocNotificationRecipientAddresses()

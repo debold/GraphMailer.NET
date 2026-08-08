@@ -25,7 +25,6 @@ public sealed class PortMonitoringOptions
     public bool Enabled { get; init; } = true;
     public int CheckIntervalMinutes { get; init; } = 5;
     public int OutageAlertThresholdMinutes { get; init; } = 10;
-    public int AlertCooldownMinutes { get; init; } = 60;
 }
 
 public sealed class GraphApiMonitoringOptions

@@ -44,6 +44,31 @@
 
 ### Changed
 
+- **Every monitor now follows the same notification cadence.** How often a lasting problem was
+  reported depended entirely on which monitor found it: low disk space and expiring certificates
+  mailed on *every* check (hourly and daily respectively, indefinitely), while an unreachable port
+  or a Graph outage mailed exactly once and then went quiet — including across a service restart,
+  where the "once" silently reset. Certificates and disk space had no all-clear at all, so a
+  resolved problem simply stopped being mentioned.
+
+  There is now one shared rule, configurable on *Notifications → Repeat & Recovery*: **Repeat after
+  (minutes)** (default 1440, i.e. a daily reminder; `0` reports each occurrence exactly once) and
+  **All-clear notifications** (default on). It covers low disk space, both certificates, port
+  outages, Graph connectivity and missing Graph permissions. One-off events — backup result, new
+  version, service start/stop, failed delivery — are unaffected; they report a moment in time, not
+  a state.
+
+  A condition that *changes* still reports immediately rather than waiting out the interval (a
+  certificate going from *expiring* to *expired*, or a second permission being revoked). The alert
+  state is persisted to `data\alert-state.json`, so restarting during an outage no longer re-alerts,
+  and an outage that began before the restart still produces its all-clear.
+
+- **The Monitoring page now offers the same controls for all four monitors.** Each of certificate,
+  disk space, port and Graph API monitoring now has an on/off switch, a check interval and its
+  threshold. Previously the switches were not exposed at all and two of the four intervals could
+  only be changed by hand-editing `graphmailer.json`. All of them now take effect without restarting
+  the service.
+
 - Config schema **v8**: adds `Smtp.MaxRecipients` (default 500) and repairs `Smtp.MaxSizeBytes = 0`.
   Older files migrate automatically on service start / ConfigTool open, with a backup in
   `config\backups\`.
@@ -64,6 +89,16 @@
   not save) instead of diverging in silence. Existing installations are unaffected — they have always
   used the registry ring. A leftover `config\keys` folder from an earlier non-elevated run can be
   deleted.
+
+### Removed
+
+- **Four configuration keys that did nothing have been removed.**
+  `AdminNotifications.NotificationTypes.QueueProcessorFailure` and `.PortMonitoringSustainedOutage`
+  were switches for notifications that no code ever sent, and `PortMonitoring.AlertCooldownMinutes`
+  was never read. `.PortMonitoringRecovery` and `.GraphApiConnectivityRestored` are superseded by
+  the new global **All-clear notifications** switch, which now covers every monitor rather than
+  those two. The schema migration (v9) removes all of them; an explicit `false` on either recovery
+  toggle is carried over to the global switch, so a deliberately silenced installation stays silent.
 
 ## 1.3.2.1058 — 2026-07-23
 

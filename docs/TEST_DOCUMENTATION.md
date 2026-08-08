@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 942 tests** (877 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-07-25
+**Total: 1001 tests** (936 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-07-27
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -622,15 +622,21 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 
 ### GraphApiMonitoringService (`Services/GraphApiMonitoringServiceTests.cs`)
 
+> The monitor reports the **current state** on every check and holds no notification state of its
+> own — the repeat/recovery cadence lives in `AlertStateStore`. Asserting "notified once" here
+> would test the wrong layer.
+
 | Test | Scenario | Expected result |
 |---|---|---|
-| `Check_ProbeFails_NotifiesOutageOnce` | Probe throws on two consecutive checks | Exactly 1 outage notification |
+| `Check_ProbeFails_ReportsOutageOnEveryCheck` | Probe throws on two consecutive checks | 2 outage reports, no restored report |
 | `Check_ProbeRecovers_NotifiesRestored` | Probe fails, then succeeds | Restored notification fires |
-| `Check_ProbeHealthy_NoNotifications` | Probe succeeds | No notifications |
+| `Check_ProbeHealthy_ReportsHealthyStateAndNoFault` | Probe succeeds | Restored + permissions-restored reported (clears any alert from before a restart); no fault reported |
 | `Check_GraphNotConfigured_DoesNotProbe` | Graph credentials missing | Probe never called |
-| `Check_MissingMailReadWrite_AlertsOncePerGap` | Token lacks Mail.ReadWrite, two checks | Exactly 1 alert naming the role |
-| `Check_UserReadAll_RequiredOnlyWhenSenderValidationEnabled` | Token lacks User.Read.All | Alert only when sender validation is enabled |
-| `Check_PermissionGapFixedAndReopened_AlertsAgain` | Gap → fixed → same gap again | Second alert fires after the reset |
+| `Check_MissingMailReadWrite_ReportsGapWithRoleAndDetail` | Token lacks Mail.ReadWrite | `NotifyGraphPermissionsMissingAsync` with the role in both the role list and the detail text |
+| `Check_SameGapTwice_ReportsBothTimesWithSameRoleKey` | Same permission gap on two checks | Both reported with an identical role list, so the alert store sees one condition |
+| `Check_UserReadAll_RequiredOnlyWhenSenderValidationEnabled` | Token lacks User.Read.All | Gap reported only when sender validation is enabled |
+| `Check_PermissionGapFixed_ReportsRestored` | Gap → all permissions granted | `NotifyGraphPermissionsRestoredAsync` fires only after the gap closes |
+| `Check_PermissionGapWidens_ReportsChangedRoleSet` | 1 role missing → 3 roles missing | Two reports with different role sets (a changed condition, reported immediately) |
 
 ---
 
@@ -1117,9 +1123,9 @@ comes from actual `RCPT TO` commands rather than a literal in the test. No tenan
 | `NotifyCertificateExpired_Enabled_Sends` | Notifications enabled, cert expired | `SendHtmlNotificationAsync` called with subject containing `"EXPIRED"`, body contains the cert subject |
 | `NotifyLowDiskSpace_Enabled_Sends` | Notifications enabled, low disk | `SendHtmlNotificationAsync` called with subject containing `"disk"`, body contains the drive |
 | `NotifyGraphApiError_Enabled_Sends` | Notifications enabled, Graph API error | `SendHtmlNotificationAsync` called with subject containing `"Graph API"`, body contains the error |
-| `NotifyGraphApiRestored_Enabled_Sends` | Notifications enabled, Graph API restored | `SendHtmlNotificationAsync` called with subject containing `"restored"` |
+| `NotifyGraphApiRestored_AfterOutage_Sends` | Outage reported first, then Graph API restored | `SendHtmlNotificationAsync` called with subject containing `"restored"` |
 | `NotifyPortOutage_Enabled_Sends` | Notifications enabled, port 2525 down | `SendHtmlNotificationAsync` called with subject containing `"2525"`, body contains the reason |
-| `NotifyPortRestored_Enabled_Sends` | Notifications enabled, port 2525 recovered | `SendHtmlNotificationAsync` called with subject containing `"2525"` and `"restored"` |
+| `NotifyPortRestored_AfterOutage_Sends` | Outage reported first, then port 2525 recovered | `SendHtmlNotificationAsync` called with subject containing `"2525"` and `"restored"` |
 | `NotifyCertificateExpiring_NoSenderAddress_DoesNotSend` | `SenderAddress = null` | `SendHtmlNotificationAsync` not called (warning logged) |
 | `NotifyIpBlocked_BelowThreshold_DoesNotSend` | 4 IP-blocked events; threshold = 5 | `SendHtmlNotificationAsync` not called |
 | `NotifyEmailDeliveryFailed_Disabled_DoesNotQueue` | `EmailDeliveryFailed.Enabled = false` | Timer not started; Graph API not called |
@@ -1129,6 +1135,69 @@ comes from actual `RCPT TO` commands rather than a literal in the test. No tenan
 | `NotifyUpdateAvailable_DefaultOptions_DoesNotSend` | Admin notifications enabled, `UpdateAvailable` at its default | `SendHtmlNotificationAsync` not called (the type is opt-in) |
 | `NotifyUpdateAvailable_TypeEnabled_Sends_WithVersionsAndUrl` | `UpdateAvailable.Enabled = true` | Subject contains `"Update available"` + latest version; body contains both versions and the release URL |
 | `NotifyUpdateAvailable_MasterDisabled_DoesNotSend` | `Enabled = false`, type enabled | `SendHtmlNotificationAsync` not called |
+
+**Uniform repeat/recovery cadence for state-based alerts** — the rule itself, covered once; the
+rows above only check that each condition is wired into it.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `StateAlert_ConditionPersists_SendsOnlyOnceWithinRepeatInterval` | Same low-disk condition reported 5× within `RenotifyMinutes` | Exactly 1 mail |
+| `StateAlert_RenotifyDisabled_SendsExactlyOncePerOccurrence` | `RenotifyMinutes = 0`, condition reported twice | Exactly 1 mail |
+| `StateAlert_RecoveryWithoutPriorAlert_DoesNotSend` | Healthy state reported without a preceding alert | No mail — monitors report health on every check |
+| `StateAlert_RecoveryDisabled_DoesNotSendAllClear` | `SendRecoveryNotification = false`, alert then recovery | Alert sent, all-clear suppressed |
+| `StateAlert_RecoveredThenRecurs_AlertsAgainImmediately` | Alert → recovery → same condition again | Second alert fires without waiting out the repeat interval |
+| `StateAlert_TypeDisabled_LeavesNoStateBehindForRecovery` | `LowDiskSpaceWarning.Enabled = false`, alert then recovery | Nothing sent — a suppressed alert must not produce an all-clear |
+| `CertificateAlert_EscalatesFromExpiringToExpired_SendsBoth` | Expiring, then expired (same alert key) | 2 mails — an escalation is a changed condition, not a repeat |
+| `CertificateAlert_RenewedAfterExpired_SendsOneAllClear` | Expiring → expired → renewed reported twice | Exactly 1 all-clear |
+| `PortAlert_PortsTrackedIndependently` | Ports 25 and 587 down, then 25 repeated | 2 mails (one per port); the repeat is suppressed |
+| `GraphPermissionsAlert_GapWidens_SendsAgainImmediately` | 1 missing role, then 2 missing roles | 2 mails — a different role set is a different condition |
+
+---
+
+### AlertStateStore (`Services/AlertStateStoreTests.cs`)
+
+> The single place that decides how often a lasting problem is reported. Every state-based monitor
+> routes through it, so these tests pin the cadence that used to differ per monitor: some mailed on
+> every check, others exactly once per process lifetime. State is persisted to
+> `data\alert-state.json` so a service restart neither re-alerts nor loses an owed all-clear.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `ShouldNotify_FirstRaise_ReturnsTrue` | Condition seen for the first time | `true` |
+| `ShouldNotify_SameConditionWithinInterval_ReturnsFalse` | Same key + detail, repeat interval not elapsed | `false` |
+| `ShouldNotify_RenotifyIntervalElapsed_ReturnsTrue` | Manual clock stepped to 1439 min, then 1440 min | `false`, then `true` |
+| `ShouldNotify_RenotifyDisabled_NeverRepeats` | `renotifyMinutes = 0`, reported three times | `true`, then `false`, `false` |
+| `ShouldNotify_DetailChanged_ReportsImmediately` | Same key, detail `expiring:` → `expired:` | `true` — escalations do not wait out the interval |
+| `Clear_ActiveAlert_ReturnsTrueOnceThenFalse` | Raise, then clear twice | `true`, then `false` |
+| `Clear_NeverRaised_ReturnsFalse` | Clear a key that was never raised | `false` |
+| `Clear_ThenRaiseAgain_ReportsImmediately` | Raise → clear → raise | `true` — a recurrence is a new occurrence |
+| `ShouldNotify_SurvivesRestart_DoesNotRepeatAfterReload` | New store instance over the same state file | `false` — an ongoing condition must not re-alert after a restart |
+| `Clear_SurvivesRestart_StillSendsRecovery` | Raise, new instance, clear | `true` — an outage that predates the restart still owes its all-clear |
+| `ShouldNotify_KeysAreIndependent` | Ports 25 and 587 raised and cleared separately | Each tracked on its own |
+| `Load_CorruptStateFile_StartsEmptyInsteadOfThrowing` | State file contains invalid JSON | Starts empty; the next raise returns `true` instead of failing the check |
+
+---
+
+### DiskSpaceMonitoringService (`Services/DiskSpaceMonitoringServiceTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Check_AboveThreshold_ReportsRecoveredState` | Threshold 0 % (always satisfied) | `NotifyDiskSpaceRecoveredAsync` called, no low-space report |
+| `Check_BelowThreshold_ReportsLowDiskSpace` | Threshold 100 % (never satisfied) | `NotifyLowDiskSpaceAsync` called, no recovery report |
+| `Check_StillBelowThreshold_ReportsOnEveryCheck` | Two checks below threshold | 2 reports — deduplication belongs to the alert store, not the monitor |
+| `Interval_OutOfRangeValues_AreClampedToAUsablePeriod` (Theory) | 0 / −5 / 60 / 99999 minutes | Clamped to 1 / 1 / 60 / 1440 min so a hand-edited value cannot kill the timer |
+
+---
+
+### PortMonitoringService (`Services/PortMonitoringServiceTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Check_PortReachable_ReportsRestoredState` | Real loopback listener bound | `NotifyPortRestoredAsync` called even without a preceding outage |
+| `Check_PortDownBelowOutageThreshold_ReportsNothing` | Closed port, threshold 10 min | Neither raise nor clear — a blip must not alert, but also must not resolve |
+| `Check_PortDownPastOutageThreshold_ReportsOutageOnEveryCheck` | Closed port, threshold 0 min, two checks | 2 outage reports |
+| `Check_PortRecovers_ReportsOutageThenRestored` | Closed port, then a listener bound on it | 1 outage report, then 1 restored report |
+| `Interval_OutOfRangeValues_AreClampedToAUsablePeriod` (Theory) | 0 / 5 / 99999 minutes | Clamped to 1 / 5 / 1440 min |
 
 ---
 
@@ -1163,6 +1232,7 @@ comes from actual `RCPT TO` commands rather than a literal in the test. No tenan
 | `ExecuteAsync_NoCertificate_DoesNotNotify` | No cert configured (loader returns null) | Neither `NotifyCertificateExpiringAsync` nor `NotifyCertificateExpiredAsync` called |
 | `ExecuteAsync_ExpiringCertificate_NotifiesExpiringSoon` | Self-signed cert expiring in 5 days; threshold = 14 days | `NotifyCertificateExpiringAsync` called |
 | `ExecuteAsync_ExpiredCertificate_NotifiesExpired` | Self-signed cert expired 1 day ago | `NotifyCertificateExpiredAsync` called |
+| `ExecuteAsync_HealthyCertificate_ReportsRenewedState` | Self-signed cert valid for 200 days; threshold = 14 days | `NotifyCertificateRenewedAsync` called (clears any prior alert), no expiring warning |
 | `CheckAll_GraphUsesClientSecret_DoesNotWarnAboutTheGraphCertificate` | Graph configured with a client secret | `NotifyGraphCertificateExpiringAsync` never called — there is no certificate to expire |
 | `CheckAll_GraphCertificateNotInStore_DoesNotNotifyAndDoesNotThrow` | Thumbprint that resolves to nothing | No notification, no exception — logged as an operator error, and the TLS check must still run |
 | `CheckAll_TlsCertificateExpiring_StillWarnsWhileGraphUsesACertificate` | TLS cert expiring + Graph on certificate auth | `NotifyCertificateExpiringAsync` still called — the two certificates are independent |
@@ -1286,6 +1356,12 @@ Daily opt-in heartbeat scheduler: persists cadence + install id + counter waterm
 | `Migrate_V7_ToV8_ZeroMaxSizeBytes_IsLiftedToExchangeCeiling` | v7 doc with `Smtp.MaxSizeBytes = 0`, written when 0 was documented as "no limit" | Raised to 157 286 400 (150 MB) — 0 fails the validator, so the listeners would never start after the upgrade |
 | `Migrate_V7_ToV8_PositiveMaxSizeBytes_IsLeftAlone` | v7 doc with `MaxSizeBytes = 10 MB` | Unchanged — a configured size is the operator's decision |
 | `Migrate_V7_ToV8_NoSmtpSection_IsLeftAlone` | v7 doc without an `Smtp` section | Section not created; version stamped to current |
+| `Migrate_V8_ToV9_RemovesNotificationTypesThatNeverHadACaller` | v8 doc with `QueueProcessorFailure` + `PortMonitoringSustainedOutage` | Both removed; a real switch (`PortMonitoringAlert = false`) survives |
+| `Migrate_V8_ToV9_RemovesUnreadPortAlertCooldown` | v8 doc with `PortMonitoring.AlertCooldownMinutes` | Removed (no code ever read it); `CheckIntervalMinutes` untouched |
+| `Migrate_V8_ToV9_SilencedRecoveryToggle_CarriesOverToGlobalSwitch` | v8 doc with `PortMonitoringRecovery.Enabled = false` | `AdminNotifications.SendRecoveryNotification = false`; the per-type key removed — a silenced operator stays silenced |
+| `Migrate_V8_ToV9_RecoveryTogglesLeftAtDefault_DoesNotWriteGlobalSwitch` | v8 doc with both recovery toggles at `true` | `SendRecoveryNotification` stays absent (binder default = on) |
+| `Migrate_V8_ToV9_AddsNoKeys_RepeatSettingsFallBackToDefaults` | v8 doc with only `SubjectPrefix` | `RenotifyMinutes` stays absent (binder default = 1440); prefix untouched |
+| `Migrate_V8_ToV9_NoAdminNotificationsSection_IsLeftAlone` | v8 doc without `AdminNotifications` | Section not created; version stamped to current |
 | `Migrate_AlreadyCurrent_IsNoOp` | Doc already at current version | `false` (no change) |
 | `Migrate_Idempotent` | Migrate twice | First `true`, second `false` |
 | `Migrate_NewerThanBuild_LeavesFileAlone` | `SchemaVersion = Current + 1` | `false`; version left untouched |
@@ -1311,9 +1387,17 @@ Verifies that every JSON key written by the service (`graphmailer.json`) is corr
 | `Load_Certificate_FailClosed_AppearsInDocCertificateFailClosed` | `Certificate.FailClosed = true` in JSON | `doc.Certificate.FailClosed == true` |
 | `Load_Certificate_FailClosedAbsent_DefaultsToFalse` | `Certificate` section without the key (pre-v2 config) | `doc.Certificate.FailClosed == false` |
 | `Load_CertificateMonitoring_WarningThresholdDays_AppearsInDocMonitoringCertWarnDays` | `CertificateMonitoring.WarningThresholdDays = 7` in JSON | `doc.Monitoring.CertWarnDays == 7` |
+| `Load_CertificateMonitoring_EnabledAndInterval_AppearInDocMonitoring` | `Enabled = false`, `CheckIntervalHours = 6` | Both surface in `doc.Monitoring` |
 | `Load_DiskSpaceMonitoring_ThresholdPercent_AppearsInDocMonitoringDiskWarnPct` | `DiskSpaceMonitoring.ThresholdPercent = 25` | `doc.Monitoring.DiskWarnPct == 25` |
+| `Load_DiskSpaceMonitoring_EnabledAndInterval_AppearInDocMonitoring` | `Enabled = false`, `CheckIntervalMinutes = 15` | Both surface in `doc.Monitoring` |
 | `Load_PortMonitoring_CheckIntervalMinutes_AppearsInDocMonitoringPortCheckInterval` | `PortMonitoring.CheckIntervalMinutes = 3` | `doc.Monitoring.PortCheckIntervalMinutes == 3` |
+| `Load_PortMonitoring_EnabledAndOutageThreshold_AppearInDocMonitoring` | `Enabled = false`, `OutageAlertThresholdMinutes = 30` | Both surface in `doc.Monitoring` |
 | `Load_GraphApiMonitoring_CheckIntervalMinutes_AppearsInDocMonitoringGraphCheckInterval` | `GraphApiMonitoring.CheckIntervalMinutes = 30` | `doc.Monitoring.GraphCheckIntervalMinutes == 30` |
+| `Load_GraphApiMonitoring_Enabled_AppearsInDocMonitoring` | `GraphApiMonitoring.Enabled = false` | `doc.Monitoring.GraphMonitoringEnabled == false` |
+| `Load_Monitoring_AllSectionsAbsent_EveryMonitorDefaultsToEnabled` | No monitoring sections at all | All four monitors default to enabled |
+| `Load_AdminNotifications_RepeatAndRecovery_AppearInDocNotification` | `RenotifyMinutes = 60`, `SendRecoveryNotification = false` | Both surface in `doc.Notification` |
+| `Load_AdminNotifications_RepeatAndRecoveryAbsent_DefaultToDailyRepeatWithAllClear` | Neither key present | `RenotifyMinutes == 1440`, `SendRecoveryNotification == true` |
+| `Load_AdminNotifications_RenotifyZero_IsPreservedAsReportOnce` | `RenotifyMinutes = 0` | Stays `0` — a real setting ("tell me once"), not an unset value |
 | `Load_AdminNotifications_RecipientAddresses_AppearsInDocNotificationRecipientAddresses` | `RecipientAddresses: ["ops@corp.com"]` | `doc.Notification.RecipientAddresses` contains the address |
 | `Load_AdminNotifications_SenderAddress_AppearsInDocNotificationNotifFrom` | `SenderAddress: "relay@corp.com"` | `doc.Notification.NotifFrom == "relay@corp.com"` |
 | `Load_AdminNotifications_SubjectPrefix_AppearsInDocNotificationSubjectPrefix` | `SubjectPrefix: "[PROD]"` | `doc.Notification.SubjectPrefix == "[PROD]"` |
@@ -1368,9 +1452,15 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `Save_CertificateFailClosed_BindsToCertificateFailClosed` | `doc.Certificate.FailClosed = true` saved | Options bound: `Certificate:FailClosed == true` |
 | `Save_FailedEmailRetentionDays_BindsToMailQueueFailedEmailRetentionDays` | `doc.MailQueue.FailedEmailRetentionDays = 14` saved | Options bound: `MailQueue:FailedEmailRetentionDays == 14` |
 | `Save_CertWarnDays_BindsToCertificateMonitoringWarningThresholdDays` | `doc.Monitoring.CertWarnDays = 7` saved | Options bound: `CertificateMonitoring:WarningThresholdDays == 7` |
+| `Save_CertMonitoringEnabledAndInterval_BindToCertificateMonitoringOptions` | `CertMonitoringEnabled = false`, `CertCheckIntervalHours = 6` | `CertificateMonitoring:Enabled` + `:CheckIntervalHours` bind |
 | `Save_DiskWarnPct_BindsToDiskSpaceMonitoringThresholdPercent` | `doc.Monitoring.DiskWarnPct = 25` saved | `DiskSpaceMonitoring:ThresholdPercent == 25` |
+| `Save_DiskMonitoringEnabledAndInterval_BindToDiskSpaceMonitoringOptions` | `DiskMonitoringEnabled = false`, `DiskCheckIntervalMinutes = 15` | `DiskSpaceMonitoring:Enabled` + `:CheckIntervalMinutes` bind |
 | `Save_PortCheckIntervalMinutes_BindsToPortMonitoringCheckIntervalMinutes` | `doc.Monitoring.PortCheckIntervalMinutes = 3` saved | `PortMonitoring:CheckIntervalMinutes == 3` |
+| `Save_PortMonitoringEnabledAndOutageThreshold_BindToPortMonitoringOptions` | `PortMonitoringEnabled = false`, `PortOutageThresholdMinutes = 30` | `PortMonitoring:Enabled` + `:OutageAlertThresholdMinutes` bind |
 | `Save_GraphCheckIntervalMinutes_BindsToGraphApiMonitoringCheckIntervalMinutes` | `doc.Monitoring.GraphCheckIntervalMinutes = 30` saved | `GraphApiMonitoring:CheckIntervalMinutes == 30` |
+| `Save_GraphMonitoringEnabled_BindsToGraphApiMonitoringEnabled` | `GraphMonitoringEnabled = false` | `GraphApiMonitoring:Enabled == false` |
+| `Save_RepeatAndRecovery_BindToAdminNotificationsOptions` | `RenotifyMinutes = 60`, `SendRecoveryNotification = false` | Both bind to `AdminNotificationsOptions` |
+| `Save_RenotifyZero_BindsAsReportOnce` | `RenotifyMinutes = 0` | Binds as `0` — "report once until it clears", not "unset" |
 | `Save_RecipientAddresses_BindToAdminNotificationsRecipientAddresses` | Master switch on + recipient address in doc | `AdminNotifications:RecipientAddresses[0]` matches, `Enabled == true` |
 | `Save_MasterSwitchOff_DisablesAdminNotificationsButKeepsTheRecipients` | Master switch off, recipients present | `Enabled == false`, recipients preserved — since v6 the flag is authoritative, not derived |
 | `Save_RecipientAddressesEmpty_DisablesAdminNotifications` | Empty recipient list | `AdminNotifications:Enabled == false` |

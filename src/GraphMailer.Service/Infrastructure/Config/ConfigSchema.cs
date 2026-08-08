@@ -17,7 +17,7 @@ namespace GraphMailer.Service.Infrastructure.Config;
 internal static class ConfigSchema
 {
     /// <summary>Config schema version understood by this build.</summary>
-    internal const int Current = 8;
+    internal const int Current = 9;
 
     internal const string VersionKey = "SchemaVersion";
 
@@ -43,7 +43,8 @@ internal static class ConfigSchema
         if (from < 6) MigrateTo6(root);
         if (from < 7) MigrateTo7(root);
         if (from < 8) MigrateTo8(root);
-        // if (from < 9) MigrateTo9(root);   // future steps go here, in order
+        if (from < 9) MigrateTo9(root);
+        // if (from < 10) MigrateTo10(root);   // future steps go here, in order
 
         root[VersionKey] = Current;
         return true;
@@ -162,6 +163,51 @@ internal static class ConfigSchema
 
         smtp["MaxSizeBytes"] = 150L * 1024 * 1024;
     }
+
+    /// <summary>
+    /// v8 → v9: the repeat cadence of state-based alerts (disk space, certificates, ports, Graph
+    /// connectivity and permissions) becomes uniform and configurable via the new global
+    /// <c>AdminNotifications.RenotifyMinutes</c> (default 1440) and
+    /// <c>AdminNotifications.SendRecoveryNotification</c> (default true). Both fall back to their
+    /// defaults, so the additive part needs no transformation.
+    ///
+    /// The clean-up: four notification-type keys are removed.
+    /// <list type="bullet">
+    ///   <item><c>QueueProcessorFailure</c> and <c>PortMonitoringSustainedOutage</c> never had a
+    ///   caller — they were switches for notifications that do not exist.</item>
+    ///   <item><c>PortMonitoringRecovery</c> and <c>GraphApiConnectivityRestored</c> are superseded
+    ///   by the global <c>SendRecoveryNotification</c>, which now covers every monitor instead of
+    ///   just these two. An explicit <c>false</c> on either is carried over to the global switch so
+    ///   an operator who silenced recovery mails stays silenced; the ConfigTool never exposed them,
+    ///   so in practice only hand-edited files can carry a value at all.</item>
+    /// </list>
+    /// </summary>
+    private static void MigrateTo9(JsonObject root)
+    {
+        // Independent of the AdminNotifications section below — a file can carry one without the other.
+        if (root["PortMonitoring"] is JsonObject port)
+            port.Remove("AlertCooldownMinutes");
+
+        if (root["AdminNotifications"] is not JsonObject notifications) return;
+        if (notifications["NotificationTypes"] is not JsonObject types) return;
+
+        if (notifications["SendRecoveryNotification"] is null
+            && (IsExplicitlyDisabled(types, "PortMonitoringRecovery")
+                || IsExplicitlyDisabled(types, "GraphApiConnectivityRestored")))
+        {
+            notifications["SendRecoveryNotification"] = false;
+        }
+
+        types.Remove("QueueProcessorFailure");
+        types.Remove("PortMonitoringSustainedOutage");
+        types.Remove("PortMonitoringRecovery");
+        types.Remove("GraphApiConnectivityRestored");
+    }
+
+    private static bool IsExplicitlyDisabled(JsonObject types, string key)
+        => (types[key] as JsonObject)?["Enabled"] is JsonValue v
+           && v.TryGetValue<bool>(out var enabled)
+           && !enabled;
 }
 
 /// <summary>Outcome of a <see cref="ConfigMigrator.MigrateFile"/> call.</summary>

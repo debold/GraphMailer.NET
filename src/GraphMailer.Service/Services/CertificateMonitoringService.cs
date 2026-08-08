@@ -42,26 +42,31 @@ internal sealed class CertificateMonitoringService : BackgroundService
         _logger = logger;
     }
 
+    /// <summary>Guards against a hand-edited 0/negative interval turning into an invalid timer period.</summary>
+    internal static TimeSpan Interval(int hours) => TimeSpan.FromHours(Math.Clamp(hours, 1, 168));
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var opts = _options.CurrentValue;
-        if (!opts.Enabled)
-        {
-            _logger.LogDebug("[CertMonitor] Certificate monitoring disabled");
-            return;
-        }
+        _logger.LogInformation("[CertMonitor] Started (enabled: {Enabled}, check interval: {Hours}h, warning threshold: {Days}d)",
+            opts.Enabled, opts.CheckIntervalHours, opts.WarningThresholdDays);
 
-        _logger.LogInformation("[CertMonitor] Started (check interval: {Hours}h, warning threshold: {Days}d)",
-            opts.CheckIntervalHours, opts.WarningThresholdDays);
+        if (opts.Enabled)
+            await CheckAllAsync(opts, stoppingToken);   // check immediately on startup
 
-        // Check immediately on startup
-        await CheckAllAsync(opts, stoppingToken);
-
-        using var timer = new PeriodicTimer(TimeSpan.FromHours(opts.CheckIntervalHours));
+        // The loop runs even while disabled so switching the monitor on takes effect without a
+        // service restart — same for the interval, which is re-read on every tick.
+        using var timer = new PeriodicTimer(Interval(opts.CheckIntervalHours));
         try
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
-                await CheckAllAsync(_options.CurrentValue, stoppingToken);
+            {
+                var current = _options.CurrentValue;
+                timer.Period = Interval(current.CheckIntervalHours);
+                if (!current.Enabled) continue;
+
+                await CheckAllAsync(current, stoppingToken);
+            }
         }
         catch (OperationCanceledException) { }
 
@@ -124,6 +129,7 @@ internal sealed class CertificateMonitoringService : BackgroundService
             else
             {
                 _logger.LogDebug("[CertMonitor] Graph client certificate OK – {Days:F0} day(s) until expiry", daysLeft);
+                await _notify.NotifyGraphCertificateRenewedAsync(cert.Subject, expiry, ct);
             }
         }
         catch (Exception ex)
@@ -163,6 +169,7 @@ internal sealed class CertificateMonitoringService : BackgroundService
             else
             {
                 _logger.LogDebug("[CertMonitor] Certificate OK – {Days:F0} day(s) until expiry", daysLeft);
+                await _notify.NotifyCertificateRenewedAsync(certSubject, expiry, ct);
             }
         }
         catch (Exception ex)
