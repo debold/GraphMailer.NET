@@ -36,16 +36,27 @@ The combined picture of the selected time range:
 
 ## Activity
 
-**Recent Activity** lists the newest per-message events in the selected time range (at most 200)
+**Recent Activity** lists the newest per-message events in the selected time range (500 at a time)
 with timestamp, event type, From, To and subject. **Click an event** to open a details panel below the list showing the rest: size, attachment
 count, receiving listener, TLS, authenticated user, duration, and the message id — or the failure
 reason for a failed event. Right-click that last line to copy it, for example to paste an error into
 a search or a ticket. The **✕** in the top right corner of the panel closes it again.
 
-The **Search** box in the card header filters the list as you type. It matches all of those values,
-not just the visible columns, so you can narrow the list down to one sender, one subject or one error
-message; the counter next to the box shows how many of the loaded events match. Column widths you
-drag and the selected event are kept when the list refreshes itself.
+The counter next to the search box always says what you are looking at — for example
+`newest 500 of 3,421` when more events exist than are currently loaded. In that case a
+**Load 500 more** button appears below the list; each click pages in another block. The loaded
+amount is kept while the list refreshes itself and is only reset when you change the time range or
+type a new search term.
+
+The **Search** box in the card header searches **every event in the selected time range**, not just
+the ones already loaded, and matches all of the values above rather than only the visible columns —
+so you can narrow the list down to one sender, one subject or one error message. Results appear
+shortly after you stop typing. The counter then reads `47 matches of 3,421`; a `+` after the number
+(`500+ matches`) means the page limit was reached and further matches follow. On a very large
+statistics database a search stops after 25,000 events, which the counter spells out — narrow the
+time range to search the rest.
+
+Column widths you drag and the selected event are kept when the list refreshes itself.
 
 > [!TIP]
 > Recent Activity is the fastest way to confirm a specific message went through and how long it took.
@@ -68,8 +79,9 @@ How the SMTP side of the relay is being used:
   fingerprint of a monitoring system checking the relay.
 - **Rejections by Reason** — IP blacklist / missing whitelist entry, dynamic IP block, failed
   authentication, blocked sender/recipient, size limit, and more.
-- **Top Client Hosts** — sessions, aborted sessions and delivered mails per client IP. Hosts with a
-  high aborted share are flagged as possible monitoring probes.
+- **Top Client Hosts** — sessions, aborted sessions and delivered mails per client IP, for the ten
+  busiest hosts. Hosts with a high aborted share are flagged as possible monitoring probes. If more
+  hosts were seen, a line below the table says how many are not shown.
 - **Per Listener** — sessions, mails, TLS and auth share per configured listener port, plus the
   average recipients per mail (To/CC/BCC) and the share of mails with attachments.
 
@@ -87,7 +99,8 @@ How messages leave the relay towards Microsoft 365:
 - **Delivery Attempts until Success** — how many messages needed 1, 2, 3 or more attempts.
 - **Delivery Variant** — direct `sendMail` versus draft + upload session (used for attachments
   ≥ 3 MB).
-- **Top Failure Causes** — the most frequent Graph errors, grouped.
+- **Top Failure Causes** — the ten most frequent Graph errors, grouped. If more distinct causes
+  occurred, a line below the table says how many are not shown.
 
 ## End-to-End
 

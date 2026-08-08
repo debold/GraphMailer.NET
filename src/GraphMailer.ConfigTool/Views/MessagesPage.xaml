@@ -17,6 +17,7 @@
                                MinHeight="120"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- ── Toolbar ─────────────────────────────────────────────────── -->
@@ -25,7 +26,9 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="16"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
@@ -41,11 +44,75 @@
                                   SelectionChanged="Folder_Changed"/>
                     </StackPanel>
 
+                    <!-- Search over the whole folder, not just the loaded page (same pattern as
+                         the Logs page and the Metrics Activity tab) -->
+                    <!-- Fills the toolbar's free space: the searched values are addresses and
+                         subjects, which are long — a narrow box hides what was typed. -->
+                    <Grid Grid.Column="2"
+                          MinWidth="240"
+                          HorizontalAlignment="Stretch">
+                        <TextBox x:Name="SearchBox"
+                                 VerticalAlignment="Center"
+                                 Padding="6,4,26,4"
+                                 ToolTip="Searches every message in the folder, not just the loaded ones.&#x0a;Matches sender, recipient, subject, status, client IP, message id and the failure reason."
+                                 TextChanged="Search_Changed"/>
+                        <TextBlock Text="Search…"
+                                   Foreground="#FF888888"
+                                   Margin="6,0,0,0"
+                                   VerticalAlignment="Center"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility"
+                                            Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=SearchBox}"
+                                                     Value="">
+                                            <Setter Property="Visibility"
+                                                    Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <!-- Clear button, shown only while the box has content -->
+                        <Button x:Name="SearchClear"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Width="22"
+                                Margin="0,0,3,0"
+                                Padding="0"
+                                Content="&#x2715;"
+                                FontSize="10"
+                                Foreground="{StaticResource TextSecondaryBrush}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Focusable="False"
+                                ToolTip="Clear search"
+                                Click="SearchClear_Click">
+                            <Button.Style>
+                                <!-- No BasedOn: the app has no implicit Button style, only keyed ones -->
+                                <Style TargetType="Button">
+                                    <Setter Property="Visibility"
+                                            Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=SearchBox}"
+                                                     Value="">
+                                            <Setter Property="Visibility"
+                                                    Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </Grid>
+
                     <!-- No refresh button: the page reloads itself every 5 seconds while it is
                          visible, and there is no way to pause that. No details toggle either —
                          selecting a row opens the panel, its ✕ closes it again. -->
                     <TextBlock x:Name="CountText"
-                               Grid.Column="2"
+                               Grid.Column="4"
                                Style="{StaticResource HintText}"
                                VerticalAlignment="Center"/>
                 </Grid>
@@ -104,9 +171,19 @@
                     </DataGrid.Columns>
                 </DataGrid>
 
+            <!-- Pages another block of messages in. Collapsed while the loaded rows already
+                 cover the whole folder. -->
+            <Button x:Name="LoadMoreButton"
+                    Grid.Row="2"
+                    Visibility="Collapsed"
+                    HorizontalAlignment="Center"
+                    Margin="0,8,0,2"
+                    Style="{StaticResource SmallButton}"
+                    Click="LoadMore_Click"/>
+
             <!-- ── Details panel ──────────────────────────────────────────────── -->
             <Border x:Name="MessageDetails"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     Visibility="Collapsed"
                     BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,1,0,0">
@@ -329,7 +406,7 @@
             </Border>
 
             <TextBlock x:Name="EmptyHint"
-                       Grid.Row="3"
+                       Grid.Row="4"
                        Style="{StaticResource HintText}"
                        TextWrapping="Wrap"
                        Margin="16,8,16,4"

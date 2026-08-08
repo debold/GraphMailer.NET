@@ -369,6 +369,7 @@
                                                         <RowDefinition Height="*"/>
                                                         <RowDefinition Height="Auto"/>
                                                         <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
                                                 </Grid.RowDefinitions>
 
                                                 <Border Grid.Row="0"
@@ -394,7 +395,7 @@
                                                                         <TextBox x:Name="ActivitySearchBox"
                                                                                  VerticalAlignment="Center"
                                                                                  Padding="6,4,26,4"
-                                                                                 ToolTip="Filters the events below on every field, including the ones shown only in the details panel."
+                                                                                 ToolTip="Searches every event in the selected time range — not just the loaded ones — on every field, including the ones shown only in the details panel."
                                                                                  TextChanged="ActivitySearch_Changed"/>
                                                                         <TextBlock Text="Search…"
                                                                                    Foreground="#FF888888"
@@ -485,11 +486,21 @@
                                                         </DataGrid.Columns>
                                                 </DataGrid>
 
+                                                <!-- Pages another block of events into the list. Collapsed while the
+                                                     loaded rows already cover everything in the selected range. -->
+                                                <Button x:Name="ActivityLoadMore"
+                                                        Grid.Row="2"
+                                                        Visibility="Collapsed"
+                                                        HorizontalAlignment="Center"
+                                                        Margin="0,8,0,2"
+                                                        Style="{StaticResource SmallButton}"
+                                                        Click="ActivityLoadMore_Click"/>
+
                                                 <!-- Details of the selected event. Fixed label columns and fixed row
                                                      heights keep every label/value pair on the same grid, whatever the
                                                      text is — a taller glyph must not shift its row. -->
                                                 <Border x:Name="ActivityDetails"
-                                                        Grid.Row="2"
+                                                        Grid.Row="3"
                                                         Visibility="Collapsed"
                                                         BorderBrush="{StaticResource BorderBrush}"
                                                         BorderThickness="0,1,0,0"
@@ -665,7 +676,7 @@
                                                 </Border>
 
                                                 <TextBlock x:Name="NoDataText"
-                                                           Grid.Row="3"
+                                                           Grid.Row="4"
                                                            Text="No metrics data available. The service must have processed at least one message."
                                                            Style="{StaticResource HintText}"
                                                            Margin="16,10,16,4"/>
@@ -824,9 +835,10 @@
                                                                                 <TextBlock Text="Top Client Hosts"
                                                                                            Style="{StaticResource SectionHeader}"/>
                                                                         </Border>
+                                                                        <!-- MaxHeight fits the full top-10 plus header without a scrollbar -->
                                                                         <DataGrid x:Name="RcTopHostsGrid"
                                                                                   MinHeight="80"
-                                                                                  MaxHeight="240"
+                                                                                  MaxHeight="300"
                                                                                   CanUserAddRows="False"
                                                                                   AutoGenerateColumns="False"
                                                                                   IsReadOnly="True">
@@ -848,6 +860,11 @@
                                                                                                             Width="*"/>
                                                                                 </DataGrid.Columns>
                                                                         </DataGrid>
+                                                                        <!-- A top-8 ranking must not read as the complete set of hosts -->
+                                                                        <TextBlock x:Name="RcTopHostsMore"
+                                                                                   Style="{StaticResource HintText}"
+                                                                                   Margin="16,8,16,10"
+                                                                                   Visibility="Collapsed"/>
                                                                 </StackPanel>
                                                         </Border>
                                                         <Border Grid.Column="2"
@@ -1007,9 +1024,10 @@
                                                                         <TextBlock Text="Top Failure Causes"
                                                                                    Style="{StaticResource SectionHeader}"/>
                                                                 </Border>
+                                                                <!-- MaxHeight fits the full top-10 plus header without a scrollbar -->
                                                                 <DataGrid x:Name="DlErrorsGrid"
                                                                           MinHeight="80"
-                                                                          MaxHeight="240"
+                                                                          MaxHeight="300"
                                                                           CanUserAddRows="False"
                                                                           AutoGenerateColumns="False"
                                                                           IsReadOnly="True">
@@ -1022,6 +1040,11 @@
                                                                                                     Width="90"/>
                                                                         </DataGrid.Columns>
                                                                 </DataGrid>
+                                                                <!-- A top-6 ranking must not read as the complete set of causes -->
+                                                                <TextBlock x:Name="DlErrorsMore"
+                                                                           Style="{StaticResource HintText}"
+                                                                           Margin="16,8,16,10"
+                                                                           Visibility="Collapsed"/>
                                                         </StackPanel>
                                                 </Border>
                                         </StackPanel>

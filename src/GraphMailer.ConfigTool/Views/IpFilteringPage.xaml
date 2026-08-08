@@ -253,23 +253,19 @@
                             <DataGridTextColumn Header="Unblocks At"
                                                 Binding="{Binding UnblocksAt}"
                                                 Width="160"/>
-                            <DataGridTemplateColumn Header=""
-                                                    Width="80">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Content="Unblock"
-                                                Style="{StaticResource SmallButton}"
-                                                Click="Unblock_Click"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
+                            <!-- Read-only: blocking lives in the service process and the two only
+                                 talk through files, so there is no button that could release an
+                                 address here. The default block clears itself after 10 minutes. -->
                         </DataGrid.Columns>
                     </DataGrid>
                     <TextBlock x:Name="NoBlockedText"
                                Text="No IPs are currently blocked."
                                Style="{StaticResource HintText}"
-                               Margin="16,10,16,12"
+                               Margin="16,10,16,2"
                                Visibility="Visible"/>
+                    <TextBlock x:Name="BlockedAgeText"
+                               Style="{StaticResource HintText}"
+                               Margin="16,2,16,12"/>
                 </StackPanel>
             </Border>
 

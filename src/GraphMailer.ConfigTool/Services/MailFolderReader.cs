@@ -46,7 +46,28 @@ public sealed class MessageRow
     public DateTime? SentAt { get; init; }
     public string ClientIp { get; init; } = string.Empty;
     public string SmtpMessageId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Free-text search across every displayed field, including the ones only the details panel
+    /// shows. Blank search matches everything.
+    /// </summary>
+    public bool Matches(string search)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return true;
+
+        var term = search.Trim();
+        return Contains(From) || Contains(To) || Contains(Subject) || Contains(StatusLabel)
+            || Contains(LastError) || Contains(ClientIp) || Contains(SmtpMessageId)
+            || Contains(MessageId) || Contains(ReceivedAt.ToString("yyyy-MM-dd HH:mm:ss"));
+
+        bool Contains(string value) => value.Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
 }
+
+/// <param name="Rows">Matching rows, newest first.</param>
+/// <param name="Total">Messages in the folder(s) — what <paramref name="Rows"/> was drawn from.</param>
+/// <param name="HasMore">More messages exist than the limit allowed.</param>
+internal sealed record MailFolderResult(List<MessageRow> Rows, int Total, bool HasMore);
 
 /// <summary>
 /// Reads the *.meta.json files the service writes next to each queued/failed/archived
@@ -55,25 +76,54 @@ public sealed class MessageRow
 /// </summary>
 internal static class MailFolderReader
 {
-    /// <summary>Upper bound so a huge archive folder cannot freeze the UI.</summary>
-    internal const int MaxEntries = 500;
+    /// <summary>
+    /// Rows added per page. The limit exists for the DataGrid, not for the disk: every
+    /// <c>*.meta.json</c> in the folder is read and parsed before sorting, so a higher limit costs
+    /// almost nothing beyond holding the rows.
+    /// </summary>
+    internal const int PageSize = 500;
+
+    /// <summary>Kept for the page's "newest N" wording; the page size is the same number.</summary>
+    internal const int MaxEntries = PageSize;
 
     /// <summary>
-    /// Merges several folders into one newest-first list for the "All" view. The cap is
+    /// Merges several folders into one newest-first list for the "All" view. The limit is
     /// applied to the merged result, so the newest messages win no matter which folder
     /// they sit in — capping per folder first would drop newer entries of a busy folder
     /// in favour of older ones from a quiet one.
     /// </summary>
-    internal static List<MessageRow> ReadFolders(params string[] directories)
+    internal static MailFolderResult ReadFolders(int limit, string? search, params string[] directories)
     {
         var rows = new List<MessageRow>();
         foreach (var directory in directories)
-            rows.AddRange(ReadFolder(directory));
+            rows.AddRange(ReadAll(directory));
 
-        return [.. rows.OrderByDescending(r => r.ReceivedAt).Take(MaxEntries)];
+        return Page(rows, limit, search);
     }
 
-    internal static List<MessageRow> ReadFolder(string directory)
+    internal static MailFolderResult ReadFolder(string directory, int limit, string? search)
+        => Page(ReadAll(directory), limit, search);
+
+    /// <summary>
+    /// Sorts, filters and cuts to the page. The search runs over the whole folder rather than the
+    /// page, since all rows are parsed anyway — a search that only saw the newest 500 would miss
+    /// exactly the older message the user is looking for.
+    /// </summary>
+    private static MailFolderResult Page(List<MessageRow> rows, int limit, string? search)
+    {
+        var ordered = rows.OrderByDescending(r => r.ReceivedAt);
+
+        var matching = string.IsNullOrWhiteSpace(search)
+            ? ordered.ToList()
+            : ordered.Where(r => r.Matches(search)).ToList();
+
+        return new MailFolderResult(
+            [.. matching.Take(limit)],
+            rows.Count,
+            matching.Count > limit);
+    }
+
+    private static List<MessageRow> ReadAll(string directory)
     {
         var rows = new List<MessageRow>();
         if (!Directory.Exists(directory))
@@ -113,6 +163,6 @@ internal static class MailFolderReader
             }
         }
 
-        return [.. rows.OrderByDescending(r => r.ReceivedAt).Take(MaxEntries)];
+        return rows;
     }
 }

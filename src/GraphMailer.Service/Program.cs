@@ -168,7 +168,12 @@ try
         .PersistKeysToSharedRegistry();
 
     // Phase 2 – Security infrastructure
-    builder.Services.AddSingleton<IpBlockingService>();
+    // The snapshot path is what makes the current blocks visible to the ConfigTool
+    builder.Services.AddSingleton(sp => new IpBlockingService(
+        sp.GetRequiredService<IOptionsMonitor<IpBlockingProtectionOptions>>(),
+        sp.GetRequiredService<ILogger<IpBlockingService>>(),
+        clock: null,
+        snapshotPath: BlockedIpSnapshot.FilePath));
     builder.Services.AddSingleton<AuthHandler>();
     builder.Services.AddSingleton<IPasswordCaptureService, PasswordCaptureService>();
     builder.Services.AddSingleton<ICertificateLoader, CertificateStoreService>();

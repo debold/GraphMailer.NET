@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using GraphMailer.Service.Configuration;
+using GraphMailer.Service.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -17,7 +18,9 @@ namespace GraphMailer.Service.Infrastructure.Security;
 internal sealed class IpBlockingService : IDisposable
 {
     private readonly record struct FailureRecord(DateTime Timestamp, string Type);
-    private readonly record struct BlockEntry(DateTime BlockedAt, DateTime ExpiresAt);
+
+    /// <summary><c>Failures</c> is the count that tripped the threshold — the ConfigTool shows it.</summary>
+    private readonly record struct BlockEntry(DateTime BlockedAt, DateTime ExpiresAt, int Failures);
 
     private static readonly TimeSpan SweepInterval = TimeSpan.FromMinutes(10);
 
@@ -31,15 +34,22 @@ internal sealed class IpBlockingService : IDisposable
     private readonly ILogger<IpBlockingService> _logger;
     private readonly TimeProvider _clock;
     private readonly Timer _sweepTimer;
+    private readonly string? _snapshotPath;
 
+    /// <param name="snapshotPath">
+    /// Where to publish the current blocks for the ConfigTool. Null disables publishing entirely,
+    /// which is what unit tests want — they must not write into %ProgramData%.
+    /// </param>
     public IpBlockingService(
         IOptionsMonitor<IpBlockingProtectionOptions> options,
         ILogger<IpBlockingService> logger,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        string? snapshotPath = null)
     {
         _options = options;
         _logger = logger;
         _clock = clock ?? TimeProvider.System;
+        _snapshotPath = snapshotPath;
         _sweepTimer = new Timer(_ => Sweep(), null, SweepInterval, SweepInterval);
     }
 
@@ -59,9 +69,12 @@ internal sealed class IpBlockingService : IDisposable
         var now = _clock.GetUtcNow().UtcDateTime;
         var cutoff = now.AddSeconds(-_options.CurrentValue.TimeframeSeconds);
 
+        var removedBlock = false;
         foreach (var (ip, entry) in _blockedIps)
             if (entry.ExpiresAt <= now)
-                _blockedIps.TryRemove(ip, out _);
+                removedBlock |= _blockedIps.TryRemove(ip, out _);
+
+        if (removedBlock) PublishSnapshot();
 
         foreach (var (ip, list) in _failures)
         {
@@ -135,15 +148,18 @@ internal sealed class IpBlockingService : IDisposable
         if (countAfterAdd >= opts.FailureThreshold)
         {
             var expiresAt = now.AddSeconds(opts.BlockDurationSeconds);
+            var entry = new BlockEntry(now, expiresAt, countAfterAdd);
             _blockedIps.AddOrUpdate(
                 ip,
-                new BlockEntry(now, expiresAt),
-                (_, existing) => existing.ExpiresAt < expiresAt ? new BlockEntry(now, expiresAt) : existing);
+                entry,
+                (_, existing) => existing.ExpiresAt < expiresAt ? entry : existing);
 
             _logger.LogWarning(
                 "[IpBlocking] Blocked {Ip} until {Expires:HH:mm:ss} UTC " +
                 "after {Count} {Type} failures in {Timeframe}s window",
                 ip, expiresAt, countAfterAdd, failureType, opts.TimeframeSeconds);
+
+            PublishSnapshot();
         }
     }
 
@@ -154,5 +170,45 @@ internal sealed class IpBlockingService : IDisposable
         return _blockedIps
             .Where(kv => kv.Value.ExpiresAt > now)
             .ToDictionary(kv => kv.Key, kv => kv.Value.ExpiresAt);
+    }
+
+    /// <summary>Current blocks in the shape the ConfigTool reads them.</summary>
+    internal BlockedIpSnapshot BuildSnapshot()
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        return new BlockedIpSnapshot
+        {
+            WrittenAtUtc = now,
+            Entries =
+            [
+                .. _blockedIps
+                    .Where(kv => kv.Value.ExpiresAt > now)
+                    .Select(kv => new BlockedIpEntry
+                    {
+                        Ip = kv.Key,
+                        Failures = kv.Value.Failures,
+                        BlockedAtUtc = kv.Value.BlockedAt,
+                        ExpiresAtUtc = kv.Value.ExpiresAt,
+                    }),
+            ],
+        };
+    }
+
+    /// <summary>
+    /// Writes the current blocks for the ConfigTool. Best-effort by design: the block itself is
+    /// already in force, and failing to tell another process about it must never break SMTP.
+    /// </summary>
+    private void PublishSnapshot()
+    {
+        if (_snapshotPath is null) return;
+
+        try
+        {
+            BuildSnapshot().Save(_snapshotPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[IpBlocking] Could not publish the blocked-IP snapshot to {Path}", _snapshotPath);
+        }
     }
 }

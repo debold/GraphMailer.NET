@@ -17,6 +17,7 @@
                 <RowDefinition Height="*"
                                MinHeight="120"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- ── Toolbar ─────────────────────────────────────────────────── -->
@@ -78,7 +79,8 @@
                         <TextBox x:Name="SearchBox"
                                  VerticalAlignment="Center"
                                  Padding="6,4,26,4"
-                                 TextChanged="Filter_Changed"/>
+                                 ToolTip="Searches every retained log file, not just the loaded entries.&#x0a;Matches the message, the component and any stack trace."
+                                 TextChanged="Search_Changed"/>
                         <TextBlock Text="Search…"
                                    Foreground="#FF888888"
                                    Margin="6,0,0,0"
@@ -202,9 +204,19 @@
                 </DataGrid.Columns>
             </DataGrid>
 
+            <!-- Pages another block of entries in. Collapsed while the loaded entries already
+                 cover the whole log. -->
+            <Button x:Name="LoadMoreButton"
+                    Grid.Row="2"
+                    Visibility="Collapsed"
+                    HorizontalAlignment="Center"
+                    Margin="0,8,0,2"
+                    Style="{StaticResource SmallButton}"
+                    Click="LoadMore_Click"/>
+
             <!-- ── Details panel ──────────────────────────────────────────────── -->
             <Border x:Name="LogDetails"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     Visibility="Collapsed"
                     BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,1,0,0">

@@ -59,14 +59,24 @@ So the default reads: **10 failures within 10 minutes → blocked for 10 minutes
 
 ## Currently Blocked IPs
 
-A live view of addresses blocked **right now**, with the failure count, when the block started, and
-when it expires. Use **↺ Refresh** to update, and **Unblock** to release an address immediately —
-handy if a legitimate client tripped the limit (for example after a misconfigured password).
+A view of the addresses blocked **right now**, with the number of failures that triggered the block,
+when it started and when it expires. Use **↺ Refresh** to re-read it.
+
+The blocking itself happens inside the service, which writes the current list to a small file the
+ConfigTool reads — the service updates that file whenever an address is blocked or a block expires.
+The line above the list tells you how old the information is. If the service is stopped, the list is
+empty and says so: nothing is being blocked while it is not running.
+
+> [!NOTE]
+> This list is read-only — there is no *Unblock* button. With the default settings a block lasts
+> **10 minutes** and then clears itself, and restarting the service drops all blocks immediately
+> (the failure counters live in memory). If an address must be let back in right now, restarting the
+> service is the way.
 
 > [!TIP]
 > If a real application keeps getting blocked, check the [Logs](../monitoring/logs.md) for *why*
 > its attempts fail (wrong password, not whitelisted, rejected sender) and fix that cause, rather
-> than only unblocking it repeatedly.
+> than waiting out the block repeatedly.
 
 ## Related
 

@@ -21,8 +21,20 @@ The **Folder** selector switches between:
 | Failed | Messages that exhausted the retry window and were given up on. |
 | Sent | Successfully delivered messages (only present when archiving is enabled). |
 
-A count shows how many messages are in the selected folder. The list reloads itself every few seconds
-while the page is open.
+The list reloads itself every few seconds while the page is open.
+
+## How much is loaded, and searching
+
+The list shows the newest **500 messages** at a time. The counter in the toolbar always says what you
+are looking at — `500 messages` when that is the whole folder, `newest 500 of 3,214` when more exist.
+In the latter case a **Load 500 more** button appears below the list; each click pages further back.
+The loaded amount is kept while the list refreshes and resets when you switch folder or type a new
+search term.
+
+The **Search** box searches the **whole folder**, not just the loaded messages — sender, recipient,
+subject, status, client IP, message id and the failure reason of a failed message. Results appear
+shortly after you stop typing, and the counter then reads `12 matches of 3,214`. The **✕** in the box
+clears it again.
 
 ## The message list
 

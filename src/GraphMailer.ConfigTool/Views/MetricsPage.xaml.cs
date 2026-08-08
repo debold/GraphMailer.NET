@@ -18,6 +18,24 @@ namespace GraphMailer.ConfigTool.Views;
 public partial class MetricsPage : UserControl
 {
     private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _searchDebounce;
+
+    /// <summary>Rows added per page — matches <c>MailFolderReader.MaxEntries</c> on the Messages page.</summary>
+    private const int ActivityPageSize = 500;
+
+    /// <summary>
+    /// Upper bound on the rows a *search* walks through. Without a match the scan would
+    /// otherwise materialize every event in the retention window (90 days by default) on
+    /// every 5 s refresh. Hitting the cap is surfaced in the count line, never silently.
+    /// </summary>
+    private const int ActivityMaxScan = 25_000;
+
+    /// <summary>
+    /// Length of the "top" rankings (busiest hosts, most frequent failure causes). One number for
+    /// all of them — they used to be 8 and 6 with no reason behind either. Ten rows fit the cards'
+    /// height without a scrollbar, and whatever falls outside is named by <see cref="MoreLabel"/>.
+    /// </summary>
+    internal const int TopRankingSize = 10;
 
     private List<double> _memSamples = [];
     private List<double> _cpuSamples = [];
@@ -28,6 +46,11 @@ public partial class MetricsPage : UserControl
     private bool _metricsDbAvailable;
     private int _rangeDays = 7;
 
+    private int _activityLimit = ActivityPageSize;
+    private long _activityTotalInRange;
+    private bool _activityHasMore;
+    private bool _activityScanCapped;
+
     private static string DbPath => Path.Combine(AppPaths.DataDir, "metrics.db");
 
     private static readonly Color DeliveredColor = Color.FromRgb(0x00, 0x78, 0xD4);   // accent
@@ -36,6 +59,17 @@ public partial class MetricsPage : UserControl
 
     public MetricsPage()
     {
+        // Built before InitializeComponent(): the search box raises TextChanged while the
+        // XAML is being parsed, and the handler must not find a null timer.
+        // The search runs against the database, so it must not fire on every keystroke.
+        _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _searchDebounce.Tick += (_, _) =>
+        {
+            _searchDebounce.Stop();
+            _activityLimit = ActivityPageSize;   // a new search starts at the first page
+            ReloadActivity();
+        };
+
         InitializeComponent();
         // No LoadData() here: IsVisibleChanged below loads the data when the
         // page is first shown.
@@ -53,12 +87,27 @@ public partial class MetricsPage : UserControl
         };
     }
 
-    private void ActivitySearch_Changed(object sender, TextChangedEventArgs e) => ApplyActivityFilter();
+    private void ActivitySearch_Changed(object sender, TextChangedEventArgs e)
+    {
+        // Restart the window: only the last keystroke of a burst reaches the database
+        _searchDebounce.Stop();
+        _searchDebounce.Start();
+    }
 
     private void ActivitySearchClear_Click(object sender, RoutedEventArgs e)
     {
-        ActivitySearchBox.Clear();      // TextChanged re-applies the (now empty) filter
+        ActivitySearchBox.Clear();      // TextChanged re-runs the (now empty) search
         ActivitySearchBox.Focus();
+    }
+
+    /// <summary>
+    /// Pages in another <see cref="ActivityPageSize"/> events. The raised limit survives the
+    /// 5 s auto-refresh — it is only reset by a range change or a new search term.
+    /// </summary>
+    private void ActivityLoadMore_Click(object sender, RoutedEventArgs e)
+    {
+        _activityLimit += ActivityPageSize;
+        ReloadActivity();
     }
 
     /// <summary>
@@ -110,6 +159,7 @@ public partial class MetricsPage : UserControl
     {
         if (sender is not Button btn || !int.TryParse(btn.Tag?.ToString(), out var days)) return;
         _rangeDays = days;
+        _activityLimit = ActivityPageSize;   // a different range starts at the first page again
 
         foreach (var b in new[] { Range24h, Range7d, Range30d, Range90d })
             b.Style = (Style)FindResource("SmallButton");
@@ -158,6 +208,30 @@ public partial class MetricsPage : UserControl
         }
     }
 
+    /// <summary>
+    /// Reloads only the activity list. Searching and paging change nothing the other
+    /// sections show, so they must not pay for a full page refresh.
+    /// </summary>
+    private void ReloadActivity()
+    {
+        if (!File.Exists(DbPath))
+        {
+            ClearAll();
+            return;
+        }
+
+        try
+        {
+            using var conn = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
+            conn.Open();
+            LoadActivity(conn, DateTime.UtcNow.AddDays(-_rangeDays).ToString("O"));
+        }
+        catch (Exception ex)
+        {
+            ConfigToolLog.ErrorOnChange("MetricsPage", ex, "Could not read metrics database");
+        }
+    }
+
     /// <summary>A section touching v2 columns must not take down the whole page on an old DB.</summary>
     private static void TrySection(Action load)
     {
@@ -183,10 +257,15 @@ public partial class MetricsPage : UserControl
         _dailyBars = [];
         _metricsDbAvailable = false;
         _activityRows = [];
-        ApplyActivityFilter();
+        _activityTotalInRange = 0;
+        _activityHasMore = false;
+        _activityScanCapped = false;
+        UpdateActivityGrid();
         RcAbortStages.ItemsSource = null;
         RcRejectionsGrid.ItemsSource = null;
         RcTopHostsGrid.ItemsSource = null;
+        RcTopHostsMore.Visibility = Visibility.Collapsed;
+        DlErrorsMore.Visibility = Visibility.Collapsed;
         RcListenersGrid.ItemsSource = null;
         DlRetryHistogram.ItemsSource = null;
         DlVariants.ItemsSource = null;
@@ -342,11 +421,12 @@ public partial class MetricsPage : UserControl
         var hosts = new List<HostRow>();
         using (var cmd = conn.CreateCommand())
         {
-            cmd.CommandText = """
+            // TopRankingSize is a compile-time constant — no injection risk in the interpolation
+            cmd.CommandText = $"""
                 SELECT client_ip, SUM(count),
                        SUM(CASE WHEN outcome='aborted' THEN count ELSE 0 END)
                 FROM smtp_session_stats WHERE bucket_hour >= $c
-                GROUP BY client_ip ORDER BY SUM(count) DESC LIMIT 8
+                GROUP BY client_ip ORDER BY SUM(count) DESC LIMIT {TopRankingSize}
                 """;
             cmd.Parameters.AddWithValue("$c", cutoffBucket);
             using var reader = cmd.ExecuteReader();
@@ -361,6 +441,12 @@ public partial class MetricsPage : UserControl
             }
         }
         RcTopHostsGrid.ItemsSource = hosts;
+
+        // A top-8 list is a ranking, not a browsable list — but it must still admit what it left out
+        var distinctHosts = QueryLong(conn,
+            "SELECT COUNT(DISTINCT client_ip) FROM smtp_session_stats WHERE bucket_hour >= $c", cutoffBucket);
+        RcTopHostsMore.Text = MoreLabel(hosts.Count, distinctHosts, "host");
+        RcTopHostsMore.Visibility = RcTopHostsMore.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         // Per listener
         var mailsByPort = new Dictionary<long, long>();
@@ -500,9 +586,23 @@ public partial class MetricsPage : UserControl
         }
         DlErrorsGrid.ItemsSource = errors
             .OrderByDescending(kv => kv.Value)
-            .Take(6)
+            .Take(TopRankingSize)
             .Select(kv => new NameCount(kv.Key, kv.Value))
             .ToList();
+
+        DlErrorsMore.Text = MoreLabel(Math.Min(errors.Count, TopRankingSize), errors.Count, "cause");
+        DlErrorsMore.Visibility = DlErrorsMore.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Footnote for the top-N rankings. Paging them would be wrong — they answer "who is worst",
+    /// not "show me everything" — but a list that quietly drops 22 of 30 causes still reads as the
+    /// full picture, so the remainder is named.
+    /// </summary>
+    internal static string MoreLabel(int shown, long total, string noun)
+    {
+        var rest = total - shown;
+        return rest <= 0 ? "" : $"+ {Num(rest)} more {noun}{(rest == 1 ? "" : "s")} not shown";
     }
 
     /// <summary>Groups Graph error strings by their stable prefix (drops RequestIds and quotes).</summary>
@@ -599,21 +699,40 @@ public partial class MetricsPage : UserControl
 
     // ── Recent activity ──────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Loads the newest <see cref="_activityLimit"/> events within the page's time range.
+    /// </summary>
+    /// <remarks>
+    /// With a search term the rows are streamed in newest-first order and matched in C# via
+    /// <see cref="ActivityRow.Matches"/> until the limit is full. Mirroring that predicate in SQL
+    /// was the alternative, but half the searchable columns are *formatted* values (size "1.2 MB",
+    /// TLS "Yes", local timestamps) whose SQL twin would silently drift from the C# formatter.
+    /// Streaming keeps one predicate and still searches the whole range instead of the loaded page.
+    /// </remarks>
     private void LoadActivity(SqliteConnection conn, string cutoff)
     {
+        var search = ActivitySearchBox.Text.Trim();
+        _activityTotalInRange = QueryLong(conn, "SELECT COUNT(*) FROM email_events WHERE occurred_at >= $c", cutoff);
+        _activityScanCapped = false;
+
         var rows = new List<ActivityRow>();
+        var scanned = 0;
+        var stoppedAtLimit = false;
+
         using var cmd = conn.CreateCommand();
-        // Honours the page's time range like every other section; the limit caps the
-        // list for wide ranges, so this is the newest 200 events *within* the range.
+        // Honours the page's time range like every other section. Without a search the row
+        // limit belongs in SQL; with one it cannot, because the match runs in C# — there the
+        // scan cap bounds the work instead.
         cmd.CommandText = """
             SELECT occurred_at, event_type, from_addr, to_addrs, message_id, subject, size_bytes, duration_ms, error_detail,
                    attachment_count, listener_port, tls, authenticated, auth_user
             FROM email_events
             WHERE occurred_at >= $c
             ORDER BY occurred_at DESC
-            LIMIT 200
-            """;
+            """ + (search.Length == 0 ? "\nLIMIT $limit" : "");
         cmd.Parameters.AddWithValue("$c", cutoff);
+        if (search.Length == 0) cmd.Parameters.AddWithValue("$limit", _activityLimit);
+
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
@@ -638,7 +757,7 @@ public partial class MetricsPage : UserControl
                 : ts;
 
             var isReceived = evt == "received";
-            rows.Add(new ActivityRow(
+            var row = new ActivityRow(
                 Timestamp: displayTs,
                 Event: evt,
                 From: from,
@@ -654,29 +773,47 @@ public partial class MetricsPage : UserControl
                 Size: sizeB > 0 ? FormatBytes(sizeB) : "—",
                 Duration: durMs > 0 ? $"{durMs} ms" : "—",
                 Detail: !string.IsNullOrEmpty(error) ? error : msgId,
-                IsError: !string.IsNullOrEmpty(error)));
+                IsError: !string.IsNullOrEmpty(error));
+
+            if (search.Length == 0 || row.Matches(search))
+                rows.Add(row);
+
+            if (rows.Count >= _activityLimit)
+            {
+                stoppedAtLimit = true;
+                break;
+            }
+
+            if (search.Length > 0 && ++scanned >= ActivityMaxScan)
+            {
+                _activityScanCapped = true;
+                break;
+            }
         }
 
+        // Without a search the total is known, so "more" is exact. A search stops as soon as
+        // the page is full and cannot know whether older matches follow — offer another page.
+        _activityHasMore = search.Length == 0
+            ? rows.Count < _activityTotalInRange
+            : stoppedAtLimit;
+
         _activityRows = rows;
-        ApplyActivityFilter();
+        UpdateActivityGrid();
     }
 
     /// <summary>
-    /// Pushes the loaded rows through the live search into the grid. Replacing the
-    /// ItemsSource makes the DataGrid re-apply the column widths declared in XAML and
-    /// drops the selection — both are captured and written back around the assignment
-    /// so the 5 s auto-refresh does not disturb the user (same pattern as the Logs and
-    /// Messages pages).
+    /// Pushes the loaded rows into the grid. Replacing the ItemsSource makes the DataGrid
+    /// re-apply the column widths declared in XAML and drops the selection — both are
+    /// captured and written back around the assignment so the 5 s auto-refresh does not
+    /// disturb the user (same pattern as the Logs and Messages pages).
     /// </summary>
-    private void ApplyActivityFilter()
+    private void UpdateActivityGrid()
     {
-        // Guard: TextChanged can fire during InitializeComponent(), before the grid exists
+        // Guard: the search debounce can fire before the grid exists
         if (ActivityGrid is null) return;
 
-        var search = ActivitySearchBox.Text.Trim();
-        var rows = search.Length == 0
-            ? _activityRows
-            : _activityRows.Where(r => r.Matches(search)).ToList();
+        var rows = _activityRows;
+        var searching = ActivitySearchBox.Text.Trim().Length > 0;
 
         var widths = ActivityGrid.Columns.Select(c => c.Width).ToList();
         var selected = ActivityGrid.SelectedItem as ActivityRow;
@@ -694,11 +831,14 @@ public partial class MetricsPage : UserControl
                 ActivityGrid.SelectedItem = restored;
         }
 
-        ActivityCountText.Text = search.Length == 0
-            ? ""
-            : $"{rows.Count} of {_activityRows.Count}";
+        ActivityCountText.Text = ListCountLabel.Build(
+            rows.Count, _activityTotalInRange, "events", searching, _activityHasMore,
+            _activityScanCapped ? $"stopped after {Num(ActivityMaxScan)} events" : null);
 
-        NoDataText.Text = (_activityRows.Count, rows.Count, _metricsDbAvailable) switch
+        ActivityLoadMore.Content = $"Load {Num(ActivityPageSize)} more";
+        ActivityLoadMore.Visibility = _activityHasMore ? Visibility.Visible : Visibility.Collapsed;
+
+        NoDataText.Text = (_activityTotalInRange, rows.Count, _metricsDbAvailable) switch
         {
             ( > 0, 0, _) => "No events match the search.",
             (0, _, true) => "No events in the selected time range.",

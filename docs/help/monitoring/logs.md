@@ -24,7 +24,24 @@ tagged with the component that produced it (for example `[SmtpRelay]`, `[QueuePr
 |---|---|
 | Level | Show entries at the chosen level **and above** (e.g. *Warning+* shows Warning, Error, Fatal). |
 | Component | Limit to one component (e.g. only SMTP relay or only Graph API entries). |
-| Search | Free-text filter across the message text. The **✕** in the box clears it again. |
+| Search | Free-text search across the message, the component and any stack trace. The **✕** in the box clears it again. |
+
+All three search the **whole retained history** — every `graphmailer-*.log` file still on disk, not
+only the entries currently on screen. Results appear shortly after you stop typing.
+
+The *Component* dropdown lists every component seen while reading, so narrowing to one component
+never removes the others from the list.
+
+## How much is loaded
+
+The page loads the newest **2,000 entries** at a time. The counter in the toolbar always says what
+you are looking at: `newest 2,000 entries` while more history is available, and `47 matches of
+12,430` once a filter is active — the second number being how many entries were examined. When more
+exists, a **Load 2,000 more** button appears below the list; each click reaches further back. The
+loaded amount is kept while the page auto-refreshes and resets when you change a filter.
+
+On a very large log a filtered search stops after 25,000 entries and says so in the counter rather
+than presenting a partial result as complete. Narrow the level or component to search further back.
 
 ## Live tail
 

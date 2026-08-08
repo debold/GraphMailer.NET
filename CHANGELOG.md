@@ -4,6 +4,20 @@
 
 ### Added
 
+- **The "Currently Blocked IPs" list on the IP Filtering page now works.** It was a stub: the
+  ↺ Refresh button emptied the list, *Unblock* only removed the row from the screen, and the help
+  page described all of it as a live view — so the page answered "is this address blocked?" with a
+  confident, wrong "no". The service now publishes its current blocks to `data\blocked-ips.json`
+  (the same file-based bridge the sender directory uses, since the two processes share no socket),
+  and the page shows them with the failure count that tripped the threshold, when the block started
+  and when it expires, plus a line stating how old the information is.
+
+  The list is **read-only** — the *Unblock* button is gone. Releasing an address across process
+  boundaries would need a second request file and a watcher in the service, which is a lot of
+  machinery for something the default 10-minute block clears on its own; restarting the service
+  drops all blocks immediately. Entries that have expired since the last write are filtered out on
+  read, so a file left behind by a stopped service never reads as a live block.
+
 - **Open recommendations are now flagged where you fix them.** Until now the sidebar showed a single
   count on the *Recommendations* entry; you still had to open that page to learn which settings it
   meant. Each configuration page now carries its own count badge in the navigation, coloured by the
@@ -43,6 +57,51 @@
   schema migration, which brings such an installation back up.
 
 ### Changed
+
+- **The Logs page reads all retained log files, not just the newest two.** The service keeps seven
+  days of `graphmailer-*.log`, but the page only ever read the two most recent — and only the last
+  2,000 lines of those — while the counter said `(1,997 entries)` as though that were the whole log.
+  Five of the seven retained days were unreachable, and searching for an error from three days ago
+  returned "no matches" from a page that had never looked at that day.
+
+  The page now loads **2,000 entries at a time** across all files with a **Load 2,000 more** button,
+  and the counter states what is on screen (`newest 2,000 entries`, or `47 matches of 12,430` when a
+  filter is active). Level, component and search now all apply while reading, so they cover the
+  whole retained history rather than the loaded page; a search stops after 25,000 entries and says
+  so instead of presenting a partial result as complete. The component dropdown lists every
+  component seen while reading, so narrowing to one no longer removes the others.
+
+- **The Messages page pages through its folders and has a search box.** It showed the newest 500
+  messages per folder — the counter was already honest about that — but there was no way to reach
+  older ones and no way to search at all, on the very list where one looks for a specific recipient
+  or failure reason. There is now a **Load 500 more** button and a **Search** box covering sender,
+  recipient, subject, status, client IP, message id and the failure reason. The search runs over the
+  whole folder: every message file is read and parsed anyway, so the limit only ever protected the
+  grid, never the disk.
+
+- **Recent Activity on the Metrics page is no longer capped at a silent 200 events.** The list
+  loaded the newest 200 events of the selected time range and said nothing about the cut-off, so on
+  a busy relay the 24h and 90d ranges could show the same rows — and an event that was in the range
+  but outside those 200 was simply unreachable. The list now loads **500 events at a time** with a
+  **Load 500 more** button below it, and the counter next to the search box always states what is on
+  screen (`newest 500 of 3,421`). The loaded amount survives the 5-second auto-refresh and is reset
+  only by a range change or a new search term.
+
+- **The Recent Activity search now searches the whole time range**, not just the events already
+  loaded. Previously it filtered the loaded rows, so searching for a sender or an error string
+  found nothing whenever the matching event sat outside the newest 200 — the case where searching
+  matters most. The search runs against the statistics database shortly after you stop typing and
+  still matches every field, including those shown only in the details panel. The counter reads
+  `47 matches of 3,421`; a `+` (`500+ matches`) means further matches follow. On a very large
+  statistics database a search stops after 25,000 events and says so in the counter rather than
+  presenting a partial result as complete.
+
+- **The Metrics rankings are the same length and admit what they leave out.** *Top hosts* showed 8
+  entries and *top failure causes* 6 — two different numbers with no reason behind either — and
+  nothing indicated that a 30-cause installation was seeing a fifth of the picture. Both now list
+  **ten** entries and carry a `+ 18 more causes not shown` line when there are more. They stay
+  rankings rather than becoming pageable lists: the question they answer is "who is worst", not
+  "show me everything".
 
 - **Every monitor now follows the same notification cadence.** How often a lasting problem was
   reported depended entirely on which monitor found it: low disk space and expiring certificates

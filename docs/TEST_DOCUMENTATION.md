@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1001 tests** (936 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-07-27
+**Total: 1067 tests** (1002 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-08
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -889,6 +889,15 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `ReadFolders_CapsTheMergedResult_NotEachFolder` | Full queue (MaxEntries) plus one much newer sent message | MaxEntries rows with the newer sent message first — the cap applies after merging |
 | `StatusPill_LabelIsCapitalised` (Theory) | Status `queued` / `sent` / `failed` / empty | `Queued` / `Sent` / `Failed` / `—` |
 | `StatusPill_EachStatusHasItsOwnColours` | The three known statuses plus an unknown one | Distinct fore/background per status; unknown falls back to the neutral pill |
+| `ReadFolder_MoreThanOnePage_ReportsHasMoreAndTheFolderTotal` | 12 messages, limit 5 | 5 rows, `Total` 12, `HasMore` true |
+| `ReadFolder_WholeFolderFitsInTheLimit_ReportsNoMore` | 3 messages, limit 500 | `HasMore` false — no pointless "load more" |
+| `ReadFolder_RaisedLimit_ReachesFurtherBack` | Limit raised to 10 | Older messages appear rather than the list reshuffling |
+| `ReadFolder_Search_LooksBeyondTheFirstPage` | Match is the oldest of 51 messages, limit 5 | Found; `Total` stays the folder size, not the match count |
+| `ReadFolder_SearchMatchingNothing_ReturnsEmptyWithoutHasMore` | Search matches nothing | Empty result, `HasMore` false |
+| `ReadFolders_Search_AppliesAcrossTheMergedFolders` | Search in the merged "All" view | Only the matching message, from whichever folder |
+| `Matches_TermInAnySearchedField_ReturnsTrue` (Theory) | Term in sender / recipient / subject / status / client IP / failure reason | `true` for each |
+| `Matches_EmptySearch_MatchesEveryRow` | Whitespace-only search | `true` |
+| `Matches_TermInNoField_ReturnsFalse` | Term in no field | `false` |
 
 ---
 
@@ -902,6 +911,70 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `Matches_SurroundingWhitespaceIsIgnored` | `"  backup  "` | `true` — the user's search input is trimmed |
 | `Matches_TermInNoColumn_ReturnsFalse` | Term appearing in no column | `false` |
 | `Matches_ErrorDetail_FindsFailedDeliveries` | Error string in the detail column, searched lowercase | `true` — filtering for an error is the main use of the search box |
+
+---
+
+### List counter line — shared by the paged ConfigTool lists (`ConfigTool/ListCountLabelTests.cs`)
+
+Metrics → Recent Activity, Logs and Messages all page their rows and cap what they scan, so the
+counter next to their search box must never let a capped list read as a complete one.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Build_AllRowsLoaded_ReportsPlainTotal` | 412 of 412 rows loaded, no filter | `412 events` — nothing was left out, so no qualifier |
+| `Build_NoRows_IsEmpty` | Empty source, no filter | Empty string — the hint below the grid already covers it |
+| `Build_MoreRowsAvailable_NamesShownAndPool` | 500 of 3,421 loaded, no filter | `newest 500 of 3,421` |
+| `Build_FilteredAndFullyScanned_ReportsExactMatchCount` | Filter fully applied, 47 hits out of 3,421 | `47 matches of 3,421` |
+| `Build_FilteredAndStoppedAtPageLimit_MarksCountAsALowerBound` | Filtered load filled the 500-row page | `500+ matches of 3,421` — `+` marks the count as a lower bound |
+| `Build_NoMatches_StillNamesThePoolThatWasSearched` | Filter matched nothing | `0 matches of 3,421` — an empty result only means something next to what was searched |
+| `Build_UnknownPoolWithMoreAvailable_OmitsTheTotalButKeepsTheQualifier` | Logs page: file count is not known up front | `newest 2,000 entries` — no invented total, cut-off still marked |
+| `Build_UnknownPoolWhileFiltered_DropsTheOfClause` | Unknown pool with a filter | `47 matches` |
+| `Build_WithNote_AppendsItAfterASeparator` | Scan cap note supplied | `12 matches of 900,000 · stopped after 25,000 events` |
+| `Build_NoteOnAnEmptyLabel_HasNoLeadingSeparator` | Note but nothing else to say | The bare note, no leading `·` |
+| `Build_WheneverRowsAreLeftOut_LabelIsNeverSilent` (Theory) | Page limit reached (with and without filter) and scan cap reached | Label is never empty — regression guard for the old silent cut-offs |
+
+---
+
+### Log file reader — ConfigTool Logs page (`ConfigTool/LogFileReaderTests.cs`)
+
+The page used to read only the newest two of the seven retained log files and silently keep 2,000
+lines, so an entry from three days ago was both unreachable and unsearchable.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Read_MissingDirectory_ReturnsEmptyResult` | Log directory does not exist | Empty result, no exception |
+| `Read_SplitsLevelComponentAndMessage` | One Serilog-formatted line | Level expanded (`WRN` → `Warning`), `[Component]` split off the message |
+| `Read_ContinuationLines_AreAppendedToThePrecedingEntry` | Entry followed by a stack trace | One entry carrying the trace, not three rows |
+| `Read_StackTraceContent_IsSearchable` | Search term only inside the stack trace | The owning entry matches |
+| `Read_MultipleFiles_ReturnsNewestFileAndNewestLineFirst` | Two daily files | Newest file first, newest line first within each |
+| `Read_ReachesFilesBeyondTheNewestTwo` | Five daily files | The oldest file's entry is reachable |
+| `Read_LimitReached_ReportsHasMore` | 10 entries, limit 4 | 4 rows, `HasMore` true |
+| `Read_WholeLogFitsInTheLimit_ReportsNoMore` | 1 entry, limit 100 | `HasMore` false — no pointless "load more" |
+| `Read_RaisedLimit_ReturnsTheEarlierEntriesToo` | Limit raised to 8 | Reaches further back rather than reshuffling |
+| `Read_Predicate_SearchesBeyondOnePageOfEntries` | Match is the oldest line, page limit 5 | Found — the bug this replaced |
+| `Read_Predicate_StillCollectsEveryComponentItScanned` | Filter narrowed to one component | All three components still reported, so the dropdown cannot trap the user |
+| `Read_FilteredScanExceedingTheCap_StopsAndSaysSo` | Filtered scan over the cap | `ScanCapped` true, `Scanned` equals the cap |
+| `Read_UnfilteredRead_IsNotSubjectToTheScanCap` | No filter, small cap | Full page returned, `ScanCapped` false |
+| `Read_CompletedFilteredScan_ReportsTheWholeLogAsScanned` | Filtered scan that finished | `Scanned` equals the whole log |
+| `Matches_EmptyTerm_MatchesEverything` | Whitespace-only search | `true` |
+| `Matches_TermInMessageOrComponent_ReturnsTrue` (Theory) | Term in message / component, wrong case | `true` for each |
+| `Matches_TermNowhere_ReturnsFalse` | Term in no field | `false` |
+
+---
+
+### Top-N footnote — ConfigTool Metrics page (`ConfigTool/MetricsTopNLabelTests.cs`)
+
+Top hosts and top failure causes are rankings, not pageable lists — but a ranking that drops most of
+its input must still say so, and both must be the same length (they were 8 and 6 for no reason).
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `MoreLabel_EverythingFitsInTheRanking_IsEmpty` | 10 of 10 shown | Empty — nothing to admit |
+| `MoreLabel_FewerEntriesThanTheRankingHolds_IsEmpty` | 3 of 3 shown | Empty |
+| `MoreLabel_EntriesLeftOut_NamesHowMany` | 10 of 28 shown | `+ 18 more causes not shown` |
+| `MoreLabel_ExactlyOneLeftOut_UsesTheSingular` | 10 of 11 shown | `+ 1 more host not shown` |
+| `MoreLabel_LargeRemainder_IsThousandsSeparated` | 10 of 1,510 shown | `+ 1,500 more hosts not shown` |
+| `TopRankingSize_IsOneNumberForEveryRanking` | The shared constant | `10` — pins that the two rankings cannot drift apart again |
 
 ---
 
@@ -1151,6 +1224,30 @@ rows above only check that each condition is wired into it.
 | `CertificateAlert_RenewedAfterExpired_SendsOneAllClear` | Expiring → expired → renewed reported twice | Exactly 1 all-clear |
 | `PortAlert_PortsTrackedIndependently` | Ports 25 and 587 down, then 25 repeated | 2 mails (one per port); the repeat is suppressed |
 | `GraphPermissionsAlert_GapWidens_SendsAgainImmediately` | 1 missing role, then 2 missing roles | 2 mails — a different role set is a different condition |
+
+---
+
+### BlockedIpSnapshot (`Services/BlockedIpSnapshotTests.cs`)
+
+> The file bridge that makes the service's in-memory IP blocks visible to the ConfigTool. Before it,
+> the "Currently Blocked IPs" list was a stub that always showed nothing — while the help page
+> described it as a live view. Written to `data\blocked-ips.json` when a block is set and when the
+> sweep drops an expired one; readers filter by expiry because the file outlives what it lists.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Save_ThenLoad_PreservesEveryDisplayedField` | Round-trip of one entry | IP, failure count, block start and expiry all survive |
+| `TryLoad_MissingFile_ReturnsNull` | Service never blocked anything | `null` — not an error |
+| `TryLoad_CorruptFile_ReturnsNullInsteadOfThrowing` | Truncated JSON | `null`, no exception |
+| `Save_ReplacesTheEarlierSnapshot` | Two writes in a row | Only the newer content remains |
+| `ActiveAt_DropsEntriesWhoseBlockHasRunOut` | One expired, one live entry | Only the live one |
+| `ActiveAt_StaleFileFromAStoppedService_ShowsNothing` | File a week old, blocks long expired | Empty — a dead service must not look like it is blocking |
+| `RecordFailure_ReachingTheThreshold_PublishesTheBlock` | Threshold reached | File written with the IP and the tripping failure count |
+| `RecordFailure_BelowTheThreshold_WritesNothing` | One failure, threshold 3 | No file — only an actual block is worth reporting |
+| `Sweep_AfterTheBlockExpired_PublishesTheEmptyList` | Clock advanced past expiry, then sweep | File rewritten empty |
+| `Constructor_WithoutASnapshotPath_NeverTouchesTheDisk` | No path supplied (unit-test default) | Nothing written — publishing is opt-in |
+| `AgeLabel_NoSnapshotYet_SaysSoRatherThanClaimingItIsCurrent` | No file | "The service has not reported any blocks yet." |
+| `AgeLabel_NamesHowOldTheInformationIs` (Theory) | 0 / 5 min / 3 h / 3 d old | `just now` / `5 min ago` / `3 h ago` / `3 d ago` |
 
 ---
 

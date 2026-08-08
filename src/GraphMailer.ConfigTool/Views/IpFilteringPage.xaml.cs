@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using GraphMailer.Service.Infrastructure.Config;
+using GraphMailer.Service.Services;
 
 namespace GraphMailer.ConfigTool.Views;
 
@@ -20,6 +21,10 @@ public partial class IpFilteringPage : UserControl
         WhitelistGrid.ItemsSource = _whitelist;
         BlacklistGrid.ItemsSource = _blacklist;
         BlockedGrid.ItemsSource = _blocked;
+
+        // Runtime data, not configuration: re-read every time the page is opened, so the list is
+        // current without the user having to press Refresh first.
+        IsVisibleChanged += (_, e) => { if ((bool)e.NewValue) LoadBlocked(); };
     }
 
     internal void LoadFrom(ConfigDocument doc)
@@ -126,20 +131,57 @@ public partial class IpFilteringPage : UserControl
 
     // ── Blocked (runtime) ─────────────────────────────────────────────────
 
-    private void RefreshBlocked_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Reads the snapshot the running service publishes. Blocking happens in the service process,
+    /// and the two only talk through files — so an absent or stale file is the normal way to learn
+    /// that nothing is being blocked, not an error.
+    /// </summary>
+    private void RefreshBlocked_Click(object sender, RoutedEventArgs e) => LoadBlocked();
+
+    internal void LoadBlocked()
     {
-        // TODO: read from SQLite / running service
         _blocked.Clear();
+
+        var snapshot = BlockedIpSnapshot.TryLoad(BlockedIpSnapshot.FilePath);
+        var now = DateTime.UtcNow;
+
+        // Expired entries survive in the file until the next write — and a file left behind by a
+        // stopped service would otherwise show blocks that are long gone.
+        foreach (var entry in snapshot?.ActiveAt(now) ?? [])
+        {
+            _blocked.Add(new BlockedIpRow(
+                entry.Ip,
+                entry.Failures,
+                entry.BlockedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
+                entry.ExpiresAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")));
+        }
+
+        BlockedAgeText.Text = BlockedAgeLabel(snapshot?.WrittenAtUtc, now);
+
+        NoBlockedText.Text = snapshot is null
+            ? "No IPs are currently blocked. (The service has not reported any blocks yet.)"
+            : "No IPs are currently blocked.";
         NoBlockedText.Visibility = _blocked.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void Unblock_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// States how current the list is. The service writes only when a block appears or expires, so
+    /// "no news" is normal — but the user still has to be able to tell fresh from forgotten.
+    /// </summary>
+    internal static string BlockedAgeLabel(DateTime? writtenAtUtc, DateTime nowUtc)
     {
-        if (sender is System.Windows.Controls.Button b && b.DataContext is BlockedIpRow r)
+        if (writtenAtUtc is null) return "The service has not reported any blocks yet.";
+
+        var age = nowUtc - writtenAtUtc.Value;
+        var when = age switch
         {
-            _blocked.Remove(r);
-            NoBlockedText.Visibility = _blocked.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        }
+            { TotalMinutes: < 1 } => "just now",
+            { TotalMinutes: < 60 } => $"{(int)age.TotalMinutes} min ago",
+            { TotalHours: < 24 } => $"{(int)age.TotalHours} h ago",
+            _ => $"{(int)age.TotalDays} d ago",
+        };
+
+        return $"Last reported by the service {when}.";
     }
 }
 

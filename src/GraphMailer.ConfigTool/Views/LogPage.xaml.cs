@@ -1,28 +1,34 @@
-using System.IO;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using GraphMailer.ConfigTool.Helpers;
+using GraphMailer.ConfigTool.Services;
 using GraphMailer.Service.Infrastructure;
 
 namespace GraphMailer.ConfigTool.Views;
 
 public partial class LogPage : UserControl
 {
-    // Serilog default file output format (no custom template set in Program.cs):
-    // 2025-12-25 10:30:00.123 +01:00 [INF] [Component] Message text
-    private static readonly Regex LogLineRegex = new(
-        @"^(?<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+\s+[+-]\d{2}:\d{2})\s+\[(?<lvl>[A-Z]{3})\]\s+(?<msg>.*)$",
-        RegexOptions.Compiled);
-
     private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _searchDebounce;
     private bool _loadInProgress;
 
-    private List<LogEntry> _allEntries = [];
+    private LogReadResult _result = new([], [], 0, false, false);
+    private bool _filtered;
+    private int _logLimit = LogFileReader.PageSize;
 
     public LogPage()
     {
+        // Built before InitializeComponent(): the search box raises TextChanged while the XAML
+        // is being parsed, and the handler must not find a null timer.
+        _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _searchDebounce.Tick += (_, _) =>
+        {
+            _searchDebounce.Stop();
+            _logLimit = LogFileReader.PageSize;   // a new search starts at the first page
+            LoadData();
+        };
+
         InitializeComponent();
 
         // Populate component filter with static placeholder until first load
@@ -45,6 +51,13 @@ public partial class LogPage : UserControl
 
     private async void LoadData()
     {
+        // The level filter carries SelectedIndex="0" *and* SelectionChanged in XAML, so it raises
+        // Filter_Changed while InitializeComponent() is still running — at which point the controls
+        // declared after it (ComponentFilter, SearchBox, the grid) are null. IsVisible additionally
+        // keeps the constructor's own SelectedIndex assignment from reading seven log files before
+        // the page has ever been shown.
+        if (!IsInitialized || !IsVisible) return;
+
         if (_loadInProgress) return;
         _loadInProgress = true;
         try { await LoadDataAsync(); }
@@ -53,24 +66,30 @@ public partial class LogPage : UserControl
 
     private async Task LoadDataAsync()
     {
-        var entries = await Task.Run(ReadLogEntries);
+        // The filter is applied while reading rather than afterwards: it is the only way a search
+        // can reach entries outside the loaded page, which is the whole point of having one.
+        var level = (LevelFilter.SelectedItem as ComboBoxItem)?.Content as string ?? "All";
+        var component = (ComponentFilter.SelectedItem as ComboBoxItem)?.Content as string ?? "All";
+        var search = SearchBox.Text.Trim();
+        var predicate = BuildPredicate(level, component, search);
+        var limit = _logLimit;
+
+        var result = await Task.Run(() => LogFileReader.Read(AppPaths.LogsDir, limit, predicate));
 
         // Preserve selected component filter across refreshes
-        var prevComponent = (ComponentFilter.SelectedItem as ComboBoxItem)?.Content as string ?? "All";
+        var prevComponent = component;
 
-        // Rebuild component dropdown from unique values in loaded data
-        var components = entries
-            .Select(e => e.Component)
-            .Where(c => !string.IsNullOrEmpty(c))
-            .Distinct()
-            .OrderBy(c => c)
-            .ToList();
-
+        // The dropdown lists every component *seen*, not just the matching ones — building it from
+        // the filtered result would leave "All" and the current pick as the only choices.
         ComponentFilter.SelectionChanged -= Filter_Changed;
         ComponentFilter.Items.Clear();
         ComponentFilter.Items.Add(new ComboBoxItem { Content = "All" });
-        foreach (var c in components)
+        foreach (var c in result.Components)
             ComponentFilter.Items.Add(new ComboBoxItem { Content = c });
+
+        // A component filtered down to nothing must stay selectable, or the user cannot undo it
+        if (prevComponent != "All" && !result.Components.Contains(prevComponent))
+            ComponentFilter.Items.Add(new ComboBoxItem { Content = prevComponent });
 
         // Restore or default to "All"
         var match = ComponentFilter.Items.OfType<ComboBoxItem>()
@@ -78,149 +97,42 @@ public partial class LogPage : UserControl
         ComponentFilter.SelectedItem = match ?? ComponentFilter.Items[0];
         ComponentFilter.SelectionChanged += Filter_Changed;
 
-        _allEntries = entries;
-        ApplyFilter();
+        _result = result;
+        _filtered = predicate is not null;
+        ShowEntries();
     }
 
-    private static List<LogEntry> ReadLogEntries()
+    /// <summary>
+    /// Combines the three filter controls into one predicate, or <c>null</c> when none of them
+    /// narrows anything — a null predicate lets the reader stop at the page limit instead of
+    /// walking the whole log.
+    /// </summary>
+    private static Func<LogEntry, bool>? BuildPredicate(string level, string component, string search)
     {
-        var logsDir = AppPaths.LogsDir;
-        if (!Directory.Exists(logsDir)) return [];
+        var minRank = level == "All" ? -1 : LogFileReader.LevelRank(level.TrimEnd('+'));
+        var byComponent = component != "All";
+        var bySearch = search.Length > 0;
 
-        // Read today's and yesterday's rolling log file (most recent 2000 lines total)
-        // Ascending order so the combined list is chronological → Reverse() yields newest first
-        var files = Directory.GetFiles(logsDir, "graphmailer-*.log")
-            .OrderBy(f => f)
-            .TakeLast(2)
-            .ToList();
+        if (minRank < 0 && !byComponent && !bySearch) return null;
 
-        if (files.Count == 0) return [];
-
-        var rawLines = new List<string>();
-        foreach (var file in files)
-        {
-            try
-            {
-                // Open with shared read so we can read while the service has the file open
-                using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var reader = new StreamReader(fs);
-                rawLines.AddRange(reader.ReadToEnd()
-                    .Split('\n', StringSplitOptions.RemoveEmptyEntries));
-            }
-            catch { /* skip unreadable file */ }
-        }
-
-        // Keep newest 2000 lines to avoid flooding the grid
-        var lines = rawLines.Count > 2000
-            ? rawLines.GetRange(rawLines.Count - 2000, 2000)
-            : rawLines;
-
-        var entries = new List<LogEntry>(lines.Count);
-        foreach (var line in lines)
-        {
-            var trimmed = line.TrimEnd('\r');
-            var entry = ParseLine(trimmed);
-            if (entry is not null)
-            {
-                entries.Add(entry);
-            }
-            else if (entries.Count > 0 && !string.IsNullOrWhiteSpace(trimmed))
-            {
-                // Continuation line (stack trace etc.) — append to the previous entry
-                var prev = entries[^1];
-                entries[^1] = prev with { RawLine = prev.RawLine + "\n" + trimmed };
-            }
-        }
-
-        // Newest first
-        entries.Reverse();
-        return entries;
+        return e =>
+            (minRank < 0 || LogFileReader.LevelRank(e.Level) >= minRank)
+            && (!byComponent || e.Component == component)
+            && (!bySearch || e.Matches(search));
     }
 
-    private static LogEntry? ParseLine(string line)
+    /// <summary>
+    /// Pushes the loaded entries into the grid. Replacing the ItemsSource drops the selection and
+    /// re-applies the column widths declared in XAML — restore both so an auto-refresh does not
+    /// disturb the user (same pattern as the Messages page and the Metrics Activity tab).
+    /// </summary>
+    private void ShowEntries()
     {
-        if (string.IsNullOrWhiteSpace(line)) return null;
-
-        var m = LogLineRegex.Match(line);
-        if (!m.Success)
-            return null; // continuation / stack trace — will be appended to previous entry
-
-        var tsStr = m.Groups["ts"].Value.Trim();
-        var level = ExpandLevel(m.Groups["lvl"].Value);
-        var msg = m.Groups["msg"].Value;
-
-        // Extract [Component] prefix from message
-        string component = "";
-        var compMatch = Regex.Match(msg, @"^\[([^\]]+)\]\s*(.*)$");
-        if (compMatch.Success)
-        {
-            component = compMatch.Groups[1].Value;
-            msg = compMatch.Groups[2].Value;
-        }
-
-        // Parse timestamp and convert to local time for display
-        string timeLocal = tsStr;
-        if (DateTimeOffset.TryParse(tsStr, out var dto))
-            timeLocal = dto.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
-
-        return new LogEntry(timeLocal, level, component, msg, line);
-    }
-
-    private static string ExpandLevel(string abbr) => abbr switch
-    {
-        "VRB" => "Verbose",
-        "DBG" => "Debug",
-        "INF" => "Information",
-        "WRN" => "Warning",
-        "ERR" => "Error",
-        "FTL" => "Fatal",
-        _ => abbr,
-    };
-
-    private static string ShortLevel(string full) => full switch
-    {
-        "Verbose" => "VRB",
-        "Debug" => "DBG",
-        "Information" => "INF",
-        "Warning" => "WRN",
-        "Error" => "ERR",
-        "Fatal" => "FTL",
-        _ => full,
-    };
-
-    // ── Filter ───────────────────────────────────────────────────────────────
-
-    private void ApplyFilter()
-    {
-        // Guard: called during InitializeComponent() before all XAML elements exist
+        // Guard: the search debounce can fire before the grid exists
         if (LogGrid is null) return;
-        var level = (LevelFilter.SelectedItem as ComboBoxItem)?.Content as string ?? "All";
-        var component = (ComponentFilter.SelectedItem as ComboBoxItem)?.Content as string ?? "All";
-        var search = SearchBox.Text.Trim();
 
-        var filtered = _allEntries.AsEnumerable();
+        var result = _result.Entries;
 
-        // Minimum-severity filter: "Debug+" shows Debug and everything above it
-        if (level != "All")
-        {
-            var minRank = LevelRank(level.TrimEnd('+'));
-            filtered = filtered.Where(e => LevelRank(e.Level) >= minRank);
-        }
-
-        if (component != "All")
-            filtered = filtered.Where(e => e.Component == component);
-
-        if (!string.IsNullOrEmpty(search))
-            filtered = filtered.Where(e =>
-                e.Message.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                e.Component.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                e.RawLine.Contains(search, StringComparison.OrdinalIgnoreCase));
-
-        var result = filtered.ToList();
-
-        // Replacing the ItemsSource drops the selection and re-applies the column
-        // widths declared in XAML — restore both so the details panel and any
-        // user-dragged column width survive an auto-refresh.
         var selected = LogGrid.SelectedItem as LogEntry;
         var widths = LogGrid.Columns.Select(c => c.Width).ToList();
 
@@ -237,30 +149,52 @@ public partial class LogPage : UserControl
                 LogGrid.SelectedItem = restored;
         }
 
-        EntryCountText.Text = $"({result.Count} entries)";
+        // A filtered read reports what it looked at; an unfiltered one stops at the page limit
+        // and genuinely does not know how much log lies behind it, so it names no total.
+        EntryCountText.Text = ListCountLabel.Build(
+            result.Count,
+            _filtered ? _result.Scanned : null,
+            "entries",
+            _filtered,
+            _result.HasMore,
+            _result.ScanCapped ? $"stopped after {LogFileReader.MaxScan:N0} entries" : null);
+
+        LoadMoreButton.Content = $"Load {LogFileReader.PageSize:N0} more";
+        LoadMoreButton.Visibility = _result.HasMore ? Visibility.Visible : Visibility.Collapsed;
 
         if ((AutoScrollCheck.IsChecked == true) && result.Count > 0)
             LogGrid.ScrollIntoView(LogGrid.Items[0]);
     }
 
-    private static int LevelRank(string level) => level switch
-    {
-        "Verbose" => 0,
-        "Debug" => 1,
-        "Information" => 2,
-        "Warning" => 3,
-        "Error" => 4,
-        "Fatal" => 5,
-        _ => 0,
-    };
-
     // ── Event handlers ───────────────────────────────────────────────────────
 
-    private void Filter_Changed(object sender, EventArgs e) => ApplyFilter();
+    /// <summary>Level and component are dropdowns — a change there reloads straight away.</summary>
+    private void Filter_Changed(object sender, EventArgs e)
+    {
+        _logLimit = LogFileReader.PageSize;   // a different filter starts at the first page
+        LoadData();
+    }
+
+    /// <summary>The search reads files, so it must not fire on every keystroke.</summary>
+    private void Search_Changed(object sender, TextChangedEventArgs e)
+    {
+        _searchDebounce.Stop();
+        _searchDebounce.Start();
+    }
+
+    /// <summary>
+    /// Pages in another block. The raised limit survives the auto-refresh and is reset only by a
+    /// filter change.
+    /// </summary>
+    private void LoadMore_Click(object sender, RoutedEventArgs e)
+    {
+        _logLimit += LogFileReader.PageSize;
+        LoadData();
+    }
 
     private void SearchClear_Click(object sender, RoutedEventArgs e)
     {
-        SearchBox.Clear();      // TextChanged re-applies the (now empty) filter
+        SearchBox.Clear();      // TextChanged re-runs the (now empty) search
         SearchBox.Focus();
     }
 
@@ -319,29 +253,6 @@ public partial class LogPage : UserControl
         }
     }
 
-    // ── Model ────────────────────────────────────────────────────────────────
-
-    private record LogEntry(string TimeLocal, string Level, string Component, string Message, string RawLine)
-    {
-        public string LevelShort => ShortLevel(Level);
-        public string LevelBg => Level switch
-        {
-            "Fatal" => "#FFC42B1C",
-            "Error" => "#FFFDE7E9",
-            "Warning" => "#FFFFF4CE",
-            "Information" => "#FFDFF6DD",
-            "Debug" => "#FFF0F0F0",
-            _ => "#FFF0F0F0",
-        };
-
-        public string LevelFg => Level switch
-        {
-            "Fatal" => "#FFFFFFFF",
-            "Error" => "#FFC42B1C",
-            "Warning" => "#FF7A5700",
-            "Information" => "#FF0F7B0F",
-            "Debug" => "#FF616161",
-            _ => "#FF616161",
-        };
-    }
+    // The LogEntry model and the file parsing live in Services/LogFileReader.cs, so the reader
+    // can be tested without a WPF page.
 }

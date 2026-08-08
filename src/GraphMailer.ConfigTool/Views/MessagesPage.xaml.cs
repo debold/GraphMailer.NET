@@ -26,11 +26,24 @@ public partial class MessagesPage : UserControl
     // Live view of the relevant Mail Queue settings (MailDir, ArchiveSentEmails)
     private readonly Func<(string? MailDir, bool ArchiveSent)> _queueSettings;
     private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _searchDebounce;
     private bool _loadInProgress;
+    private int _limit = MailFolderReader.PageSize;
 
     internal MessagesPage(Func<(string? MailDir, bool ArchiveSent)> queueSettings)
     {
         _queueSettings = queueSettings;
+
+        // Built before InitializeComponent(): the search box raises TextChanged while the XAML
+        // is being parsed, and the handler must not find a null timer.
+        _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _searchDebounce.Tick += (_, _) =>
+        {
+            _searchDebounce.Stop();
+            _limit = MailFolderReader.PageSize;   // a new search starts at the first page
+            LoadData();
+        };
+
         InitializeComponent();
 
         FolderSelect.ItemsSource = Folders;
@@ -48,6 +61,30 @@ public partial class MessagesPage : UserControl
     private void Folder_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!IsLoaded) return;   // ignore the initial selection during construction
+        _limit = MailFolderReader.PageSize;   // a different folder starts at the first page
+        LoadData();
+    }
+
+    private void Search_Changed(object sender, TextChangedEventArgs e)
+    {
+        // Restart the window: only the last keystroke of a burst re-reads the folder
+        _searchDebounce.Stop();
+        _searchDebounce.Start();
+    }
+
+    private void SearchClear_Click(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Clear();      // TextChanged re-runs the (now empty) search
+        SearchBox.Focus();
+    }
+
+    /// <summary>
+    /// Pages in another block. The raised limit survives the 5 s auto-refresh and is reset only by
+    /// a folder change or a new search term.
+    /// </summary>
+    private void LoadMore_Click(object sender, RoutedEventArgs e)
+    {
+        _limit += MailFolderReader.PageSize;
         LoadData();
     }
 
@@ -66,14 +103,22 @@ public partial class MessagesPage : UserControl
             // The status only tells the folders apart in the merged view
             StatusColumn.Visibility = isAll ? Visibility.Visible : Visibility.Collapsed;
 
-            var rows = await Task.Run(() => isAll
+            var search = SearchBox.Text.Trim();
+            var limit = _limit;
+
+            var result = await Task.Run(() => isAll
                 ? MailFolderReader.ReadFolders(
+                    limit, search,
                     Path.Combine(baseDir, "queue"),
                     Path.Combine(baseDir, "failed"),
                     Path.Combine(baseDir, "sent"))
-                : MailFolderReader.ReadFolder(Path.Combine(
-                    baseDir,
-                    folderIndex switch { 2 => "failed", SentIndex => "sent", _ => "queue" })));
+                : MailFolderReader.ReadFolder(
+                    Path.Combine(
+                        baseDir,
+                        folderIndex switch { 2 => "failed", SentIndex => "sent", _ => "queue" }),
+                    limit, search));
+
+            var rows = result.Rows;
 
             // Replacing the ItemsSource must not throw away user-resized column
             // widths or the current selection (the details panel depends on it).
@@ -92,11 +137,13 @@ public partial class MessagesPage : UserControl
                     MessagesGrid.SelectedItem = restored;
             }
 
-            CountText.Text = rows.Count == MailFolderReader.MaxEntries
-                ? $"newest {MailFolderReader.MaxEntries} messages"
-                : $"{rows.Count} message(s)";
+            CountText.Text = ListCountLabel.Build(
+                rows.Count, result.Total, "messages", search.Length > 0, result.HasMore);
 
-            if (folderIndex == SentIndex && rows.Count == 0 && !archiveSent)
+            LoadMoreButton.Content = $"Load {MailFolderReader.PageSize:N0} more";
+            LoadMoreButton.Visibility = result.HasMore ? Visibility.Visible : Visibility.Collapsed;
+
+            if (folderIndex == SentIndex && rows.Count == 0 && !archiveSent && search.Length == 0)
             {
                 EmptyHint.Text = "Sent archiving is disabled — delivered messages are deleted immediately. " +
                                  "Enable “Archive sent emails” on the Mail Queue page to keep them here. " +
