@@ -67,6 +67,21 @@ public sealed class AdminNotificationTypesOptions
     public NotificationTypeOptions LowDiskSpaceWarning { get; init; } = new();
     public ThresholdNotificationTypeOptions IpBlockedAlert { get; init; } = new() { FailureThreshold = 10 };
     public NotificationTypeOptions PortMonitoringAlert { get; init; } = new();
+    /// <summary>
+    /// A message the malware scan flagged — blocked in Enforce mode, delivered in Audit mode.
+    /// Batched so a malware wave does not generate one mail per message, but with a shorter
+    /// window than delivery failures: a detection is worth hearing about promptly, and the
+    /// window is measured from the first detection rather than the last, so it cannot be
+    /// postponed by a steady trickle.
+    /// </summary>
+    public BatchedNotificationTypeOptions MalwareDetected { get; init; } = new() { BatchDelaySeconds = 60 };
+
+    /// <summary>
+    /// Scans failing or being skipped. Threshold-based because scanning fails open — without
+    /// this alert, mail flowing past a broken scanner is invisible outside the log.
+    /// </summary>
+    public ThresholdNotificationTypeOptions MalwareScanFailure { get; init; } = new();
+
     public NotificationTypeOptions ConfigDecryptionError { get; init; } = new();
     public NotificationTypeOptions BackupResult { get; init; } = new();
     public NotificationTypeOptions ServiceStartStopAlert { get; init; } = new() { Enabled = false };

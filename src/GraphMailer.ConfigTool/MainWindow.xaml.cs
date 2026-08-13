@@ -48,6 +48,7 @@ public partial class MainWindow : Window
     private SmtpPage _smtpPage = null!;
     private AccessControlPage _accessPage = null!;
     private IpFilteringPage _ipFilteringPage = null!;
+    private MalwareScanPage _malwareScanPage = null!;
     private GraphApiPage _graphApiPage = null!;
     private MailQueuePage _queuePage = null!;
     private MonitoringPage _monitoringPage = null!;
@@ -105,6 +106,13 @@ public partial class MainWindow : Window
                 () => _serviceWasRunning);
             _accessPage.LoadFrom(_currentDoc);
             _ipFilteringPage = new IpFilteringPage(MarkDirty); _ipFilteringPage.LoadFrom(_currentDoc);
+            _malwareScanPage = new MalwareScanPage(
+                MarkDirty,
+                () => _currentDoc.MailQueue.MailDir,
+                // Live rows, so a user added on the Access Control page can be exempted
+                // straight away without saving in between.
+                () => _accessPage.ConfiguredUsernames);
+            _malwareScanPage.LoadFrom(_currentDoc);
             _graphApiPage = new GraphApiPage(MarkDirty, b => _suppressDirty = b); _graphApiPage.LoadFrom(_currentDoc);
             _queuePage = new MailQueuePage(MarkDirty); _queuePage.LoadFrom(_currentDoc);
             _monitoringPage = new MonitoringPage(MarkDirty); _monitoringPage.LoadFrom(_currentDoc);
@@ -251,6 +259,7 @@ public partial class MainWindow : Window
         _monitoringPage.ApplyRecommendations(OpenFor(summary, RecommendationTarget.Monitoring), OpenRecommendationsPage);
         _notificationsPage.ApplyRecommendations(OpenFor(summary, RecommendationTarget.Notifications), OpenRecommendationsPage);
         _backupPage.ApplyRecommendations(OpenFor(summary, RecommendationTarget.BackupAndRestore), OpenRecommendationsPage);
+        _malwareScanPage.ApplyRecommendations(OpenFor(summary, RecommendationTarget.MalwareScan), OpenRecommendationsPage);
 
         _recommendationsPage?.Refresh();
     }
@@ -272,6 +281,7 @@ public partial class MainWindow : Window
         (RecommendationTarget.Monitoring, NavMonitoringRecBadge, NavMonitoringRecBadgeText),
         (RecommendationTarget.Notifications, NavNotificationsRecBadge, NavNotificationsRecBadgeText),
         (RecommendationTarget.BackupAndRestore, NavBackupRecBadge, NavBackupRecBadgeText),
+        (RecommendationTarget.MalwareScan, NavMalwareScanRecBadge, NavMalwareScanRecBadgeText),
     ];
 
     private RecommendationSummary LoadRecommendations()
@@ -472,6 +482,9 @@ public partial class MainWindow : Window
     private void NavIpFiltering_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
         => NavigateTo(NavIpFiltering, "IP Filtering", "configuration/ip-filtering.html", () => _ipFilteringPage!);
 
+    private void NavMalwareScan_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
+        => NavigateTo(NavMalwareScan, "Malware Scan", "configuration/malware-scan.html", () => _malwareScanPage!);
+
     private void NavGraphApi_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
         => NavigateTo(NavGraphApi, "Graph API", "configuration/graph-api.html", () => _graphApiPage!);
 
@@ -557,10 +570,21 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Checked separately from NumericField.SubtreeHasErrors: that walks the visual tree, and
+        // a page the user never opened is not in it.
+        if (_malwareScanPage.HasValidationErrors)
+        {
+            MessageBox.Show(
+                "The Malware Scan page has a limit outside its allowed range (shown in red on that page).\nFix it before saving.",
+                "Cannot Save", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         // Collect changes from all open pages into _currentDoc
         _smtpPage.CollectTo(_currentDoc);
         _accessPage.CollectTo(_currentDoc);
         _ipFilteringPage.CollectTo(_currentDoc);
+        _malwareScanPage.CollectTo(_currentDoc);
         _graphApiPage.CollectTo(_currentDoc);
         _queuePage.CollectTo(_currentDoc);
         _monitoringPage.CollectTo(_currentDoc);
@@ -643,6 +667,7 @@ public partial class MainWindow : Window
             _smtpPage.LoadFrom(_currentDoc);
             _accessPage.LoadFrom(_currentDoc);
             _ipFilteringPage.LoadFrom(_currentDoc);
+            _malwareScanPage.LoadFrom(_currentDoc);
             _graphApiPage.LoadFrom(_currentDoc);
             _queuePage.LoadFrom(_currentDoc);
             _monitoringPage.LoadFrom(_currentDoc);

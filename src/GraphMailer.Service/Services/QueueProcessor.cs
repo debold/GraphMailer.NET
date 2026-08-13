@@ -35,6 +35,7 @@ internal sealed class QueueProcessor : BackgroundService
     private readonly ITenantSenderDirectory _senderDirectory;
     private readonly IMetricsService _metrics;
     private readonly IAdminNotificationService _notify;
+    private readonly BlockedMessageRecorder _blockedRecorder;
     private readonly ILogger<QueueProcessor> _logger;
 
     private readonly string _queuePath;
@@ -48,6 +49,7 @@ internal sealed class QueueProcessor : BackgroundService
         ITenantSenderDirectory senderDirectory,
         IMetricsService metrics,
         IAdminNotificationService notify,
+        BlockedMessageRecorder blockedRecorder,
         ILogger<QueueProcessor> logger)
     {
         _options = options;
@@ -56,6 +58,7 @@ internal sealed class QueueProcessor : BackgroundService
         _senderDirectory = senderDirectory;
         _metrics = metrics;
         _notify = notify;
+        _blockedRecorder = blockedRecorder;
         _logger = logger;
 
         var opts = options.CurrentValue;
@@ -81,6 +84,7 @@ internal sealed class QueueProcessor : BackgroundService
             await CleanupOrphanedEmlsAsync(stoppingToken);
             await CleanupSentEmailsAsync(stoppingToken);   // honour retention policy on startup
             CleanupFailedEmails(stoppingToken);
+            _blockedRecorder.CleanupExpiredRecords(stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
         catch (Exception ex)
@@ -123,6 +127,7 @@ internal sealed class QueueProcessor : BackgroundService
                     {
                         await CleanupSentEmailsAsync(stoppingToken);
                         CleanupFailedEmails(stoppingToken);
+                        _blockedRecorder.CleanupExpiredRecords(stoppingToken);
                         await CleanupOrphanedEmlsAsync(stoppingToken);
                     }
                     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }

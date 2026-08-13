@@ -146,6 +146,43 @@ internal static class RecommendationEngine
             Relevant: i => i.AdminNotificationsEnabled && i.HasAdminNotificationRecipients),
 
         // ── Medium ────────────────────────────────────────────────────────────
+        Entry(RecommendationIds.MalwareScanAudit,
+            RecommendationSeverity.Medium,
+            RecommendationCategory.Security,
+            RecommendationTarget.MalwareScan,
+            "configuration/malware-scan.html",
+            "Switch malware scanning to Enforce",
+            i => i.MalwareScanMode.Equals("Audit", StringComparison.OrdinalIgnoreCase),
+            "Audit mode is the rollout setting: every message is scanned and recorded, but nothing is "
+            + "blocked. Review the detections under Messages → Blocked, allow anything that turned out to "
+            + "be a false positive, then switch the mode to Enforce.",
+            "While the mode stays Audit, a message that the scanner flags is delivered anyway. The "
+            + "detection is written to the log and to mail\\blocked\\, so it looks like the filter is "
+            + "working — but nothing is actually stopped, and an installation left this way stays "
+            + "unprotected indefinitely.",
+            "Malware scanning is enforcing — flagged messages are rejected during the SMTP session.",
+            // Off is a deliberate choice, not something to nag about; only nudge the half-way state,
+            // and only where a provider could actually scan.
+            relevant: i => i.MalwareScanProviderPresent
+                        && !i.MalwareScanMode.Equals("Off", StringComparison.OrdinalIgnoreCase)),
+
+        Entry(RecommendationIds.MalwareScanProvider,
+            RecommendationSeverity.Medium,
+            RecommendationCategory.Security,
+            RecommendationTarget.MalwareScan,
+            "configuration/malware-scan.html",
+            "Install an AMSI-capable antivirus product",
+            i => !i.MalwareScanProviderPresent,
+            "GraphMailer scans through the Windows Antimalware Scan Interface, which hands the content to "
+            + "whichever antivirus product registered a provider on this machine — Microsoft Defender does "
+            + "so automatically. No provider means no engine to scan with.",
+            "Malware scanning is configured but inactive: nothing is inspected, and every message passes "
+            + "as if it had been checked. The scanner cannot tell you this by itself, because a scan "
+            + "without a provider returns the same answer as a scan that found nothing.",
+            "An AMSI provider is registered — malware scanning has an engine to work with.",
+            // Pointless advice when the operator has deliberately switched scanning off.
+            relevant: i => !i.MalwareScanMode.Equals("Off", StringComparison.OrdinalIgnoreCase)),
+
         Entry(RecommendationIds.SenderValidation,
             RecommendationSeverity.Medium,
             RecommendationCategory.Reliability,

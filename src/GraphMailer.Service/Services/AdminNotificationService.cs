@@ -47,6 +47,11 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
     private readonly List<string> _pendingFailures = [];
     private Timer? _batchFlushTimer;
 
+    // --- Batching (MalwareDetected) — separate list and timer so a malware wave and a
+    //     delivery outage cannot flush each other's pending items into the wrong mail.
+    private readonly List<string> _pendingMalware = [];
+    private Timer? _malwareBatchTimer;
+
     // --- Threshold sliding windows ---
     private readonly ConcurrentDictionary<string, Queue<DateTime>> _eventWindows = new();
 
@@ -97,6 +102,68 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
                 Timeout.InfiniteTimeSpan);
         }
         return Task.CompletedTask;
+    }
+
+    public Task NotifyMalwareDetectedAsync(
+        string from, IReadOnlyList<string> recipients, string clientIp, string subject,
+        string threatLocation, string? sha256, bool blocked, CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        if (!opts.Enabled || !opts.NotificationTypes.MalwareDetected.Enabled) return Task.CompletedTask;
+
+        var line =
+            $"{(blocked ? "BLOCKED" : "AUDIT (delivered)")} – \"{subject}\" from {from} " +
+            $"to {string.Join(", ", recipients)} (IP {clientIp}); detected in {threatLocation}" +
+            (sha256 is null ? string.Empty : $"; SHA-256 {sha256}");
+
+        var delay = opts.NotificationTypes.MalwareDetected.BatchDelaySeconds;
+        lock (_batchLock)
+        {
+            _pendingMalware.Add(line);
+
+            // Deliberately NOT the restart-on-every-event batching used for delivery failures.
+            // Restarting would let a steady trickle of detections postpone the alert indefinitely —
+            // precisely the situation in which the operator most needs to hear about it. The first
+            // detection opens a fixed window; everything inside it joins the same mail, and the
+            // alert always goes out within BatchDelaySeconds of that first detection.
+            if (_malwareBatchTimer is not null) return Task.CompletedTask;
+
+            _malwareBatchTimer = new Timer(
+                _ => Task.Run(async () =>
+                {
+                    try { await FlushMalwareBatchAsync(); }
+                    catch (Exception ex) { _logger.LogError(ex, "[AdminNotify] Malware batch flush failed"); }
+                }),
+                null,
+                TimeSpan.FromSeconds(delay),
+                Timeout.InfiniteTimeSpan);
+
+            _logger.LogDebug(
+                "[AdminNotify] Malware detection queued – the batched notification is sent in {Delay}s",
+                delay);
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task NotifyMalwareScanFailureAsync(string reason, CancellationToken ct = default)
+    {
+        var opts = _options.CurrentValue;
+        if (!opts.Enabled || !opts.NotificationTypes.MalwareScanFailure.Enabled) return Task.CompletedTask;
+
+        var thr = opts.NotificationTypes.MalwareScanFailure;
+        if (!IsAboveThreshold("malware-scan-failure", thr.FailureThreshold, thr.TimeWindowSeconds)) return Task.CompletedTask;
+        if (!CanSend("malware-scan-failure")) return Task.CompletedTask;
+
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Warning,
+            Title = "Malware scans are failing",
+            Intro = "Repeated malware scans did not complete. Scanning fails open, so the affected messages " +
+                    "were delivered without being checked. Verify that the antivirus product on this machine " +
+                    "is healthy and that its AMSI provider is responding.",
+            Fields = [new("Last reason", reason)],
+        };
+        return SendAsync(opts, "Malware scan failures", mail, ct);
     }
 
     public Task NotifyCertificateExpiringAsync(string certSubject, DateTime notAfter, CancellationToken ct = default)
@@ -553,6 +620,8 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         {
             _batchFlushTimer?.Dispose();
             _batchFlushTimer = null;
+            _malwareBatchTimer?.Dispose();
+            _malwareBatchTimer = null;
         }
     }
 
@@ -673,6 +742,40 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
         };
 
         _logger.LogInformation("[AdminNotify] Flushing {Count} delivery failure(s) as batched notification", count);
+        await SendAsync(opts, subject, mail, CancellationToken.None);
+    }
+
+    private async Task FlushMalwareBatchAsync()
+    {
+        List<string> lines;
+        lock (_batchLock)
+        {
+            if (_pendingMalware.Count == 0) return;
+            lines = [.. _pendingMalware];
+            _pendingMalware.Clear();
+            _malwareBatchTimer?.Dispose();
+            _malwareBatchTimer = null;
+        }
+
+        var opts = _options.CurrentValue;
+        if (!opts.Enabled) return;
+        if (!CanSend("malware-detected-batch")) return;
+
+        var count = lines.Count;
+        var subject = $"Malware detected in {count} message{(count == 1 ? "" : "s")}";
+        var mail = new NotificationEmail
+        {
+            Severity = NotificationSeverity.Critical,
+            Title = subject,
+            Intro = "A malware scan flagged the following message(s). Entries marked AUDIT were delivered " +
+                    "because scanning is in audit mode. The messages themselves are not stored — only the " +
+                    "metadata below and a record under mail\\blocked\\. A false positive can be allowed by " +
+                    "adding its SHA-256 to the malware scan allowlist; the sender then has to resend.",
+            ItemsTitle = "Detections",
+            Items = lines,
+        };
+
+        _logger.LogInformation("[AdminNotify] Flushing {Count} malware detection(s) as batched notification", count);
         await SendAsync(opts, subject, mail, CancellationToken.None);
     }
 }

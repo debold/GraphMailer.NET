@@ -64,6 +64,7 @@ internal static class HtmlReportRenderer
         AppendBanner(sb, d);
         AppendQueueKpis(sb, d);
         AppendFailedQueue(sb, d);
+        AppendMalwareScan(sb, d);
         AppendHealth(sb, d);
         AppendStatistics(sb, d);
         AppendChart(sb, d);
@@ -171,6 +172,43 @@ internal static class HtmlReportRenderer
         KpiCard(sb, $"Delivered ({DaysLabel(d)})", FormatCount(d.Delivered), rate, OkFg, "0 0 0 6px");
 
         sb.Append("</tr></table></td></tr>");
+    }
+
+    /// <summary>
+    /// Malware findings for the period. Omitted entirely when nothing was found, so the report
+    /// stays quiet on installations that never see a detection.
+    /// </summary>
+    private static void AppendMalwareScan(StringBuilder sb, ReportData d)
+    {
+        if (d.MalwareBlocked == 0 && d.MalwareAuditOnly == 0)
+            return;
+
+        SectionTitle(sb, "Malware Scan", null, "20px 28px 0 28px");
+
+        // The audit figure is the interesting one: it is what enforcement would have stopped,
+        // and it needs to read as "not protected yet" rather than as a success number.
+        var auditNote = d.MalwareAuditOnly > 0
+            ? "delivered — audit mode does not block"
+            : "none";
+        var auditFg = d.MalwareAuditOnly > 0 ? DangerFg : Muted;
+
+        sb.Append("""<tr><td style="padding:12px 28px 0 28px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>""");
+        KpiCard(sb, "Blocked", d.MalwareBlocked.ToString(CultureInfo.InvariantCulture),
+            "rejected during the SMTP session", Text, "0 6px 0 0");
+        KpiCard(sb, "Detected, not blocked", d.MalwareAuditOnly.ToString(CultureInfo.InvariantCulture),
+            auditNote, auditFg, "0 0 0 6px");
+        sb.Append("</tr></table></td></tr>");
+
+        if (d.MalwareAuditOnly > 0)
+        {
+            sb.Append($"""
+                <tr><td style="padding:8px 28px 0 28px;font-family:{SansFont};font-size:12px;color:{DangerDark};">
+                Malware scanning is in audit mode: the messages above were flagged and delivered anyway.
+                Review them on the Malware Scan page and switch the mode to Enforce once the false
+                positives are allowed.
+                </td></tr>
+                """);
+        }
     }
 
     private static void AppendFailedQueue(StringBuilder sb, ReportData d)

@@ -32,6 +32,8 @@ public sealed class RecommendationEngineTests
         HasAdminNotificationRecipients = true,
         AdminNotificationsEnabled = true,
         DisabledCriticalNotifications = [],
+        MalwareScanMode = "Enforce",
+        MalwareScanProviderPresent = true,
     };
 
     /// <summary>Ids of the suggestions that currently ask for action.</summary>
@@ -65,6 +67,8 @@ public sealed class RecommendationEngineTests
             RecommendationIds.CriticalNotifications,
             RecommendationIds.UpdateCheck,
             RecommendationIds.Telemetry,
+            RecommendationIds.MalwareScanAudit,
+            RecommendationIds.MalwareScanProvider,
         ]);
         summary.Done.Should().OnlyContain(r => r.State == RecommendationState.Done);
         summary.Dismissed.Should().BeEmpty();
@@ -80,6 +84,47 @@ public sealed class RecommendationEngineTests
         done.DoneSummary.Should().Contain("is on");
         done.DoneSummary.Should().NotBe(done.Detail);
     }
+
+    // ── Malware scan ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Evaluate_AuditMode_RecommendsSwitchingToEnforce()
+    {
+        // Audit is the half-way state: it looks like a working filter but stops nothing, and an
+        // installation left this way stays unprotected indefinitely.
+        IdsFor(Ideal with { MalwareScanMode = "Audit" })
+            .Should().ContainSingle().Which.Should().Be(RecommendationIds.MalwareScanAudit);
+    }
+
+    [Fact]
+    public void Evaluate_ScanModeOff_IsNotNaggedAbout()
+    {
+        // Switching scanning off is a deliberate decision, not an oversight.
+        IdsFor(Ideal with { MalwareScanMode = "Off" }).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Evaluate_NoAmsiProvider_RecommendsInstallingOne()
+    {
+        // Configured but inert: without a provider every message passes as if it had been
+        // checked, and the scanner cannot report this on its own.
+        IdsFor(Ideal with { MalwareScanProviderPresent = false })
+            .Should().ContainSingle().Which.Should().Be(RecommendationIds.MalwareScanProvider);
+    }
+
+    [Fact]
+    public void Evaluate_NoAmsiProvider_DoesNotAlsoAskToEnforce()
+    {
+        // Advising a mode change on a machine that cannot scan at all would be noise —
+        // the missing provider is the thing to fix first.
+        IdsFor(Ideal with { MalwareScanMode = "Audit", MalwareScanProviderPresent = false })
+            .Should().NotContain(RecommendationIds.MalwareScanAudit);
+    }
+
+    [Fact]
+    public void Evaluate_ScanModeOff_DoesNotAskForAProviderEither()
+        => IdsFor(Ideal with { MalwareScanMode = "Off", MalwareScanProviderPresent = false })
+            .Should().BeEmpty();
 
     // ── Security ─────────────────────────────────────────────────────────────
 
@@ -329,10 +374,15 @@ public sealed class RecommendationEngineTests
         var withAlertsOff = RecommendationEngine.Evaluate(
             Ideal with { DisabledCriticalNotifications = ["Low disk space"] }).Open;
 
-        var all = unconfigured.Concat(withAlertsOff).ToList();
+        // A third input for the same reason: the two malware-scan rules are mutually exclusive.
+        // "Switch to Enforce" only applies where a provider exists, "install a provider" only
+        // where none does, so no single installation can have both open.
+        var withScanInAudit = RecommendationEngine.Evaluate(Ideal with { MalwareScanMode = "Audit" }).Open;
 
-        unconfigured.Should().HaveCount(9);
-        all.Select(r => r.Id).Distinct().Should().HaveCount(10, "the catalog has ten rules");
+        var all = unconfigured.Concat(withAlertsOff).Concat(withScanInAudit).ToList();
+
+        unconfigured.Should().HaveCount(10);
+        all.Select(r => r.Id).Distinct().Should().HaveCount(12, "the catalog has twelve rules");
         all.Should().OnlyContain(r => !string.IsNullOrWhiteSpace(r.TargetPageName));
         all.Should().OnlyContain(r => r.HelpPage.EndsWith(".html"));
         all.Should().OnlyContain(r => !string.IsNullOrWhiteSpace(r.DoneSummary));
@@ -349,7 +399,7 @@ public sealed class RecommendationEngineTests
         summary.All.Select(r => r.Id).Should().OnlyHaveUniqueItems();
         summary.Open.Should().ContainSingle().Which.Id.Should().Be(RecommendationIds.ConfigBackup);
         summary.Dismissed.Should().ContainSingle().Which.Id.Should().Be(RecommendationIds.Telemetry);
-        summary.Done.Should().HaveCount(8);
+        summary.Done.Should().HaveCount(10);
     }
 
     // ── Dismissal ────────────────────────────────────────────────────────────
@@ -433,8 +483,11 @@ public sealed class RecommendationEngineTests
         doc.Monitoring.UpdateCheckEnabled = true;
         doc.Monitoring.TelemetryEnabled = true;
         doc.Notification.RecipientAddresses.Add("ops@corp.com");
+        doc.MalwareScan.Mode = "Enforce";
 
-        var input = RecommendationInput.FromConfigDocument(doc);
+        // Provider presence is machine state, not configuration — passed explicitly so the
+        // result does not depend on whether the build agent happens to run an antivirus.
+        var input = RecommendationInput.FromConfigDocument(doc, amsiProviderPresent: true);
 
         input.GraphConfigured.Should().BeTrue();
         input.GraphUsesCertificate.Should().BeTrue();
@@ -442,7 +495,7 @@ public sealed class RecommendationEngineTests
         input.EnabledListenerCount.Should().Be(2);
         input.HasTlsListener.Should().BeTrue();
         RecommendationEngine.Evaluate(input).Open.Should().BeEmpty();
-        DoneIdsFor(input).Should().HaveCount(9);
+        DoneIdsFor(input).Should().HaveCount(11);
     }
 
     [Fact]

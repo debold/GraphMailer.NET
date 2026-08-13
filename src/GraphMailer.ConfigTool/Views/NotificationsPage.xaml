@@ -342,6 +342,8 @@
                                 <RowDefinition Height="34"/>
                                 <RowDefinition Height="34"/>
                                 <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="34"/>
                             </Grid.RowDefinitions>
 
                             <CheckBox Grid.Row="0"
@@ -512,6 +514,34 @@
                             <TextBlock Grid.Row="10"
                                        Grid.Column="1"
                                        Text="New GraphMailer version available (requires the update check on the Monitoring page; one email per new version)"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="11"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifMalwareDetected"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="11"
+                                       Grid.Column="1"
+                                       Text="Malware detected in an incoming message (batched; also reports audit-mode detections, which are delivered)"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+
+                            <CheckBox Grid.Row="12"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="NotifMalwareScanFailure"
+                                      IsChecked="True"
+                                      Checked="AnyCheckbox_Changed"
+                                      Unchecked="AnyCheckbox_Changed"/>
+                            <TextBlock Grid.Row="12"
+                                       Grid.Column="1"
+                                       Text="Malware scans are failing (scanning fails open, so affected messages are delivered unscanned)"
                                        Style="{StaticResource BodyText}"
                                        Margin="10,0,0,0"
                                        VerticalAlignment="Center"/>

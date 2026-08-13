@@ -3,6 +3,7 @@ using GraphMailer.Service.Infrastructure.Certificates;
 using GraphMailer.Service.Infrastructure.Encryption;
 using GraphMailer.Service.Infrastructure.Metrics;
 using GraphMailer.Service.Infrastructure.Security;
+using GraphMailer.Service.Infrastructure.Security.Amsi;
 using GraphMailer.Service.Infrastructure.Smtp;
 using GraphMailer.Service.Services;
 using Microsoft.AspNetCore.DataProtection;
@@ -32,8 +33,14 @@ internal sealed class SmtpTestHost : IAsyncDisposable
     public int Port { get; }
     public string QueueDirectory { get; }
 
+    /// <summary>Metadata records written by the malware scan (mail\blocked\).</summary>
+    public string BlockedDirectory { get; }
+
     /// <summary>The NSubstitute IMetricsService the host runs with — assert Received() calls on it.</summary>
     public IMetricsService Metrics => _host.Services.GetRequiredService<IMetricsService>();
+
+    /// <summary>The NSubstitute IAdminNotificationService the host runs with.</summary>
+    public IAdminNotificationService Notifications => _host.Services.GetRequiredService<IAdminNotificationService>();
 
     private readonly IHost _host;
     private readonly string _workDir;
@@ -46,6 +53,7 @@ internal sealed class SmtpTestHost : IAsyncDisposable
         Port = port;
         _workDir = workDir;
         QueueDirectory = Path.Combine(workDir, "mail", "queue");
+        BlockedDirectory = Path.Combine(workDir, "mail", "blocked");
         _host = host;
         _originalDirectory = originalDir;
         _ownedCertificate = ownedCertificate;
@@ -77,6 +85,8 @@ internal sealed class SmtpTestHost : IAsyncDisposable
         bool senderValidationEnabled = false,
         bool senderValidationFailClosed = false,
         ITenantSenderDirectory? senderDirectory = null,
+        IMailContentScanner? malwareScanner = null,
+        string malwareScanMode = "Off",
         ILoggerProvider? loggerProvider = null)
     {
         var port = GetFreePort();
@@ -104,6 +114,8 @@ internal sealed class SmtpTestHost : IAsyncDisposable
             ["IpBlockingProtection:BlockDurationSeconds"] = ipBlockingDurationSeconds.ToString(),
             ["SenderValidation:Enabled"] = senderValidationEnabled ? "true" : "false",
             ["SenderValidation:FailClosed"] = senderValidationFailClosed ? "true" : "false",
+            // Off unless a test opts in, so the scan never interferes with the other suites.
+            ["MalwareScan:Mode"] = malwareScanMode,
         };
 
         int i = 0;
@@ -168,6 +180,7 @@ internal sealed class SmtpTestHost : IAsyncDisposable
                 services.Configure<CertificateOptions>(ctx.Configuration.GetSection("Certificate"));
                 services.Configure<IpBlockingProtectionOptions>(ctx.Configuration.GetSection("IpBlockingProtection"));
                 services.Configure<SenderValidationOptions>(ctx.Configuration.GetSection(SenderValidationOptions.SectionName));
+                services.Configure<MalwareScanOptions>(ctx.Configuration.GetSection(MalwareScanOptions.SectionName));
                 services.Configure<SmtpAccessOptions>(ctx.Configuration);
 
                 services.AddDataProtection()
@@ -190,6 +203,14 @@ internal sealed class SmtpTestHost : IAsyncDisposable
                 services.AddSingleton<MailQueueWriter>();
                 services.AddSingleton<PortProbeRegistry>();
                 services.AddSingleton<IMetricsService>(_ => Substitute.For<IMetricsService>());
+
+                // SmtpMessageStore dependencies. The scanner defaults to an unavailable stub so
+                // no suite accidentally reaches the machine's real antimalware provider; tests
+                // that exercise the scan inject a scripted one.
+                services.AddSingleton(malwareScanner ?? UnavailableScanner.Instance);
+                services.AddSingleton<BlockedMessageRecorder>();
+                services.AddSingleton<IAdminNotificationService>(_ => Substitute.For<IAdminNotificationService>());
+
                 services.AddHostedService<SmtpRelayService>();
             })
             .Build();

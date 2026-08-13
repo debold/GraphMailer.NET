@@ -67,6 +67,9 @@ public sealed class ReportDataCollectorTests : IDisposable
             // No tenant/client id → the Graph-dependent rules stay silent unless a test sets them.
             Monitor(new GraphApiOptions()),
             Monitor(new SenderValidationOptions { Enabled = senderValidationEnabled }),
+            // Off keeps the malware-scan rules out of these assertions: switching scanning off
+            // is a deliberate choice the advisor deliberately stays quiet about.
+            Monitor(new MalwareScanOptions { Mode = MalwareScanMode.Off }),
             Monitor(new BackupOptions { Enabled = backupEnabled }),
             Monitor(new NdrOptions { Enabled = ndrEnabled }),
             Monitor(new AdminNotificationsOptions { RecipientAddresses = ["ops@corp.com"] }),

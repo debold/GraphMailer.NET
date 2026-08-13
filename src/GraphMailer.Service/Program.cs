@@ -6,6 +6,7 @@ using GraphMailer.Service.Infrastructure.Certificates;
 using GraphMailer.Service.Infrastructure.Encryption;
 using GraphMailer.Service.Infrastructure.Metrics;
 using GraphMailer.Service.Infrastructure.Security;
+using GraphMailer.Service.Infrastructure.Security.Amsi;
 using GraphMailer.Service.Infrastructure.Smtp;
 using GraphMailer.Service.Services;
 using GraphMailer.Service.Infrastructure.Validation;
@@ -150,6 +151,7 @@ try
     builder.Services.Configure<SenderValidationOptions>(builder.Configuration.GetSection(SenderValidationOptions.SectionName));
     builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection(BackupOptions.SectionName));
     builder.Services.Configure<RecommendationOptions>(builder.Configuration.GetSection(RecommendationOptions.SectionName));
+    builder.Services.Configure<MalwareScanOptions>(builder.Configuration.GetSection(MalwareScanOptions.SectionName));
 
     // Servers list (not a single-section option – bound directly as IList)
     builder.Services.Configure<List<SmtpServerEntry>>(builder.Configuration.GetSection("Servers"));
@@ -161,6 +163,7 @@ try
     // Validate critical options at startup
     builder.Services.AddSingleton<IValidateOptions<GraphApiOptions>, GraphApiOptionsValidator>();
     builder.Services.AddSingleton<IValidateOptions<SmtpOptions>, SmtpOptionsValidator>();
+    builder.Services.AddSingleton<IValidateOptions<MalwareScanOptions>, MalwareScanOptionsValidator>();
 
     // Data Protection (for dashboard encrypt/decrypt in Phase 5, same key ring as above)
     builder.Services.AddDataProtection()
@@ -183,6 +186,11 @@ try
     builder.Services.AddSingleton<IUserAuthenticator, SmtpUserAuthenticator>();
     builder.Services.AddSingleton<IMailboxFilter, SmtpMailboxFilter>();
     builder.Services.AddSingleton<IMessageStore, SmtpMessageStore>();
+
+    // Malware scanning (AMSI). Singleton: the AMSI context is created once at startup and
+    // shared, and the provider enumeration behind IsAvailable is a startup fact.
+    builder.Services.AddSingleton<IMailContentScanner, AmsiContentScanner>();
+    builder.Services.AddSingleton<BlockedMessageRecorder>();
 
     // Phase 2 – Queue writer + SMTP relay service
     builder.Services.AddSingleton<MailQueueWriter>();

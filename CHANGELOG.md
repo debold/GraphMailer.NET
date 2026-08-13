@@ -4,6 +4,66 @@
 
 ### Added
 
+- **Incoming mail can now be scanned for malware.** A new *Malware Scan* page enables scanning
+  through the Windows Antimalware Scan Interface (AMSI), which hands the content to whichever
+  antivirus product registered a provider on the machine — Microsoft Defender registers one
+  automatically, and this is not limited to Defender. The scan runs as the last gate of the SMTP
+  session, before anything is queued, so a rejected message is refused with a permanent `554` that
+  the sending application sees; nothing is written to the queue and no NDR is needed.
+
+  Attachments are **decoded** before scanning and the body is scanned separately, because
+  attachments travel base64-encoded and no signature matches base64 text. Attachments inside a
+  forwarded mail are unpacked too, up to five levels deep.
+
+  **The default mode is Audit**, for new installations and for existing ones upgrading to this
+  version: every detection is logged, recorded and reported, but the message is still delivered.
+  An update must never start rejecting mail that flowed the day before, so switching to *Enforce*
+  is always a deliberate act. A recommendation reminds you while the mode is still Audit, and a
+  second one appears when no AMSI provider is registered at all — in that case scanning is inactive
+  no matter what is configured, because a scan without a provider returns the same answer as a scan
+  that found nothing.
+
+  **The scan fails open.** A timeout, a scanner error or an oversized part means the message is
+  delivered unscanned: a broken antivirus product must not turn into a mail outage. Because that
+  failure is otherwise invisible, a new threshold-based notification reports repeated scan failures.
+
+  Handling false positives: each detection is recorded under `mail\blocked\` as **metadata only** —
+  sender, recipients, subject, the attachment name and its SHA-256. The messages themselves are never
+  stored, which keeps malicious content off the server but also means a false positive cannot be
+  released; the sender has to send it again once it is allowed. The *Recent Detections* list on the
+  new page turns a detection into an allowlist entry with one click, so nobody has to copy hashes out
+  of log files. An entry allows one exact file by hash — not a sender, a name or a file type. Message
+  bodies cannot be allowlisted (they differ on every mail); for those there is a scan bypass keyed on
+  the authenticated user or the client IP. The envelope sender is deliberately not an option there,
+  since it is freely chosen by the client and would let anyone opt out of scanning.
+
+  Findings are visible in five places: a **Malware Today** tile on the Status page and a **Malware**
+  tile in the Metrics overview — both placed next to *Failed*, since they answer the same question —
+  a **Malware Scan** card in the Metrics reception section, a section in the periodic report, and
+  — for rejected messages only — the rejection breakdown as *Malware detected*. Blocked and
+  audit-only findings are always counted **separately**, because merging them would report
+  protection that is not in place: an audit finding was delivered. They live in their own
+  `malware_detections` table (metrics.db schema **v3**, additive) rather than among the rejection
+  reasons, so the audit count cannot inflate the rejection totals, and so the statistics survive a
+  short retention on the detection records. Config schema is now **v10**; the new section is
+  purely additive.
+
+  The page rejects input that could not work rather than storing it: the three limits accept digits
+  only within their documented ranges and block saving when out of range, the scan size is entered
+  in kB (stored in bytes, like the message size limit on the Servers page), a hash must be a real
+  64-character digest, and a bypass address must be a valid IP or CIDR — `123` is refused instead of
+  quietly becoming `0.0.0.123`. Bypass users are picked from the configured SMTP users instead of
+  typed, and entries already in a list cannot be added twice. Each of these otherwise fails
+  silently at runtime: a malformed hash never matches a scanned attachment, and a malformed address
+  never matches a client, with nothing to say so. Bypass addresses carry an optional comment,
+  stored in a parallel map like the IP whitelist's so the runtime option stays a plain address
+  list; deleting an address deletes its comment with it.
+
+  The detection notification is batched **60 seconds from the first detection** rather than 300
+  seconds from the last. The restart-on-every-event batching used for delivery failures is wrong
+  here: a steady trickle of detections would keep postponing the alert indefinitely, in exactly the
+  situation where it is most needed.
+
 - **The "Currently Blocked IPs" list on the IP Filtering page now works.** It was a stub: the
   ↺ Refresh button emptied the list, *Unblock* only removed the row from the screen, and the help
   page described all of it as a live view — so the page answered "is this address blocked?" with a

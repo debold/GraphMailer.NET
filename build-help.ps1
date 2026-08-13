@@ -77,6 +77,7 @@ $SiteMap = @(
     @{ Group = 'Configuration';   Path = 'configuration/servers-tls.md';      Title = 'Servers & TLS' }
     @{ Group = 'Configuration';   Path = 'configuration/access-control.md';   Title = 'Access Control' }
     @{ Group = 'Configuration';   Path = 'configuration/ip-filtering.md';     Title = 'IP Filtering' }
+    @{ Group = 'Configuration';   Path = 'configuration/malware-scan.md';     Title = 'Malware Scan' }
     @{ Group = 'Configuration';   Path = 'configuration/graph-api.md';        Title = 'Graph API' }
     @{ Group = 'Configuration';   Path = 'configuration/mail-queue.md';       Title = 'Mail Queue' }
     @{ Group = 'Configuration';   Path = 'configuration/monitoring.md';       Title = 'Monitoring' }

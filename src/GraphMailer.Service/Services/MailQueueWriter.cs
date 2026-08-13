@@ -79,15 +79,21 @@ internal sealed class MailQueueWriter
     /// Files are written to a temporary name first, then renamed to make the
     /// appearance of both files as atomic as possible.
     /// </summary>
+    /// <param name="messageId">
+    /// Pre-assigned id, so a caller that already recorded something about this message under an
+    /// id (the malware scan writes a blocked-message record before queueing in audit mode) can
+    /// keep both sides correlated. Null generates a fresh one.
+    /// </param>
     public async Task<MailMetadata> WriteAsync(
         string from,
         IReadOnlyList<string> recipients,
         string clientIp,
         ReadOnlyMemory<byte> emlData,
         CancellationToken ct = default,
-        bool isNotification = false)
+        bool isNotification = false,
+        string? messageId = null)
     {
-        var messageId = Guid.NewGuid().ToString("N");
+        messageId ??= Guid.NewGuid().ToString("N");
         var info = ExtractMessageInfo(emlData, recipients);
 
         var tmpEml = Path.Combine(_queuePath, $"{messageId}.eml.tmp");

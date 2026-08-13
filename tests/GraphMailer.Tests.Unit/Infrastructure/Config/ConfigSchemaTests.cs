@@ -443,6 +443,42 @@ public sealed class ConfigMigratorTests : IDisposable
         => ConfigMigrator.QuarantineIfCorrupt(Path.Combine(_dir, "absent.json")).Should().BeNull();
 
     // -------------------------------------------------------------------------
+    // v9 → v10: MalwareScan (additive)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Migrate_V9_ToCurrent_LeavesMalwareScanAbsent()
+    {
+        // Purely additive: no key is written. Materialising a mode into an existing file
+        // would be a policy decision the operator never made — and the binder's default
+        // (Audit) is the safe one anyway.
+        var root = JsonNode.Parse("""{ "SchemaVersion": 9, "Smtp": { "Banner": "keep me" } }""")!.AsObject();
+
+        var changed = ConfigSchema.Migrate(root);
+
+        changed.Should().BeTrue();
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+        root["Smtp"]!.AsObject()["Banner"]!.GetValue<string>().Should().Be("keep me");
+        root.ContainsKey("MalwareScan").Should().BeFalse(
+            "the absent section is valid — the options binder falls back to Audit mode");
+    }
+
+    [Fact]
+    public void Migrate_V9_ToCurrent_PreservesAnExistingMalwareScanSection()
+    {
+        // A hand-written section (or one from a newer build) must survive untouched.
+        var root = JsonNode.Parse("""
+            { "SchemaVersion": 9, "MalwareScan": { "Mode": "Enforce", "TimeoutSeconds": 45 } }
+            """)!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        var section = root["MalwareScan"]!.AsObject();
+        section["Mode"]!.GetValue<string>().Should().Be("Enforce");
+        section["TimeoutSeconds"]!.GetValue<int>().Should().Be(45);
+    }
+
+    // -------------------------------------------------------------------------
     // Migration-backup pruning (config\backups\ must not grow forever)
     // -------------------------------------------------------------------------
 

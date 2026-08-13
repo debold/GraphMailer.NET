@@ -154,6 +154,17 @@ public partial class AccessControlPage : UserControl
         SvFailClosed.IsChecked = doc.SenderValidation.SvFailClosed;
     }
 
+    /// <summary>
+    /// Usernames as currently shown in the grid, including ones not saved yet. Read directly
+    /// from the live rows so the Malware Scan page can offer them in its bypass dropdown without
+    /// waiting for a save — and without either page having to collect into the document first.
+    /// </summary>
+    internal IReadOnlyList<string> ConfiguredUsernames =>
+        [.. _users.Select(r => r.Username?.Trim() ?? string.Empty)
+                  .Where(u => u.Length > 0)
+                  .Distinct(StringComparer.OrdinalIgnoreCase)
+                  .OrderBy(u => u, StringComparer.OrdinalIgnoreCase)];
+
     internal void CollectTo(ConfigDocument doc)
     {
         doc.Access.Users = _users

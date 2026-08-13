@@ -86,6 +86,10 @@ public sealed class QueueProcessorTests : IDisposable
             Substitute.For<ITenantSenderDirectory>(),
             metrics ?? Substitute.For<IMetricsService>(),
             notify ?? Substitute.For<IAdminNotificationService>(),
+            new BlockedMessageRecorder(
+                Monitor(opts),
+                Monitor(new MalwareScanOptions()),
+                NullLogger<BlockedMessageRecorder>.Instance),
             NullLogger<QueueProcessor>.Instance);
     }
 

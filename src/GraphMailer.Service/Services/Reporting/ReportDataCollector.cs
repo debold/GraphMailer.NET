@@ -5,6 +5,7 @@ using System.Text.Json;
 using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure;
 using GraphMailer.Service.Infrastructure.Encryption;
+using GraphMailer.Service.Infrastructure.Security.Amsi;
 using GraphMailer.Service.Services.Advisor;
 using GraphMailer.Service.Services.UpdateCheck;
 using Microsoft.AspNetCore.DataProtection;
@@ -33,6 +34,7 @@ internal sealed class ReportDataCollector
     private readonly IOptionsMonitor<TelemetryOptions> _telemetry;
     private readonly IOptionsMonitor<GraphApiOptions> _graphApi;
     private readonly IOptionsMonitor<SenderValidationOptions> _senderValidation;
+    private readonly IOptionsMonitor<MalwareScanOptions> _malwareScan;
     private readonly IOptionsMonitor<BackupOptions> _backup;
     private readonly IOptionsMonitor<NdrOptions> _ndr;
     private readonly IOptionsMonitor<AdminNotificationsOptions> _adminNotifications;
@@ -55,6 +57,7 @@ internal sealed class ReportDataCollector
         IOptionsMonitor<TelemetryOptions> telemetry,
         IOptionsMonitor<GraphApiOptions> graphApi,
         IOptionsMonitor<SenderValidationOptions> senderValidation,
+        IOptionsMonitor<MalwareScanOptions> malwareScan,
         IOptionsMonitor<BackupOptions> backup,
         IOptionsMonitor<NdrOptions> ndr,
         IOptionsMonitor<AdminNotificationsOptions> adminNotifications,
@@ -73,6 +76,7 @@ internal sealed class ReportDataCollector
         _telemetry = telemetry;
         _graphApi = graphApi;
         _senderValidation = senderValidation;
+        _malwareScan = malwareScan;
         _backup = backup;
         _ndr = ndr;
         _adminNotifications = adminNotifications;
@@ -121,11 +125,14 @@ internal sealed class ReportDataCollector
         };
 
         var (queuedNow, failedCount, failedItems) = ReadQueueFolders();
+        var (malwareBlocked, malwareAudited) = CountMalwareDetections(data.PeriodStart, data.PeriodEnd);
         data = data with
         {
             QueuedNow = queuedNow,
             FailedQueueCount = failedCount,
             FailedQueueItems = failedItems,
+            MalwareBlocked = malwareBlocked,
+            MalwareAuditOnly = malwareAudited,
             Health = BuildHealth(queuedNow, failedCount, now),
             Recommendations = BuildRecommendations(),
         };
@@ -298,6 +305,43 @@ internal sealed class ReportDataCollector
 
     // ── Mail queue folders ───────────────────────────────────────────────────
 
+    /// <summary>
+    /// Counts the malware findings of the period, split by whether they actually blocked
+    /// anything. Read from the metrics database rather than from <c>mail\blocked\</c>: the
+    /// records there follow their own retention and can be switched off entirely, whereas the
+    /// counters follow the metrics retention like every other figure in this report.
+    /// Best-effort — a report is worth sending even without this section.
+    /// </summary>
+    private (int Blocked, int AuditOnly) CountMalwareDetections(DateOnly periodStart, DateOnly periodEnd)
+    {
+        if (!File.Exists(DbPath)) return (0, 0);
+
+        try
+        {
+            using var conn = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
+            conn.Open();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT COALESCE(SUM(CASE WHEN blocked = 1 THEN count ELSE 0 END), 0),
+                       COALESCE(SUM(CASE WHEN blocked = 0 THEN count ELSE 0 END), 0)
+                FROM malware_detections
+                WHERE bucket_hour >= $from AND bucket_hour < $to
+                """;
+            // Hourly bucket strings, matching MetricsService.BucketHour.
+            cmd.Parameters.AddWithValue("$from", periodStart.ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-dd'T'HH"));
+            cmd.Parameters.AddWithValue("$to", periodEnd.AddDays(1).ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-dd'T'HH"));
+
+            using var reader = cmd.ExecuteReader();
+            return reader.Read() ? ((int)reader.GetInt64(0), (int)reader.GetInt64(1)) : (0, 0);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Report] Could not read the malware detection counters");
+            return (0, 0);
+        }
+    }
+
     private (int Queued, int Failed, List<FailedQueueItem> Items) ReadQueueFolders()
     {
         var queueDir = Path.Combine(MailDir, "queue");
@@ -397,6 +441,8 @@ internal sealed class ReportDataCollector
                 [.. enabledServers.Where(s => s.IsPlaintext && s.AcceptsCredentials)
                                   .Select(s => $"{s.Name} (port {s.Port})")],
             SenderValidationEnabled = _senderValidation.CurrentValue.Enabled,
+            MalwareScanMode = _malwareScan.CurrentValue.Mode.ToString(),
+            MalwareScanProviderPresent = AmsiProviderRegistry.Enumerate().Count > 0,
             BackupEnabled = _backup.CurrentValue.Enabled,
             NdrEnabled = _ndr.CurrentValue.Enabled,
             UpdateCheckEnabled = _updateCheck.CurrentValue.Enabled,

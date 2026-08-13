@@ -30,6 +30,8 @@ public sealed class RecommendationSummaryOpenByTargetTests
         HasAdminNotificationRecipients = true,
         AdminNotificationsEnabled = true,
         DisabledCriticalNotifications = [],
+        MalwareScanMode = "Enforce",
+        MalwareScanProviderPresent = true,
     };
 
     [Fact]

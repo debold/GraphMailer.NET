@@ -79,6 +79,8 @@ public partial class NotificationsPage : UserControl
         NotifServiceStartStop.IsChecked = doc.Notification.NotifServiceStartStop;
         NotifBackup.IsChecked = doc.Notification.NotifBackup;
         NotifUpdateAvailable.IsChecked = doc.Notification.NotifUpdateAvailable;
+        NotifMalwareDetected.IsChecked = doc.Notification.NotifMalwareDetected;
+        NotifMalwareScanFailure.IsChecked = doc.Notification.NotifMalwareScanFailure;
         NdrEnabled.IsChecked = doc.Ndr.NdrEnabled;
         NdrNotifySender.IsChecked = doc.Ndr.NdrNotifySender;
         NdrNotifyAdmin.IsChecked = doc.Ndr.NdrNotifyAdmin;
@@ -170,6 +172,8 @@ public partial class NotificationsPage : UserControl
         doc.Notification.NotifServiceStartStop = NotifServiceStartStop.IsChecked == true;
         doc.Notification.NotifBackup = NotifBackup.IsChecked == true;
         doc.Notification.NotifUpdateAvailable = NotifUpdateAvailable.IsChecked == true;
+        doc.Notification.NotifMalwareDetected = NotifMalwareDetected.IsChecked == true;
+        doc.Notification.NotifMalwareScanFailure = NotifMalwareScanFailure.IsChecked == true;
         doc.Ndr.NdrEnabled = NdrEnabled.IsChecked == true;
         doc.Ndr.NdrNotifySender = NdrNotifySender.IsChecked == true;
         doc.Ndr.NdrNotifyAdmin = NdrNotifyAdmin.IsChecked == true;

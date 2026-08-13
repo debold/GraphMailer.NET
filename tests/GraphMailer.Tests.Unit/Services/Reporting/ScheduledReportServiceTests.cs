@@ -34,6 +34,7 @@ public sealed class ScheduledReportServiceTests
             Monitor(new TelemetryOptions()),
             Monitor(new GraphApiOptions()),
             Monitor(new SenderValidationOptions()),
+            Monitor(new MalwareScanOptions { Mode = MalwareScanMode.Off }),
             Monitor(new BackupOptions()),
             Monitor(new NdrOptions()),
             Monitor(new AdminNotificationsOptions()),

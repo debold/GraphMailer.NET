@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1068 tests** (1003 unit · 65 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-08
+**Total: 1175 tests** (1102 unit · 73 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-13
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -413,6 +413,11 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `FromConfigDocument_PlainListenerAcceptingAuth_IsFlagged` (Theory) | Plain listener with AuthMode Optional / Required | Listed in `PlaintextAuthListeners` with name and port |
 | `FromConfigDocument_PlainListenerWithoutAuth_IsNotFlagged` | Default port-25 relay listener, AuthMode `None` | `PlaintextAuthListeners` empty — a supported setup must not raise a High-severity hint |
 | `FromConfigDocument_TlsListenerWithAuth_IsNotFlagged` | StartTls listener with AuthMode Required | `PlaintextAuthListeners` empty |
+| `Evaluate_AuditMode_RecommendsSwitchingToEnforce` | Malware scan in Audit with a provider present | Only `malware-scan-audit` open — the half-way state looks like a working filter but stops nothing |
+| `Evaluate_ScanModeOff_IsNotNaggedAbout` | Scan mode Off | Nothing open — switching scanning off is a deliberate decision |
+| `Evaluate_NoAmsiProvider_RecommendsInstallingOne` | No AMSI provider registered | Only `malware-scan-provider` open — configured but inert, and the scanner cannot report this itself |
+| `Evaluate_NoAmsiProvider_DoesNotAlsoAskToEnforce` | Audit mode **and** no provider | The Enforce hint stays closed — the missing provider is the thing to fix first |
+| `Evaluate_ScanModeOff_DoesNotAskForAProviderEither` | Scan off and no provider | Nothing open |
 
 ---
 
@@ -493,6 +498,92 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `SaveAsync_QueueWriteFails_ReturnsTransient451` | Queue directory replaced by a file → write throws (simulated disk/IO failure) | SMTP 451 transient (regression: the old permanent 554 made conforming clients discard the mail → silent mail loss) |
 | `SaveAsync_BlockedIp_ReturnsPermanent550AndQueuesNothing` | Client IP blocked by `IpBlockingService` | SMTP 550 permanent, nothing queued (audit verification: `SmtpResponse.MailboxUnavailable` is 550, not a transient 4xx) |
 | `SaveAsync_QueueWriteFails_LogsErrorWithException` | Queue write throws (same sabotage as the 451 test) | Single Error entry with the exception object attached — the log is the operator's only signal, and the attached exception is what puts the stack trace into the log file |
+
+---
+
+### SmtpMessageStore — malware scan (`Infrastructure/Smtp/SmtpMessageStoreTests.cs`)
+
+Mode matrix, fail-open contract, hash allowlist and source bypass. The scanner is faked
+throughout; the machine's real antimalware provider is never involved.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `SaveAsync_MalwareDetected_EnforceMode_Returns554AndQueuesNothing` | Detection, mode Enforce | SMTP 554 permanent, queue empty — the content is the problem, so a retry is pointless |
+| `SaveAsync_MalwareDetected_EnforceMode_ResponseDoesNotLeakDetectionDetail` | Detection with file name + hash | Reply text contains neither; detection detail is operator information, not the sender's |
+| `SaveAsync_MalwareDetected_AuditMode_Returns250AndQueuesMessage` | Detection, mode Audit | SMTP 250, message queued — audit observes, it does not block |
+| `SaveAsync_MalwareDetected_AuditMode_RecordsDetectionAsNotBlocked` | Detection, mode Audit | Record in `mail/blocked/` with `"Blocked": false` and mode `Audit` |
+| `SaveAsync_MalwareDetected_AuditMode_RecordSharesTheQueuedMessageId` | Detection, mode Audit | Blocked record id == queued `.eml` id, so an audit finding is traceable to the delivered mail |
+| `SaveAsync_MalwareDetected_EnforceMode_RecordsRejectionMetric` | Detection, mode Enforce | `RecordRejectionAsync("malware_detected", …)` called once |
+| `SaveAsync_MalwareDetected_AuditMode_RecordsNoRejectionMetric` | Detection, mode Audit | No rejection metric — nothing was rejected, and counting it would report rejections that never happened |
+| `SaveAsync_ModeOff_DoesNotScan` | Mode Off, detecting scanner | Scanner never called; SMTP 250 |
+| `SaveAsync_ScannerUnavailable_DoesNotScanAndDelivers` | `IsAvailable = false`, mode Enforce | Scanner never called; SMTP 250 — a scanner that cannot run must not block mail |
+| `SaveAsync_ScanFailed_DeliversEvenInEnforceMode` | Scan errors, mode Enforce | SMTP 250, message queued, no blocked record (fail-open) |
+| `SaveAsync_ScanSkippedOversizedPart_DeliversEvenInEnforceMode` | Part exceeds `MaxScanBytes`, mode Enforce | SMTP 250, message queued, no blocked record (fail-open) |
+| `SaveAsync_ScanFailed_NotifiesScanFailure` | Scan errors | `NotifyMalwareScanFailureAsync` called — fail-open is invisible otherwise |
+| `SaveAsync_ScanSkippedOversizedPart_NotifiesScanFailure` | Oversized part skipped | `NotifyMalwareScanFailureAsync` called |
+| `SaveAsync_AllowlistedAttachmentHash_DeliversDespiteDetection` | Detection whose hash is allowlisted (different case) | SMTP 250 — comparison is case-insensitive |
+| `SaveAsync_DifferentAttachmentHash_StillBlocked` | Detection, allowlist holds a different hash | SMTP 554 — the allowlist exempts one exact byte sequence, not a name or sender |
+| `SaveAsync_BodyDetection_CannotBeAllowlisted` | Body detection (no hash), allowlist populated | SMTP 554 — a body differs per message, so no entry can match it |
+| `SaveAsync_BypassedAuthenticatedUser_DoesNotScan` | Authenticated user on the bypass list (different case) | Scanner never called; SMTP 250 |
+| `SaveAsync_BypassedIpRange_DoesNotScan` | Client IP inside a bypassed CIDR range | Scanner never called; SMTP 250 |
+| `SaveAsync_UnlistedIp_IsStillScanned` | Client IP outside the bypassed range | Scanned once; SMTP 554 |
+| `SaveAsync_EnvelopeSenderIsNeverABypass` | Unauthenticated session, MAIL FROM matches a bypass *user* entry | Scanned and blocked — regression guard: MAIL FROM is client-chosen and must never exempt a message |
+| `SaveAsync_MalwareDetected_EnforceMode_NotifiesTheAdmin` | Detection, mode Enforce | `NotifyMalwareDetectedAsync` called once with the part name and `blocked: true` |
+| `SaveAsync_MalwareDetected_AuditMode_NotifiesTheAdminAsNotBlocked` | Detection, mode Audit | Called once with `blocked: false` — audit findings are reported too, but flagged as delivered |
+| `SaveAsync_AllowlistedHash_DoesNotNotify` | Detection whose hash is allowlisted | No notification — a known false positive is not an event worth an email |
+| `SaveAsync_MalwareDetected_EnforceMode_CountsTheDetectionAsBlocked` | Detection, mode Enforce | `RecordMalwareDetectionAsync(blocked: true, "attachment", …)` |
+| `SaveAsync_MalwareDetected_AuditMode_CountsTheDetectionAsNotBlocked` | Detection, mode Audit | Recorded with `blocked: false` — without it an audit installation would look like it had found nothing |
+| `SaveAsync_BodyDetection_IsCountedAsBody` | Body detection | Recorded with `detectedIn = "body"` |
+
+---
+
+### Malware scan page input rules (`ConfigTool/MalwareScanValidationTests.cs`)
+
+These matter more than typical UI validation: a hash that is not a real digest can never equal a
+computed one, and an unparsable bypass entry never matches a client — both fail silently at
+runtime, so this is the only place to catch them.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `ValidateSha256_ProperDigest_IsAccepted` | 64 hex characters | Accepted |
+| `ValidateSha256_UppercaseDigest_IsAccepted` | Upper-case digest | Accepted — the runtime comparison is case-insensitive |
+| `ValidateSha256_SurroundingWhitespace_IsAccepted` | Padded with spaces | Accepted (trimmed) |
+| `ValidateSha256_ShortValue_IsRejectedWithTheActualLength` | `"123"` | Rejected, message names both the required and the actual length (the reported defect) |
+| `ValidateSha256_NonHexCharacters_AreRejected` | 64 `z` characters | Rejected |
+| `ValidateSha256_Empty_IsRejected` / `ValidateSha256_Null_IsRejected` | Blank / null | Rejected |
+| `ValidateIpOrCidr_ValidEntries_AreAccepted` (Theory, 5 cases) | IPv4, IPv4 CIDR, IPv6, IPv6 CIDR, `0.0.0.0/0` | Accepted |
+| `ValidateIpOrCidr_InvalidEntries_AreRejected` (Theory, 5 cases) | `123`, text, octet > 255, non-numeric prefix, blank | Rejected — `123` in particular, which `IPAddress.TryParse` would happily read as `0.0.0.123` |
+| `ValidateIpOrCidr_PrefixTooLargeForIPv4_IsRejected` | `192.168.0.0/33` | Rejected, message names the 32-bit maximum |
+| `ValidateIpOrCidr_IPv6AllowsPrefixesAboveThirtyTwo` | `2001:db8::/64` | Accepted — the prefix limit follows the address family |
+| `IsDuplicate_SameValueDifferentCase_IsADuplicate` | `LegacyApp` vs `legacyapp` | Duplicate |
+| `IsDuplicate_SameValueWithWhitespace_IsADuplicate` | Padded copy of an existing range | Duplicate — whitespace must not create a second entry that behaves identically |
+| `IsDuplicate_DifferentValue_IsNot` | `/8` vs `/16` | Not a duplicate |
+| `IsDuplicate_EmptyCandidate_IsNeverADuplicate` | Blank candidate | Not a duplicate |
+
+---
+
+### AMSI content scanner (`Infrastructure/Security/Amsi/AmsiContentScannerTests.cs`)
+
+Result semantics, provider enumeration and message walking. The native round-trip has its own
+opt-in test at the end of the table.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `IsMalware_MatchesTheAmsiResultIsMalwareMacro` (Theory, 7 cases) | `AMSI_RESULT` values 0, 1, 16383, 16384, 20479, 32768, 40000 | Blocks from 16384 up — reimplements the `AmsiResultIsMalware` macro, including the admin-block range |
+| `ScanResult_AttachmentDetectionWithHash_IsAllowlistable` | Attachment detection carrying a hash | `IsAllowlistable == true` |
+| `ScanResult_BodyDetectionWithoutHash_IsNotAllowlistable` | Body detection, no hash | `false` — the absent hash encodes that a body entry could never match again |
+| `ScanResult_CleanOutcome_IsNotAllowlistable` | Clean result | `false` |
+| `Enumerate_ReturnsWellFormedEntriesAndNeverThrows` | Registry read on the test machine | Never throws; every entry carries a CLSID (a machine without antivirus legitimately returns none) |
+| `Describe_WithNameAndDll_UsesTheFileNameOnly` | Provider with display name + full DLL path | `"Windows Defender (MpOav.dll)"` |
+| `Describe_WithoutName_FallsBackToTheClsid` | Provider with neither name nor DLL | `"{clsid} (unknown DLL)"` |
+| `EnumerateTargets_PlainTextMessage_YieldsOneBodyTarget` | text/plain message | One non-attachment target carrying the decoded text |
+| `EnumerateTargets_HtmlAndTextBody_YieldsBoth` | multipart/alternative with text + html | Two body targets |
+| `EnumerateTargets_Attachment_IsLoadedDecoded` | Base64 attachment | Target loads the **decoded** bytes — base64 text would match no signature |
+| `EnumerateTargets_NestedRfc822_WalksTheInnerMessage` | Forwarded mail with an attachment | The inner attachment appears as its own target (delivery keeps it opaque; scanning must not) |
+| `EnumerateTargets_AtTheDepthLimit_ScansTheAttachedMessageWhole` | Nesting at depth 5 | One `"attached message"` target — degraded, never ignored, so a nesting chain cannot smuggle content past |
+| `EnumerateTargets_AttachmentWithoutFileName_StillGetsAName` | Attachment with no file name | Non-empty name — AMSI needs a content name for every buffer |
+| `Scanner_WhenUnavailable_ReturnsUnavailableWithoutTouchingTheMessage` | Scanner constructed on the test machine | Availability and provider list agree; unavailable is distinct from "clean" |
+| `ScanAsync_AntivirusTestVectorAsAttachment_IsDetected` | **Opt-in** (`GRAPHMAILER_AMSI_LIVE_TEST=1`): industry-standard test vector as an attachment, through the real AMSI stack | `Malware`, correct part name, hash present. Skipped by default: a detection is a genuine antivirus event logged against this process. The vector is stored XOR-masked so neither this source file nor the compiled test assembly contains the signature — a plain literal would be quarantined by the antivirus on the build machine, and splitting a literal does not help because the compiler folds adjacent literals back together |
 
 ---
 
@@ -1031,6 +1122,26 @@ its input must still say so, and both must be the same length (they were 8 and 6
 
 ---
 
+### Malware scan over SMTP (`Smtp/SmtpMalwareScanTests.cs`)
+
+> What an actual SMTP client sees and what ends up on disk. The unit tests cover the decision
+> logic; a verdict that is correct in isolation is still a bug if the client is told to retry
+> forever, or if a rejected message leaves a file behind. Every host runs a scripted scanner —
+> the machine's real antimalware provider is never involved.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Enforce_Detection_ClientGetsPermanentFailureAndNothingIsQueued` | Detection, mode Enforce | `SmtpCommandException` with `TransactionFailed` (554); queue directory empty |
+| `Enforce_Detection_WritesABlockedRecordWithoutTheMessage` | Detection, mode Enforce | One `.meta.json` in `mail/blocked/` carrying part name + hash and `"Blocked": true`; **no `.eml`** — the record is metadata only |
+| `Enforce_Detection_RecordsTheRejectionMetric` | Detection, mode Enforce | `RecordRejectionAsync("malware_detected", …)` recorded |
+| `Audit_Detection_MessageIsAcceptedAndQueued` | Detection, mode Audit | No SMTP error; message queued |
+| `Audit_Detection_RecordsTheDetectionAndTheDeliveredMessageUnderTheSameId` | Detection, mode Audit | Record with `"Blocked": false`; record id == queued message id |
+| `Enforce_ScanFails_MessageIsStillDelivered` | Scanner errors, mode Enforce | Message delivered — a broken scanner must never become a mail outage |
+| `Enforce_CleanMessage_IsDeliveredAndLeavesNoRecord` | Clean verdict, mode Enforce | Message queued; `mail/blocked/` empty |
+| `Off_DetectingScanner_IsNeverConsulted` | Mode Off with a detecting scanner | Scanner not called; message queued |
+
+---
+
 ### Service Lifecycle (`ServiceLifecycleTests.cs`)
 
 | Test | Scenario | Expected result |
@@ -1184,6 +1295,9 @@ comes from actual `RCPT TO` commands rather than a literal in the test. No tenan
 | `Constructor_FreshDb_StampsCurrentSchemaVersion` | New database created | `PRAGMA user_version` == `MetricsService.SchemaVersion` |
 | `Constructor_OldDbWithoutClientIp_MigratesColumnAndStampsVersion` | Pre-versioning DB (no `client_ip`, `user_version` 0) | `client_ip` + v2 columns added by the migration; `user_version` stamped to current |
 | `Constructor_V1Db_MigratesToV2KeepingExistingRows` | Exact v1-shaped DB with one row, `user_version` 1 | All v2 columns added, existing row kept with default values, session/rejection tables created, version stamped |
+| `Constructor_V2Db_GainsTheMalwareTableAndStampsV3` | v2-shaped DB, `user_version` 2 | `malware_detections` created and version stamped to 3 |
+| `RecordMalwareDetection_CountsBlockedAndAuditSeparately` | Two blocked findings and one audit finding | Counted apart — the audit figure is what shows an operator what enforcement *would* have stopped |
+| `RecordMalwareDetection_DoesNotTouchTheRejectionStatistics` | One audit-mode finding | `smtp_rejection_stats` stays empty — the reason the table exists at all: an audit finding rejected nothing |
 
 ---
 
@@ -1471,6 +1585,8 @@ Daily opt-in heartbeat scheduler: persists cadence + install id + counter waterm
 | `QuarantineIfCorrupt_InvalidJson_MovesFileAsideAndReturnsPath` | Truncated JSON on disk | File moved to `graphmailer.json.corrupt-<ts>` (content preserved); config path free so startup succeeds |
 | `QuarantineIfCorrupt_ValidJson_IsNoOp` | Valid JSON | `null`; file untouched |
 | `QuarantineIfCorrupt_MissingFile_IsNoOp` | No file | `null` |
+| `Migrate_V9_ToCurrent_LeavesMalwareScanAbsent` | v9 doc (v10 only added the `MalwareScan` section) | Version stamped to current; no key written — materialising a mode would be a policy decision the operator never made, and the binder default (Audit) is the safe one |
+| `Migrate_V9_ToCurrent_PreservesAnExistingMalwareScanSection` | v9 doc that already carries a hand-written `MalwareScan` section | Section survives untouched |
 | `PruneMigrationBackups_KeepsOnlyTheNewestTen` | 13 `.bak` files with staggered creation times | Oldest 3 deleted, newest 10 kept |
 | `Save_StampsCurrentSchemaVersion` (ConfigServiceTests) | Save a document | Reloaded `doc.SchemaVersion == ConfigSchema.Current` |
 
@@ -1538,6 +1654,15 @@ Verifies that every JSON key written by the service (`graphmailer.json`) is corr
 | `Load_Recommendations_Absent_DefaultsToNothingDismissed` | No `Recommendations` section (pre-v5 config) | `doc.Recommendations.Dismissed` empty — every applicable hint is shown until hidden |
 | `Load_Smtp_MaxRecipients_AppearsInDocSmtpMaxRecipients` | `Smtp.MaxRecipients = 800` | `doc.Smtp.MaxRecipients == 800` |
 | `Load_Smtp_MaxRecipientsAbsent_DefaultsTo500` | `Smtp` section without the key (pre-v8 config) | `doc.Smtp.MaxRecipients == 500` — Exchange Online's own default for `RecipientLimits` |
+| `Load_MalwareScan_Scalars_AppearInDoc` | Mode, timeout, max scan bytes, retention in JSON | All four surface in `doc.MalwareScan` |
+| `Load_MalwareScan_Absent_DefaultsToAuditMode` | No `MalwareScan` section (pre-v10 config) | `Mode == "Audit"` — an upgrade must not start rejecting mail |
+| `Load_MalwareScan_UnknownMode_FallsBackToAudit` | `Mode: "Enfroce"` (typo) | `"Audit"` — a typo must never resolve to the blocking mode |
+| `Load_MalwareScan_AllowedContentHashes_AppearInDoc` | Two allowlist entries, one with a note | Both parsed, note preserved, missing note stays null |
+| `Load_MalwareScan_HashEntryWithoutSha256_IsDropped` | Entry with only a note | Dropped — an entry without a hash matches nothing |
+| `Load_MalwareScan_BypassLists_AppearInDoc` | Bypass user + two IP ranges | Both lists surface in order |
+| `Load_MalwareScan_BypassIpComments_AppearInDoc` | Bypass address with a comment in the parallel map | Address and comment both surface |
+| `Load_MalwareScan_BypassIpCommentsAbsent_DefaultsToEmpty` | Address without comments map | Comment map empty |
+| `Load_MalwareScan_BypassListsAbsent_DefaultToEmpty` | No `MalwareScan` section | All three lists empty |
 
 ---
 
@@ -1596,3 +1721,13 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `Save_TelemetryEnabled_BindsToTelemetryOptionsEnabled` | `doc.Monitoring.TelemetryEnabled = true` saved | Options bound: `Telemetry:Enabled == true` |
 | `Save_TelemetryDisabled_BindsToTelemetryOptionsDisabled` | `doc.Monitoring.TelemetryEnabled = false` saved | Options bound: `Telemetry:Enabled == false` |
 | `Save_NotifUpdateAvailable_True_BindsToUpdateAvailableEnabled_True` | `Notification.NotifUpdateAvailable = true` | `AdminNotifications:NotificationTypes:UpdateAvailable:Enabled == true` |
+| `MalwareScan_Scalars_BindToMalwareScanOptions` | Mode, timeout, max scan bytes, retention saved | `MalwareScanOptions` bound; the mode string binds onto the enum |
+| `MalwareScan_DefaultDocument_BindsToAuditMode` | Default document saved | `Mode == MalwareScanMode.Audit` — a freshly written config observes rather than rejects |
+| `MalwareScan_AllowedContentHashes_BindToMalwareScanOptions` | Two allowlist entries saved | Hashes and note bind through the object array |
+| `MalwareScan_BypassLists_BindToMalwareScanOptions` | Bypass user + two IP ranges saved | Both lists bind in order |
+| `MalwareScan_BypassIpComment_SurvivesASaveLoadRoundTrip` | Address + comment saved, then loaded | Comment preserved (the reported defect: the dialog offered a comment that nothing persisted) |
+| `MalwareScan_CommentForARemovedAddress_IsNotPersisted` | Comment map holds a key with no matching address | Orphan dropped on save, so it cannot reappear when the address is added again |
+| `MalwareScan_BypassIpComments_DoNotReachTheRuntimeOptions` | Address + comment saved | `MalwareScanOptions.BypassIpAddresses` binds to the address alone — the notes must not disturb matching |
+| `MalwareScan_EmptyBypassLists_BindToEmptyLists` | Default document saved | All three lists empty — array-merge guard: a default entry in `appsettings.json` would leak into a shorter user list by index |
+| `Save_NotifMalwareDetected_False_BindsToMalwareDetectedEnabled_False` | `Notification.NotifMalwareDetected = false` | `AdminNotifications:NotificationTypes:MalwareDetected:Enabled == false` |
+| `Save_NotifMalwareScanFailure_False_BindsToMalwareScanFailureEnabled_False` | `Notification.NotifMalwareScanFailure = false` | `AdminNotifications:NotificationTypes:MalwareScanFailure:Enabled == false` |

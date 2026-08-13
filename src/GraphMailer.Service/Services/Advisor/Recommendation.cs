@@ -26,6 +26,7 @@ internal enum RecommendationTarget
     Monitoring,
     Notifications,
     BackupAndRestore,
+    MalwareScan,
 }
 
 /// <summary>
@@ -46,6 +47,8 @@ internal static class RecommendationIds
     internal const string CriticalNotifications = "critical-notifications";
     internal const string UpdateCheck = "update-check";
     internal const string Telemetry = "telemetry";
+    internal const string MalwareScanAudit = "malware-scan-audit";
+    internal const string MalwareScanProvider = "malware-scan-provider";
 }
 
 /// <summary>

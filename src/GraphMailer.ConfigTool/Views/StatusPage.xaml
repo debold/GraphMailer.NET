@@ -47,6 +47,8 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="12"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="12"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Delivered Today -->
@@ -106,8 +108,30 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Uptime -->
+                <!-- Malware, next to Failed: both answer "what did not go through today".
+                     The subtitle carries the mode — a count alone would read as "we stopped
+                     these", which is wrong while scanning is in audit mode. -->
                 <Border Grid.Column="6"
+                        Style="{StaticResource Card}"
+                        Padding="16,14">
+                    <StackPanel>
+                        <TextBlock Text="Malware Today"
+                                   Style="{StaticResource LabelText}"/>
+                        <TextBlock x:Name="KpiMalware"
+                                   Text="—"
+                                   FontSize="28"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}"
+                                   Margin="0,6,0,2"/>
+                        <TextBlock x:Name="KpiMalwareSub"
+                                   Text="loading…"
+                                   Style="{StaticResource HintText}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Uptime -->
+                <Border Grid.Column="8"
                         Style="{StaticResource Card}"
                         Padding="16,14">
                     <StackPanel>

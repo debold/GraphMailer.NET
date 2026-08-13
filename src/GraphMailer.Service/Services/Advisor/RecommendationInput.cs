@@ -34,6 +34,15 @@ internal sealed record RecommendationInput
 
     // ── Feature toggles ──
     public bool SenderValidationEnabled { get; init; }
+
+    /// <summary>Configured malware-scan mode ("Off", "Audit" or "Enforce").</summary>
+    public string MalwareScanMode { get; init; } = "Audit";
+
+    /// <summary>
+    /// Whether an AMSI provider is registered on this machine. Read from the registry rather
+    /// than from the config, because it describes the machine, not the configuration.
+    /// </summary>
+    public bool MalwareScanProviderPresent { get; init; }
     public bool BackupEnabled { get; init; }
     public bool NdrEnabled { get; init; }
     public bool UpdateCheckEnabled { get; init; }
@@ -87,7 +96,12 @@ internal sealed record RecommendationInput
     /// construction in <see cref="Reporting.ReportDataCollector"/> — when a rule gains an input,
     /// both producers must be extended.
     /// </summary>
-    internal static RecommendationInput FromConfigDocument(ConfigDocument doc)
+    /// <param name="amsiProviderPresent">
+    /// Overrides the registry lookup. Every other input describes the persisted configuration;
+    /// this one describes the machine, so it is the single value a caller cannot derive from the
+    /// document — and the only one that would otherwise make the result differ between machines.
+    /// </param>
+    internal static RecommendationInput FromConfigDocument(ConfigDocument doc, bool? amsiProviderPresent = null)
     {
         var enabledServers = doc.Servers.Where(s => s.Enabled).ToList();
         return new RecommendationInput
@@ -107,6 +121,9 @@ internal sealed record RecommendationInput
                     .Select(s => $"{s.Name} (port {s.Port})")
             ],
             SenderValidationEnabled = doc.SenderValidation.SvEnabled,
+            MalwareScanMode = doc.MalwareScan.Mode,
+            MalwareScanProviderPresent = amsiProviderPresent
+                ?? Infrastructure.Security.Amsi.AmsiProviderRegistry.Enumerate().Count > 0,
             BackupEnabled = doc.Backup.BackupEnabled,
             NdrEnabled = doc.Ndr.NdrEnabled,
             UpdateCheckEnabled = doc.Monitoring.UpdateCheckEnabled,

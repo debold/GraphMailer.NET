@@ -96,6 +96,19 @@ Toggle which conditions raise an alert email. Sensible defaults are pre-set:
 | Service started / stopped | **Off** |
 | Configuration backup result (success / failure) | On |
 | New GraphMailer version available | **Off** |
+| Malware detected in an incoming message | On |
+| Malware scans are failing | On |
+
+The two malware alerts relate to the [Malware Scan](malware-scan.md) page:
+
+- **Malware detected** is batched — a malware wave would otherwise produce one email per message.
+  The window is **60 seconds measured from the first detection**, not from the last, so a steady
+  trickle of detections cannot keep postponing the alert. It also reports **audit-mode** detections,
+  which were delivered rather than blocked; the wording says which.
+- **Malware scans are failing** fires after repeated scan errors or timeouts (5 within 5 minutes by
+  default). It exists because scanning **fails open**: when the scanner cannot answer, the message is
+  delivered unscanned. Without this alert, mail flowing past a broken scanner is invisible outside
+  the log.
 
 The **All** switch in the card header turns every event on or off at once. It shows as on only
 while every single event is enabled, so it also tells you at a glance whether anything is switched

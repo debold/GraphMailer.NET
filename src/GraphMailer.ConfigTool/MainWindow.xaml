@@ -244,6 +244,34 @@
                                                 </StackPanel>
                                         </Border>
 
+                                        <Border x:Name="NavMalwareScan"
+                                                Style="{StaticResource NavItem}"
+                                                MouseLeftButtonUp="NavMalwareScan_Click">
+                                                <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="&#x1F9A0;"
+                                                                   FontSize="15"
+                                                                   Width="20"
+                                                                   TextAlignment="Center"
+                                                                   Foreground="#FFCCCCCC"/>
+                                                        <TextBlock Text="Malware Scan"
+                                                                   FontSize="13"
+                                                                   Foreground="#FFCCCCCC"
+                                                                   Margin="10,0,0,0"/>
+                                                        <Border x:Name="NavMalwareScanRecBadge"
+                                                                Visibility="Collapsed"
+                                                                Background="#FFEDBE00"
+                                                                CornerRadius="8"
+                                                                Padding="6,1"
+                                                                Margin="8,0,0,0"
+                                                                VerticalAlignment="Center">
+                                                                <TextBlock x:Name="NavMalwareScanRecBadgeText"
+                                                                           Text="!"
+                                                                           FontSize="10"
+                                                                           Foreground="#FF3B2D00"/>
+                                                        </Border>
+                                                </StackPanel>
+                                        </Border>
+
                                         <Border x:Name="NavGraphApi"
                                                 Style="{StaticResource NavItem}"
                                                 MouseLeftButtonUp="NavGraphApi_Click">

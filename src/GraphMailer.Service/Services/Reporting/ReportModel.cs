@@ -67,6 +67,18 @@ internal sealed record ReportData
     public IReadOnlyList<NamedCount> TopSenders { get; init; } = [];
     public IReadOnlyList<NamedCount> TopHosts { get; init; } = [];
 
+    // ── Malware scan ──
+
+    /// <summary>Messages rejected by the malware scan in the period (Enforce mode only).</summary>
+    public int MalwareBlocked { get; init; }
+
+    /// <summary>
+    /// Detections recorded while in Audit mode — flagged, but delivered. Reported separately so
+    /// the operator sees what enforcement <i>would</i> have stopped without mistaking it for
+    /// protection that is already in place.
+    /// </summary>
+    public int MalwareAuditOnly { get; init; }
+
     // ── System & performance ──
     public string Uptime { get; init; } = "—";
     public double? MemAvgMb { get; init; }

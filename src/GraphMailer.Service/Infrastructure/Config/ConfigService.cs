@@ -128,6 +128,7 @@ internal sealed class ConfigService
             Notification = ReadNotifications(merged, root),
             Ndr = ReadNdr(merged),
             SenderValidation = ReadSenderValidation(merged),
+            MalwareScan = ReadMalwareScan(merged),
             Logging = ReadLogging(merged),
             Backup = ReadBackup(merged),
             Recommendations = ReadRecommendations(merged),
@@ -251,6 +252,7 @@ internal sealed class ConfigService
         WriteNotifications(root, doc.Notification);
         WriteNdr(root, doc.Ndr);
         WriteSenderValidation(root, doc.SenderValidation);
+        WriteMalwareScan(root, doc.MalwareScan);
         WriteLogging(root, doc.Logging);
         WriteBackup(root, doc.Backup);
         WriteRecommendations(root, doc.Recommendations);
@@ -569,6 +571,8 @@ internal sealed class ConfigService
             NotifServiceStartStop = GetTypeEnabled(types, "ServiceStartStopAlert", false),
             NotifBackup = GetTypeEnabled(types, "BackupResult", true),
             NotifUpdateAvailable = GetTypeEnabled(types, "UpdateAvailable", false),
+            NotifMalwareDetected = GetTypeEnabled(types, "MalwareDetected", true),
+            NotifMalwareScanFailure = GetTypeEnabled(types, "MalwareScanFailure", true),
             ReportEnabled = report["Enabled"]?.GetValue<bool>() ?? false,
             ReportFrequency = Str(report, "Frequency") ?? "Weekly",
             ReportTimeOfDay = Str(report, "TimeOfDay") ?? "07:00",
@@ -641,6 +645,8 @@ internal sealed class ConfigService
         SetTypeEnabled(types, "ServiceStartStopAlert", s.NotifServiceStartStop);
         SetTypeEnabled(types, "BackupResult", s.NotifBackup);
         SetTypeEnabled(types, "UpdateAvailable", s.NotifUpdateAvailable);
+        SetTypeEnabled(types, "MalwareDetected", s.NotifMalwareDetected);
+        SetTypeEnabled(types, "MalwareScanFailure", s.NotifMalwareScanFailure);
 
         var report = EnsureSection(o, "ScheduledReport");
         report["Enabled"] = s.ReportEnabled;
@@ -689,6 +695,78 @@ internal sealed class ConfigService
         o["Enabled"] = s.SvEnabled;
         o["RefreshIntervalMinutes"] = s.SvRefreshIntervalMinutes;
         o["FailClosed"] = s.SvFailClosed;
+    }
+
+    private static ConfigDocument.MalwareScanSection ReadMalwareScan(JsonObject root)
+    {
+        var o = root["MalwareScan"] as JsonObject ?? new JsonObject();
+
+        var hashes = new List<ConfigDocument.AllowedHashEntry>();
+        if (o["AllowedContentHashes"] is JsonArray arr)
+        {
+            foreach (var node in arr)
+            {
+                if (node is not JsonObject entry) continue;
+                var sha = Str(entry, "Sha256");
+                if (string.IsNullOrWhiteSpace(sha)) continue;   // an entry without a hash matches nothing
+                hashes.Add(new ConfigDocument.AllowedHashEntry
+                {
+                    Sha256 = sha,
+                    Note = Str(entry, "Note"),
+                    AddedAt = entry["AddedAt"]?.GetValue<DateTime?>(),
+                });
+            }
+        }
+
+        return new ConfigDocument.MalwareScanSection
+        {
+            // Unknown/absent mode falls back to Audit, never to Enforce: a typo in the file
+            // must not silently start rejecting mail.
+            Mode = NormaliseScanMode(Str(o, "Mode")),
+            TimeoutSeconds = o["TimeoutSeconds"]?.GetValue<int>() ?? 30,
+            MaxScanBytes = o["MaxScanBytes"]?.GetValue<long>() ?? 26_214_400,
+            BlockedRecordRetentionDays = o["BlockedRecordRetentionDays"]?.GetValue<int>() ?? 60,
+            AllowedContentHashes = hashes,
+            BypassAuthenticatedUsers = ReadStringArray(o, "BypassAuthenticatedUsers"),
+            BypassIpAddresses = ReadStringArray(o, "BypassIpAddresses"),
+            BypassIpComments = ReadStringDict(o, "BypassIpComments"),
+        };
+    }
+
+    private static string NormaliseScanMode(string? raw)
+        => Enum.TryParse<Configuration.MalwareScanMode>(raw, ignoreCase: true, out var mode)
+            ? mode.ToString()
+            : Configuration.MalwareScanMode.Audit.ToString();
+
+    private static void WriteMalwareScan(JsonObject root, ConfigDocument.MalwareScanSection s)
+    {
+        var o = EnsureSection(root, "MalwareScan");
+        o["Mode"] = NormaliseScanMode(s.Mode);
+        o["TimeoutSeconds"] = s.TimeoutSeconds;
+        o["MaxScanBytes"] = s.MaxScanBytes;
+        o["BlockedRecordRetentionDays"] = s.BlockedRecordRetentionDays;
+
+        var hashes = new JsonArray();
+        foreach (var entry in s.AllowedContentHashes)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Sha256)) continue;
+            var node = new JsonObject { ["Sha256"] = entry.Sha256.Trim() };
+            if (!string.IsNullOrWhiteSpace(entry.Note)) node["Note"] = entry.Note;
+            if (entry.AddedAt is { } added) node["AddedAt"] = added;
+            hashes.Add(node);
+        }
+        o["AllowedContentHashes"] = hashes;
+
+        o["BypassAuthenticatedUsers"] = ToJsonArray(s.BypassAuthenticatedUsers);
+        o["BypassIpAddresses"] = ToJsonArray(s.BypassIpAddresses);
+
+        // Only keep notes whose address still exists, so removing an entry does not leave an
+        // orphan behind that reappears the next time the same address is added.
+        var comments = s.BypassIpComments
+            .Where(kv => s.BypassIpAddresses.Contains(kv.Key, StringComparer.OrdinalIgnoreCase)
+                      && !string.IsNullOrWhiteSpace(kv.Value))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+        o["BypassIpComments"] = ToJsonDict(comments);
     }
 
     private ConfigDocument.BackupSection ReadBackup(JsonObject root)

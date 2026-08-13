@@ -762,4 +762,143 @@ public sealed class ConfigSchemaLoadTests : IDisposable
         _sut.Load().Smtp.MaxRecipients.Should().Be(500,
             "500 is Exchange Online's own default for a mailbox's RecipientLimits");
     }
+
+    // =========================================================================
+    // MalwareScan  (SectionName = "MalwareScan")
+    // Maps to ConfigDocument.MalwareScanSection
+    // =========================================================================
+
+    [Fact]
+    public void Load_MalwareScan_Scalars_AppearInDoc()
+    {
+        WriteJson("""
+            {
+              "MalwareScan": {
+                "Mode": "Enforce",
+                "TimeoutSeconds": 45,
+                "MaxScanBytes": 1048576,
+                "BlockedRecordRetentionDays": 90
+              }
+            }
+            """);
+
+        var doc = _sut.Load().MalwareScan;
+
+        doc.Mode.Should().Be("Enforce");
+        doc.TimeoutSeconds.Should().Be(45);
+        doc.MaxScanBytes.Should().Be(1_048_576);
+        doc.BlockedRecordRetentionDays.Should().Be(90);
+    }
+
+    [Fact]
+    public void Load_MalwareScan_Absent_DefaultsToAuditMode()
+    {
+        // The upgrade contract: a config written before this feature existed must not start
+        // rejecting mail. Audit observes and reports, Enforce blocks — absent means observe.
+        WriteJson("""{ "Smtp": { "Banner": "test" } }""");
+
+        _sut.Load().MalwareScan.Mode.Should().Be("Audit");
+    }
+
+    [Fact]
+    public void Load_MalwareScan_UnknownMode_FallsBackToAudit()
+    {
+        // A typo must never resolve to the blocking mode.
+        WriteJson("""{ "MalwareScan": { "Mode": "Enfroce" } }""");
+
+        _sut.Load().MalwareScan.Mode.Should().Be("Audit");
+    }
+
+    [Fact]
+    public void Load_MalwareScan_AllowedContentHashes_AppearInDoc()
+    {
+        WriteJson("""
+            {
+              "MalwareScan": {
+                "AllowedContentHashes": [
+                  { "Sha256": "aabbcc", "Note": "vendor macro sheet" },
+                  { "Sha256": "ddeeff" }
+                ]
+              }
+            }
+            """);
+
+        var hashes = _sut.Load().MalwareScan.AllowedContentHashes;
+
+        hashes.Should().HaveCount(2);
+        hashes[0].Sha256.Should().Be("aabbcc");
+        hashes[0].Note.Should().Be("vendor macro sheet");
+        hashes[1].Note.Should().BeNull();
+    }
+
+    [Fact]
+    public void Load_MalwareScan_HashEntryWithoutSha256_IsDropped()
+    {
+        // An entry with no hash can never match anything; keeping it would only make the
+        // ConfigTool show a row that does nothing.
+        WriteJson("""
+            { "MalwareScan": { "AllowedContentHashes": [ { "Note": "orphan" }, { "Sha256": "aabbcc" } ] } }
+            """);
+
+        _sut.Load().MalwareScan.AllowedContentHashes.Should().ContainSingle()
+            .Which.Sha256.Should().Be("aabbcc");
+    }
+
+    [Fact]
+    public void Load_MalwareScan_BypassLists_AppearInDoc()
+    {
+        WriteJson("""
+            {
+              "MalwareScan": {
+                "BypassAuthenticatedUsers": [ "legacyapp" ],
+                "BypassIpAddresses": [ "10.1.0.0/16", "192.168.0.5" ]
+              }
+            }
+            """);
+
+        var doc = _sut.Load().MalwareScan;
+
+        doc.BypassAuthenticatedUsers.Should().Equal("legacyapp");
+        doc.BypassIpAddresses.Should().Equal("10.1.0.0/16", "192.168.0.5");
+    }
+
+    [Fact]
+    public void Load_MalwareScan_BypassIpComments_AppearInDoc()
+    {
+        // The comment is a ConfigTool concern only — kept in a parallel map so the runtime
+        // option stays a plain string list, the same shape the IP whitelist uses.
+        WriteJson("""
+            {
+              "MalwareScan": {
+                "BypassIpAddresses": [ "10.1.0.0/16" ],
+                "BypassIpComments": { "10.1.0.0/16": "ERP host, flags its own PDFs" }
+              }
+            }
+            """);
+
+        var doc = _sut.Load().MalwareScan;
+
+        doc.BypassIpAddresses.Should().Equal("10.1.0.0/16");
+        doc.BypassIpComments["10.1.0.0/16"].Should().Be("ERP host, flags its own PDFs");
+    }
+
+    [Fact]
+    public void Load_MalwareScan_BypassIpCommentsAbsent_DefaultsToEmpty()
+    {
+        WriteJson("""{ "MalwareScan": { "BypassIpAddresses": [ "10.1.0.0/16" ] } }""");
+
+        _sut.Load().MalwareScan.BypassIpComments.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Load_MalwareScan_BypassListsAbsent_DefaultToEmpty()
+    {
+        WriteJson("""{ "Smtp": { "Banner": "test" } }""");
+
+        var doc = _sut.Load().MalwareScan;
+
+        doc.BypassAuthenticatedUsers.Should().BeEmpty();
+        doc.BypassIpAddresses.Should().BeEmpty();
+        doc.AllowedContentHashes.Should().BeEmpty();
+    }
 }

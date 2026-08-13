@@ -74,6 +74,14 @@ internal static class IpFilterService
     public static bool IsBlacklisted(string ip, IReadOnlyList<string> blacklist)
         => IPAddress.TryParse(ip, out var address) && blacklist.Count > 0 && MatchesAny(address, blacklist);
 
+    /// <summary>
+    /// True when the IP falls inside any of the given CIDR ranges or bare addresses.
+    /// Exposed so other policies (the malware-scan bypass) match ranges exactly the way the
+    /// IP filter does, rather than growing a second, subtly different CIDR implementation.
+    /// </summary>
+    public static bool IsInAnyRange(string ip, IReadOnlyList<string> cidrs)
+        => cidrs.Count > 0 && IPAddress.TryParse(ip, out var address) && MatchesAny(address, cidrs);
+
     private static bool MatchesAny(IPAddress address, IReadOnlyList<string> cidrs)
         => FindMatch(address, cidrs) is not null;
 

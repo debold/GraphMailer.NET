@@ -73,6 +73,23 @@ internal interface IAdminNotificationService
     /// per new version.
     /// </summary>
     Task NotifyUpdateAvailableAsync(string currentVersion, string latestVersion, string? releaseUrl, CancellationToken ct = default);
+    /// <summary>
+    /// Reports a message the malware scan flagged. Batched like delivery failures — a malware
+    /// wave would otherwise produce one mail per message. <paramref name="blocked"/> is false in
+    /// audit mode, where the message was delivered anyway; the wording differs accordingly.
+    /// <paramref name="sha256"/> is null for body detections, which cannot be allowlisted.
+    /// </summary>
+    Task NotifyMalwareDetectedAsync(
+        string from, IReadOnlyList<string> recipients, string clientIp, string subject,
+        string threatLocation, string? sha256, bool blocked, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reports that scans are failing or being skipped. Threshold-based, because the scan fails
+    /// open: without this the operator has no signal that messages are flowing past a scanner
+    /// that stopped working.
+    /// </summary>
+    Task NotifyMalwareScanFailureAsync(string reason, CancellationToken ct = default);
+
     Task NotifyPortOutageAsync(int port, string reason, CancellationToken ct = default);
     Task NotifyPortRestoredAsync(int port, CancellationToken ct = default);
     Task NotifyServiceStartedAsync(CancellationToken ct = default);

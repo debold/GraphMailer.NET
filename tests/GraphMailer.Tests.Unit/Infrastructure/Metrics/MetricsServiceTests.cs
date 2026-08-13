@@ -439,6 +439,81 @@ public sealed class MetricsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RecordMalwareDetection_CountsBlockedAndAuditSeparately()
+    {
+        // Both modes are counted here, unlike the rejection metric: the audit figure is what
+        // tells an operator what enforcement *would* have stopped.
+        var sut = CreateService();
+
+        await sut.RecordMalwareDetectionAsync(blocked: true, "attachment", "10.0.0.1", 25);
+        await sut.RecordMalwareDetectionAsync(blocked: true, "attachment", "10.0.0.1", 25);
+        await sut.RecordMalwareDetectionAsync(blocked: false, "body", "10.0.0.2", 587);
+
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var c = conn.CreateCommand();
+        c.CommandText = """
+            SELECT COALESCE(SUM(CASE WHEN blocked = 1 THEN count ELSE 0 END), 0),
+                   COALESCE(SUM(CASE WHEN blocked = 0 THEN count ELSE 0 END), 0)
+            FROM malware_detections
+            """;
+        using var reader = c.ExecuteReader();
+
+        Assert.True(reader.Read());
+        Assert.Equal(2, reader.GetInt64(0));
+        Assert.Equal(1, reader.GetInt64(1));
+    }
+
+    [Fact]
+    public async Task RecordMalwareDetection_DoesNotTouchTheRejectionStatistics()
+    {
+        // Regression guard for the reason the table exists at all: an audit finding rejected
+        // nothing, and counting it as a rejection would overstate what the relay refused.
+        var sut = CreateService();
+
+        await sut.RecordMalwareDetectionAsync(blocked: false, "attachment", "10.0.0.1", 25);
+
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var c = conn.CreateCommand();
+        c.CommandText = "SELECT COALESCE(SUM(count), 0) FROM smtp_rejection_stats";
+
+        Assert.Equal(0L, Convert.ToInt64(c.ExecuteScalar()));
+    }
+
+    [Fact]
+    public void Constructor_V2Db_GainsTheMalwareTableAndStampsV3()
+    {
+        // v2 databases predate malware scanning; the table is created by InitialiseSchema's
+        // IF NOT EXISTS, so the migration only has to record the new version.
+        Directory.CreateDirectory(Path.Combine(_tempDir, "data"));
+        using (var conn = new SqliteConnection($"Data Source={DbPath}"))
+        {
+            conn.Open();
+            using var c = conn.CreateCommand();
+            c.CommandText = """
+                CREATE TABLE email_events (
+                    id TEXT NOT NULL PRIMARY KEY, event_type TEXT NOT NULL, occurred_at TEXT NOT NULL);
+                PRAGMA user_version = 2;
+                """;
+            c.ExecuteNonQuery();
+        }
+
+        _ = CreateService();
+
+        using var verify = new SqliteConnection($"Data Source={DbPath}");
+        verify.Open();
+
+        using var check = verify.CreateCommand();
+        check.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='malware_detections'";
+        Assert.Equal(1L, Convert.ToInt64(check.ExecuteScalar()));
+
+        using var uv = verify.CreateCommand();
+        uv.CommandText = "PRAGMA user_version";
+        Assert.Equal(MetricsService.SchemaVersion, Convert.ToInt32(uv.ExecuteScalar()));
+    }
+
+    [Fact]
     public void Constructor_V1Db_MigratesToV2KeepingExistingRows()
     {
         // Build a v1 database: email_events in the exact v1 shape plus one row.

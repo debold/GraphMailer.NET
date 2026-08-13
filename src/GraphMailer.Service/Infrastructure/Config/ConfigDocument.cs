@@ -24,6 +24,7 @@ internal sealed class ConfigDocument
     public NotificationSection Notification { get; set; } = new();
     public NdrSection Ndr { get; set; } = new();
     public SenderValidationSection SenderValidation { get; set; } = new();
+    public MalwareScanSection MalwareScan { get; set; } = new();
     public LoggingSection Logging { get; set; } = new();
     public BackupSection Backup { get; set; } = new();
     public RecommendationsSection Recommendations { get; set; } = new();
@@ -198,6 +199,42 @@ internal sealed class ConfigDocument
         public List<string> Dismissed { get; set; } = [];
     }
 
+    /// <summary>One allowlisted false positive; mirrors <c>Configuration.AllowedContentHash</c>.</summary>
+    internal sealed class AllowedHashEntry
+    {
+        public string Sha256 { get; set; } = string.Empty;
+        public string? Note { get; set; }
+        public DateTime? AddedAt { get; set; }
+    }
+
+    internal sealed class MalwareScanSection
+    {
+        /// <summary>"Off", "Audit" or "Enforce". Audit is the default everywhere — see MalwareScanOptions.</summary>
+        public string Mode { get; set; } = "Audit";
+        public int TimeoutSeconds { get; set; } = 30;
+        public long MaxScanBytes { get; set; } = 26_214_400;
+        public int BlockedRecordRetentionDays { get; set; } = 60;
+
+        /// <summary>Attachment hashes allowed despite a detection.</summary>
+        public List<AllowedHashEntry> AllowedContentHashes { get; set; } = [];
+
+        /// <summary>Authenticated SMTP users exempt from scanning. Never envelope senders.</summary>
+        public List<string> BypassAuthenticatedUsers { get; set; } = [];
+
+        /// <summary>Client IPs/CIDR ranges exempt from scanning.</summary>
+        public List<string> BypassIpAddresses { get; set; } = [];
+
+        /// <summary>
+        /// Optional per-address note, keyed by the entry itself — the same parallel-map shape the
+        /// IP whitelist and blacklist use. Kept out of <see cref="BypassIpAddresses"/> so the
+        /// runtime option stays a plain string list; the service never reads the notes.
+        ///
+        /// Worth persisting: a bypass is a standing hole in the enforcement, and "why is this
+        /// source exempt" is exactly what nobody remembers a year later.
+        /// </summary>
+        public Dictionary<string, string> BypassIpComments { get; set; } = new();
+    }
+
     internal sealed class BackupSection
     {
         public bool BackupEnabled { get; set; } = false;
@@ -249,6 +286,8 @@ internal sealed class ConfigDocument
         public bool NotifServiceStartStop { get; set; } = false;
         public bool NotifBackup { get; set; } = true;
         public bool NotifUpdateAvailable { get; set; } = false;
+        public bool NotifMalwareDetected { get; set; } = true;
+        public bool NotifMalwareScanFailure { get; set; } = true;
 
         // ── Periodic operations report (sent to RecipientAddresses above) ──
         public bool ReportEnabled { get; set; } = false;

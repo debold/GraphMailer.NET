@@ -17,7 +17,7 @@ namespace GraphMailer.Service.Infrastructure.Config;
 internal static class ConfigSchema
 {
     /// <summary>Config schema version understood by this build.</summary>
-    internal const int Current = 9;
+    internal const int Current = 10;
 
     internal const string VersionKey = "SchemaVersion";
 
@@ -44,7 +44,8 @@ internal static class ConfigSchema
         if (from < 7) MigrateTo7(root);
         if (from < 8) MigrateTo8(root);
         if (from < 9) MigrateTo9(root);
-        // if (from < 10) MigrateTo10(root);   // future steps go here, in order
+        if (from < 10) MigrateTo10(root);
+        // if (from < 11) MigrateTo11(root);   // future steps go here, in order
 
         root[VersionKey] = Current;
         return true;
@@ -202,6 +203,21 @@ internal static class ConfigSchema
         types.Remove("PortMonitoringSustainedOutage");
         types.Remove("PortMonitoringRecovery");
         types.Remove("GraphApiConnectivityRestored");
+    }
+
+    /// <summary>
+    /// v9 → v10: additive only — the <c>MalwareScan</c> section (AMSI-based scanning of incoming
+    /// messages) and the <c>MalwareDetected</c> / <c>MalwareScanFailure</c> notification types
+    /// were introduced. Older files without the keys are already valid: the option binder falls
+    /// back to the defaults, and <c>MalwareScan.Mode</c> defaults to <c>Audit</c>, so an upgraded
+    /// installation starts observing rather than rejecting. Deliberately no key is written here —
+    /// materialising Enforce (or any mode) into an existing file would be a policy decision the
+    /// operator never made. The version bump records which shape wrote the file.
+    /// </summary>
+    private static void MigrateTo10(JsonObject root)
+    {
+        // Intentionally empty: purely additive schema change.
+        _ = root;
     }
 
     private static bool IsExplicitlyDisabled(JsonObject types, string key)

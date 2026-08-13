@@ -183,6 +183,8 @@
                                                                 <ColumnDefinition Width="*"/>
                                                                 <ColumnDefinition Width="12"/>
                                                                 <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="12"/>
+                                                                <ColumnDefinition Width="*"/>
                                                         </Grid.ColumnDefinitions>
                                                         <Border Grid.Column="0"
                                                                 Style="{StaticResource Card}"
@@ -226,7 +228,24 @@
                                                                                    Style="{StaticResource KpiSub}"/>
                                                                 </StackPanel>
                                                         </Border>
+                                                        <!-- Malware next to Failed: both answer "what did not get
+                                                             through". The subtitle carries whether anything was
+                                                             actually stopped — in audit mode nothing was. -->
                                                         <Border Grid.Column="6"
+                                                                Style="{StaticResource Card}"
+                                                                Padding="16,13">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="Malware"
+                                                                                   Style="{StaticResource LabelText}"/>
+                                                                        <TextBlock x:Name="OvMalware"
+                                                                                   Text="—"
+                                                                                   Style="{StaticResource KpiValue}"/>
+                                                                        <TextBlock x:Name="OvMalwareSub"
+                                                                                   Text="found by the scanner"
+                                                                                   Style="{StaticResource KpiSub}"/>
+                                                                </StackPanel>
+                                                        </Border>
+                                                        <Border Grid.Column="8"
                                                                 Style="{StaticResource Card}"
                                                                 Padding="16,13">
                                                                 <StackPanel>
@@ -821,6 +840,46 @@
                                                                 </StackPanel>
                                                         </Border>
                                                 </Grid>
+
+                                                <!-- Malware findings: blocked and audit-only are shown apart on
+                                                     purpose — an audit finding was delivered, and merging the two
+                                                     would report protection that is not actually in place. -->
+                                                <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                                                        <StackPanel>
+                                                                <Border Style="{StaticResource CardHeader}">
+                                                                        <TextBlock Text="Malware Scan"
+                                                                                   Style="{StaticResource SectionHeader}"/>
+                                                                </Border>
+                                                                <Grid Margin="16,12,16,14">
+                                                                        <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="2*"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <StackPanel Grid.Column="0">
+                                                                                <TextBlock Text="Blocked"
+                                                                                           Style="{StaticResource HintText}"/>
+                                                                                <TextBlock x:Name="RcMalwareBlocked"
+                                                                                           Text="0"
+                                                                                           FontSize="22"
+                                                                                           FontWeight="SemiBold"/>
+                                                                        </StackPanel>
+                                                                        <StackPanel Grid.Column="1">
+                                                                                <TextBlock Text="Detected, delivered"
+                                                                                           Style="{StaticResource HintText}"/>
+                                                                                <TextBlock x:Name="RcMalwareAudited"
+                                                                                           Text="0"
+                                                                                           FontSize="22"
+                                                                                           FontWeight="SemiBold"/>
+                                                                        </StackPanel>
+                                                                        <TextBlock Grid.Column="2"
+                                                                                   x:Name="RcMalwareHint"
+                                                                                   Style="{StaticResource HintText}"
+                                                                                   TextWrapping="Wrap"
+                                                                                   VerticalAlignment="Center"/>
+                                                                </Grid>
+                                                        </StackPanel>
+                                                </Border>
 
                                                 <Grid Margin="0,0,0,14">
                                                         <Grid.ColumnDefinitions>

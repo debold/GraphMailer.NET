@@ -306,6 +306,19 @@ public partial class MetricsPage : UserControl
 
         OvQueuedNow.Text = Num(CountQueueFiles());
 
+        // Same figures as the Reception card and the Status tile, from the same query.
+        var malware = MalwareStatsReader.Read(conn, DateTime.UtcNow.AddDays(-_rangeDays));
+        OvMalware.Text = Num(malware.Total);
+        OvMalwareSub.Text = malware switch
+        {
+            { Any: false } => "none found",
+            { Audited: 0 } => "blocked before queueing",
+            { Blocked: 0 } => $"all {malware.Audited} delivered (audit mode)",
+            _ => $"{malware.Blocked} blocked, {malware.Audited} delivered",
+        };
+        // Red only when something got through — a blocked finding means the filter worked.
+        OvMalware.Foreground = (Brush)FindResource(malware.Audited > 0 ? "DangerBrush" : "TextBrush");
+
         var permanentFailed = TryQueryLong(conn, "SELECT COUNT(*) FROM email_events WHERE event_type='failed' AND permanent=1 AND occurred_at >= $c", cutoff);
         OvFailedSub.Text = permanentFailed.HasValue ? $"{permanentFailed.Value} rejected permanently" : "permanently failed";
 
@@ -488,6 +501,21 @@ public partial class MetricsPage : UserControl
         }
         RcListenersGrid.ItemsSource = listeners;
 
+        // Malware findings for the same window, from their own table.
+        var malware = MalwareStatsReader.Read(conn, DateTime.UtcNow.AddDays(-_rangeDays));
+        RcMalwareBlocked.Text = Num(malware.Blocked);
+        RcMalwareAudited.Text = Num(malware.Audited);
+        RcMalwareHint.Text = malware switch
+        {
+            { Any: false } => "No malware found in this period.",
+            { Audited: > 0, Blocked: 0 } =>
+                "Scanning is in audit mode — these messages were flagged and delivered anyway. "
+                + "Review them on the Malware Scan page and switch the mode to Enforce to start blocking.",
+            { Audited: > 0 } =>
+                "Some findings were delivered because they were recorded while scanning was in audit mode.",
+            _ => "Flagged messages were rejected during the SMTP session; nothing was queued or stored.",
+        };
+
         // Recipients / attachments hint line
         using (var cmd = conn.CreateCommand())
         {
@@ -520,6 +548,7 @@ public partial class MetricsPage : UserControl
 
     private static string ReasonLabel(string reason) => reason switch
     {
+        "malware_detected" => "Malware detected",
         "ip_blacklist" => "IP blacklist match",
         "ip_not_whitelisted" => "IP not whitelisted",
         "ip_blocked" => "IP blocked (repeated failures)",

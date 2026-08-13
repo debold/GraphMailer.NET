@@ -101,6 +101,30 @@ public partial class StatusPage : UserControl
 
         KpiQueued.Text = queued.ToString(); KpiQueuedSub.Text = "messages in queue";
 
+        // Same UTC day as the other KPI cards.
+        var malware = await Task.Run(() => MalwareStatsReader.Read(DbPath, DateTime.UtcNow.Date));
+        if (!File.Exists(DbPath))
+        {
+            KpiMalware.Text = "—";
+            KpiMalwareSub.Text = "no data yet";
+        }
+        else
+        {
+            KpiMalware.Text = malware.Total.ToString();
+            // The subtitle, not the number, says whether anything was actually stopped: a bare
+            // count would read as "we blocked these" even when audit mode delivered every one.
+            KpiMalwareSub.Text = malware switch
+            {
+                { Any: false } => "none found today (UTC)",
+                { Audited: 0 } => "blocked today (UTC)",
+                { Blocked: 0 } => $"found today — all {malware.Audited} delivered (audit mode)",
+                _ => $"found today — {malware.Blocked} blocked, {malware.Audited} delivered",
+            };
+            // Red only when something actually got through. A blocked finding means the filter
+            // did its job, and colouring that as an alarm would train the operator to ignore it.
+            KpiMalware.Foreground = (Brush)FindResource(malware.Audited > 0 ? "DangerBrush" : "TextBrush");
+        }
+
         var (uptimeText, uptimeSub) = await Task.Run(GetServiceUptime);
         KpiUptime.Text = uptimeText;
         KpiUptimeSub.Text = uptimeSub;

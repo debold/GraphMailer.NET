@@ -200,6 +200,39 @@ internal sealed class MetricsService : IMetricsService
         }
     }
 
+    public async Task RecordMalwareDetectionAsync(
+        bool blocked, string detectedIn, string clientIp, int listenerPort, CancellationToken ct = default)
+    {
+        if (!_options.CurrentValue.Enabled) return;
+
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            await using var conn = OpenConnection();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO malware_detections (bucket_hour, listener_port, client_ip, blocked, detected_in, count)
+                VALUES ($bucket, $port, $ip, $blocked, $where, 1)
+                ON CONFLICT(bucket_hour, listener_port, client_ip, blocked, detected_in)
+                DO UPDATE SET count = count + 1
+                """;
+            cmd.Parameters.AddWithValue("$bucket", BucketHour(DateTime.UtcNow));
+            cmd.Parameters.AddWithValue("$port", listenerPort);
+            cmd.Parameters.AddWithValue("$ip", clientIp);
+            cmd.Parameters.AddWithValue("$blocked", blocked ? 1 : 0);
+            cmd.Parameters.AddWithValue("$where", detectedIn);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Metrics] Failed to record malware detection");
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     public async Task RecordPerfMetricAsync(string metricType, double value, CancellationToken ct = default)
     {
         if (!_options.CurrentValue.Enabled) return;
@@ -327,7 +360,8 @@ internal sealed class MetricsService : IMetricsService
                            COALESCE(SUM(CASE WHEN reason IN ('auth_required','auth_failed','prior_auth_failed') THEN count ELSE 0 END), 0),
                            COALESCE(SUM(CASE WHEN reason IN ('from_restriction','blocked_sender','unknown_sender','sender_validation_unavailable') THEN count ELSE 0 END), 0),
                            COALESCE(SUM(CASE WHEN reason = 'blocked_recipient' THEN count ELSE 0 END), 0),
-                           COALESCE(SUM(CASE WHEN reason = 'size_exceeded' THEN count ELSE 0 END), 0)
+                           COALESCE(SUM(CASE WHEN reason = 'size_exceeded' THEN count ELSE 0 END), 0),
+                           COALESCE(SUM(CASE WHEN reason = 'malware_detected' THEN count ELSE 0 END), 0)
                     FROM smtp_rejection_stats
                     WHERE bucket_hour >= $since
                     """;
@@ -344,6 +378,7 @@ internal sealed class MetricsService : IMetricsService
                         RejectedSender = reader.GetInt32(3),
                         RejectedRecipient = reader.GetInt32(4),
                         RejectedSize = reader.GetInt32(5),
+                        RejectedMalware = reader.GetInt32(6),
                     };
                 }
             }
@@ -382,6 +417,7 @@ internal sealed class MetricsService : IMetricsService
                 ("perf_metrics", "recorded_at", "<", cutoff),
                 ("smtp_session_stats", "bucket_hour", "<=", cutoffBucket),
                 ("smtp_rejection_stats", "bucket_hour", "<=", cutoffBucket),
+                ("malware_detections", "bucket_hour", "<=", cutoffBucket),
             })
             {
                 await using var cmd = conn.CreateCommand();
@@ -591,6 +627,23 @@ internal sealed class MetricsService : IMetricsService
                 CREATE INDEX IF NOT EXISTS idx_rejection_bucket
                     ON smtp_rejection_stats(bucket_hour);
 
+                -- Malware findings, counted in BOTH scan modes. Deliberately its own table
+                -- rather than a reason in smtp_rejection_stats: an audit-mode finding is not a
+                -- rejection (the message was delivered), and folding it in would inflate the
+                -- rejection totals with something that never rejected anything.
+                CREATE TABLE IF NOT EXISTS malware_detections (
+                    bucket_hour   TEXT NOT NULL,
+                    listener_port INT  NOT NULL,
+                    client_ip     TEXT NOT NULL,
+                    blocked       INT  NOT NULL,
+                    detected_in   TEXT NOT NULL,
+                    count         INT  NOT NULL DEFAULT 0,
+                    PRIMARY KEY (bucket_hour, listener_port, client_ip, blocked, detected_in)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_malware_bucket
+                    ON malware_detections(bucket_hour);
+
                 CREATE TABLE IF NOT EXISTS perf_metrics (
                     id          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                     metric_type TEXT    NOT NULL,
@@ -618,7 +671,7 @@ internal sealed class MetricsService : IMetricsService
     // -------------------------------------------------------------------------
 
     /// <summary>metrics.db schema version understood by this build.</summary>
-    internal const int SchemaVersion = 2;
+    internal const int SchemaVersion = 3;
 
     /// <summary>
     /// Brings an existing database up to <see cref="SchemaVersion"/> via idempotent, forward-only
@@ -658,6 +711,8 @@ internal sealed class MetricsService : IMetricsService
             migrated |= EnsureColumn(conn, "email_events", "queue_latency_ms", "INT NOT NULL DEFAULT 0");
             migrated |= EnsureColumn(conn, "email_events", "permanent", "INT NOT NULL DEFAULT 0");
         }
+        // v2 → v3: the malware_detections table, created by InitialiseSchema (IF NOT EXISTS)
+        // like the other stats tables — nothing to transform, only the version to record.
 
         SetUserVersion(conn, SchemaVersion);
         if (migrated)

@@ -97,6 +97,13 @@ internal static class RejectionReasons
     public const string BlockedRecipient = "blocked_recipient";
     public const string SizeExceeded = "size_exceeded";
     public const string QueueError = "queue_error";
+
+    /// <summary>
+    /// Written only when the malware scan actually rejected the message. Audit-mode detections
+    /// are recorded under <c>mail\blocked\</c> instead — counting them here would report
+    /// rejections that never happened.
+    /// </summary>
+    public const string MalwareDetected = "malware_detected";
 }
 
 /// <summary>
@@ -121,6 +128,7 @@ internal sealed record MetricsAggregates
     public int RejectedSender { get; init; }
     public int RejectedRecipient { get; init; }
     public int RejectedSize { get; init; }
+    public int RejectedMalware { get; init; }
 
     public int MailsWithAttachments { get; init; }
     public int DeliveredFirstTry { get; init; }
@@ -140,6 +148,17 @@ internal interface IMetricsService
     Task RecordEmailSentAsync(SentEmailEvent e, CancellationToken ct = default);
     Task RecordEmailFailedAsync(string messageId, string error, string from = "", string subject = "", int retryCount = 0, bool permanent = false, CancellationToken ct = default);
     Task RecordPerfMetricAsync(string metricType, double value, CancellationToken ct = default);
+
+    /// <summary>
+    /// Counts one malware finding. Recorded in <b>both</b> scan modes — unlike the
+    /// <see cref="RejectionReasons.MalwareDetected"/> rejection, which only exists when the
+    /// message was actually refused. This is what lets the ConfigTool and the report show what
+    /// enforcement <i>would</i> have stopped while the scan is still in audit mode.
+    /// </summary>
+    /// <param name="blocked">False for an audit-mode finding, where the message was delivered.</param>
+    /// <param name="detectedIn">"attachment", "body" or "message".</param>
+    Task RecordMalwareDetectionAsync(
+        bool blocked, string detectedIn, string clientIp, int listenerPort, CancellationToken ct = default);
 
     /// <summary>Counts one finished SMTP session into its hourly aggregate bucket.</summary>
     Task RecordSmtpSessionAsync(SmtpSessionRecord r, CancellationToken ct = default);

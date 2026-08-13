@@ -836,4 +836,172 @@ public sealed class ConfigSchemaBindingTests : IDisposable
 
         opts.Dismissed.Should().BeEmpty();
     }
+
+    // =========================================================================
+    // MalwareScan
+    // =========================================================================
+
+    [Fact]
+    public void MalwareScan_Scalars_BindToMalwareScanOptions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            MalwareScan = new()
+            {
+                Mode = "Enforce",
+                TimeoutSeconds = 45,
+                MaxScanBytes = 1_048_576,
+                BlockedRecordRetentionDays = 90,
+            },
+        });
+
+        var opts = Bind<MalwareScanOptions>(LoadServiceConfig(), MalwareScanOptions.SectionName);
+
+        opts.Mode.Should().Be(MalwareScanMode.Enforce, "the string must bind onto the enum");
+        opts.TimeoutSeconds.Should().Be(45);
+        opts.MaxScanBytes.Should().Be(1_048_576);
+        opts.BlockedRecordRetentionDays.Should().Be(90);
+    }
+
+    [Fact]
+    public void MalwareScan_DefaultDocument_BindsToAuditMode()
+    {
+        _sut.Save(new ConfigDocument());
+
+        var opts = Bind<MalwareScanOptions>(LoadServiceConfig(), MalwareScanOptions.SectionName);
+
+        opts.Mode.Should().Be(MalwareScanMode.Audit,
+            "a freshly written config observes rather than rejects until the operator opts in");
+    }
+
+    [Fact]
+    public void MalwareScan_AllowedContentHashes_BindToMalwareScanOptions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            MalwareScan = new()
+            {
+                AllowedContentHashes =
+                [
+                    new() { Sha256 = "aabbcc", Note = "vendor macro sheet", AddedAt = new DateTime(2026, 8, 1) },
+                    new() { Sha256 = "ddeeff" },
+                ],
+            },
+        });
+
+        var opts = Bind<MalwareScanOptions>(LoadServiceConfig(), MalwareScanOptions.SectionName);
+
+        opts.AllowedContentHashes.Should().HaveCount(2);
+        opts.AllowedContentHashes[0].Sha256.Should().Be("aabbcc");
+        opts.AllowedContentHashes[0].Note.Should().Be("vendor macro sheet");
+        opts.AllowedContentHashes[1].Sha256.Should().Be("ddeeff");
+    }
+
+    [Fact]
+    public void MalwareScan_BypassLists_BindToMalwareScanOptions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            MalwareScan = new()
+            {
+                BypassAuthenticatedUsers = ["legacyapp"],
+                BypassIpAddresses = ["10.1.0.0/16", "192.168.0.5"],
+            },
+        });
+
+        var opts = Bind<MalwareScanOptions>(LoadServiceConfig(), MalwareScanOptions.SectionName);
+
+        opts.BypassAuthenticatedUsers.Should().Equal("legacyapp");
+        opts.BypassIpAddresses.Should().Equal("10.1.0.0/16", "192.168.0.5");
+    }
+
+    [Fact]
+    public void MalwareScan_BypassIpComment_SurvivesASaveLoadRoundTrip()
+    {
+        // The reported defect: the dialog offered a comment, nothing persisted it, and editing
+        // showed an empty field again.
+        _sut.Save(new ConfigDocument
+        {
+            MalwareScan = new()
+            {
+                BypassIpAddresses = ["10.1.0.0/16"],
+                BypassIpComments = new() { ["10.1.0.0/16"] = "ERP host" },
+            },
+        });
+
+        _sut.Load().MalwareScan.BypassIpComments["10.1.0.0/16"].Should().Be("ERP host");
+    }
+
+    [Fact]
+    public void MalwareScan_CommentForARemovedAddress_IsNotPersisted()
+    {
+        // Otherwise an orphaned note would reappear the next time the same address is added.
+        _sut.Save(new ConfigDocument
+        {
+            MalwareScan = new()
+            {
+                BypassIpAddresses = ["10.1.0.0/16"],
+                BypassIpComments = new()
+                {
+                    ["10.1.0.0/16"] = "kept",
+                    ["192.168.0.1"] = "address is gone",
+                },
+            },
+        });
+
+        var comments = _sut.Load().MalwareScan.BypassIpComments;
+
+        comments.Should().ContainKey("10.1.0.0/16");
+        comments.Should().NotContainKey("192.168.0.1");
+    }
+
+    [Fact]
+    public void MalwareScan_BypassIpComments_DoNotReachTheRuntimeOptions()
+    {
+        // The service matches on addresses only; the notes must not disturb that binding.
+        _sut.Save(new ConfigDocument
+        {
+            MalwareScan = new()
+            {
+                BypassIpAddresses = ["10.1.0.0/16"],
+                BypassIpComments = new() { ["10.1.0.0/16"] = "ERP host" },
+            },
+        });
+
+        var opts = Bind<MalwareScanOptions>(LoadServiceConfig(), MalwareScanOptions.SectionName);
+
+        opts.BypassIpAddresses.Should().Equal("10.1.0.0/16");
+    }
+
+    [Fact]
+    public void MalwareScan_EmptyBypassLists_BindToEmptyLists()
+    {
+        // Array-merge guard: these lists must stay empty in appsettings.json, or a shorter
+        // user list would inherit trailing default entries by index.
+        _sut.Save(new ConfigDocument());
+
+        var opts = Bind<MalwareScanOptions>(LoadServiceConfig(), MalwareScanOptions.SectionName);
+
+        opts.BypassAuthenticatedUsers.Should().BeEmpty();
+        opts.BypassIpAddresses.Should().BeEmpty();
+        opts.AllowedContentHashes.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Save_NotifMalwareDetected_False_BindsToMalwareDetectedEnabled_False()
+    {
+        _sut.Save(new ConfigDocument { Notification = new() { NotifMalwareDetected = false } });
+
+        LoadServiceConfig()["AdminNotifications:NotificationTypes:MalwareDetected:Enabled"]
+            .Should().Be("False");
+    }
+
+    [Fact]
+    public void Save_NotifMalwareScanFailure_False_BindsToMalwareScanFailureEnabled_False()
+    {
+        _sut.Save(new ConfigDocument { Notification = new() { NotifMalwareScanFailure = false } });
+
+        LoadServiceConfig()["AdminNotifications:NotificationTypes:MalwareScanFailure:Enabled"]
+            .Should().Be("False");
+    }
 }

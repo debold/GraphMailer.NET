@@ -90,6 +90,40 @@ immediately.
 - The Graph connection must be working (notifications go through Microsoft 365 too).
 - The specific event/report must be enabled.
 
+## Malware scanning shows as unavailable
+
+The [Malware Scan](../configuration/malware-scan.md) page reports no AMSI provider, and the log
+carries `[MalwareScan] No AMSI provider is registered on this machine`.
+
+Check what is registered:
+
+```powershell
+$ids = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\AMSI\Providers').PSChildName
+$ids | ForEach-Object { Get-ChildItem "HKLM:\SOFTWARE\Classes\CLSID\$_" | Format-Table -AutoSize }
+```
+
+- **Nothing listed** — no antivirus product on this machine offers an AMSI provider. Microsoft
+  Defender registers one automatically; some third-party products do not. Scanning stays inactive
+  until one exists.
+- **Listed but nothing is ever detected** — the provider may not be loading. Since Windows 10 1903
+  an unsigned provider DLL can be refused; look for Code Integrity events in
+  *Applications and Services Logs → Microsoft → Windows → Code Integrity → Operational*.
+
+> [!WARNING]
+> Do **not** add `GraphMailer.exe` as an antivirus process exclusion to silence a false positive.
+> That disables scanning for the whole service. Allow the specific attachment by its hash on the
+> Malware Scan page, or allow the specific detection in your antivirus product — with Defender via
+> `Add-MpPreference -ThreatIDDefaultAction_Ids <id> -ThreatIDDefaultAction_Actions Allow`.
+
+## A message was rejected with "content failed malware scan"
+
+The message was flagged and the scan mode is **Enforce**. Nothing was stored, so it cannot be
+released — the sender has to send it again after the content is allowed.
+
+Open **Malware Scan → Recent Detections** to see what was found. If it is a false positive in an
+attachment, select it and choose **Allow this attachment**, then save. A detection in the message
+**body** carries no hash and cannot be allowlisted; the scan bypass is the only option there.
+
 ## Related
 
 - [Logs](../monitoring/logs.md) · [Messages](../monitoring/messages.md) · [Status](../monitoring/status.md)
