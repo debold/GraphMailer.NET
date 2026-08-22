@@ -2,6 +2,16 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <!--
+      Declared here rather than only handed to the release build as a restore runtime flag.
+      With packages.lock.json in place, a restore that the lock file already satisfies is
+      skipped — RID-specific asset resolution included — so project.assets.json kept its
+      RID-less shape and the ReadyToRun publish failed with NETSDK1047. Declaring the RID makes
+      every restore resolve the same graph, so the lock file stops flip-flopping between Debug
+      and Release restores and the release publish always finds its win-x64 target.
+      The product is win-x64 only anyway (see CLAUDE.md).
+    -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-GraphMailer.Service-92b035d8-09e5-4c64-a0d1-794e76280571</UserSecretsId>

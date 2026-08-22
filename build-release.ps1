@@ -78,7 +78,11 @@ foreach ($proj in @($svc, $gui)) {
 
 # ── Restore ──────────────────────────────────────────────────────────────────
 Write-Host "Restoring dependencies ..." -ForegroundColor DarkGray
-dotnet restore (Join-Path $root 'GraphMailer.sln') --runtime win-x64 /p:PublishReadyToRun=true --verbosity quiet
+# No --runtime flag: both shipping projects declare <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>,
+# so a plain restore already resolves the RID assets. Passing --runtime here would additionally add
+# win-x64 targets to the *test* projects' packages.lock.json, which the next ordinary restore strips
+# out again — the lock files would then flip back and forth in git with every build.
+dotnet restore (Join-Path $root 'GraphMailer.sln') /p:PublishReadyToRun=true --verbosity quiet
 if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed (exit $LASTEXITCODE)" }
 
 # ── Build once: the ConfigTool references the Service, so this compiles both ──
