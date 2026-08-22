@@ -54,7 +54,7 @@
          removal. Should a future Microsoft.Data.Sqlite ever resolve below 2.1.12 again, put the
          pin back. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Graph" Version="6.2.0" />
+    <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
     <PackageReference Include="MimeKit" Version="4.17.0" />
     <!-- Explicit Serilog pin: keeps the shared DLL identical to the one the
          ConfigTool references (both publish into the same release folder) -->

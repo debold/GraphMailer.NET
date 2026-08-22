@@ -30,7 +30,7 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <!-- SQLitePCLRaw pin dropped alongside the one in GraphMailer.Service.csproj — see the
          comment there: Microsoft.Data.Sqlite 10.0.11 resolves 2.1.12 on its own. -->
-    <PackageReference Include="Microsoft.Graph" Version="6.2.0" />
+    <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.88.0" />
     <!-- Pinned (not floating): published into the same folder as the Service,
          so the shared Serilog DLLs must match the versions in its deps.json -->
