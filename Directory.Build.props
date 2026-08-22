@@ -1,0 +1,59 @@
+<Project>
+
+  <!--
+    Repository-wide NuGet hardening. Applies to every project, src/ and tests/ alike.
+
+    ⚠ MSBuild stops at the *nearest* Directory.Build.props walking up from a project, and
+    src/Directory.Build.props exists — so projects under src/ would never see this file.
+    src/Directory.Build.props therefore imports it explicitly at the top. Any property added
+    here reaches src/ only because of that import; remove it and this file silently applies
+    to the test projects only.
+
+    Versioning and output redirection deliberately stay in src/Directory.Build.props: they
+    concern the two shipping applications, not the test projects.
+  -->
+
+  <!--
+    Restore writes a packages.lock.json next to each project, pinning the full transitive graph.
+    Without it "pinned" only ever meant the direct references: the ~90 transitive packages were
+    re-resolved on every restore, so two machines (or the same machine two months apart) could
+    legitimately produce different binaries from the same commit.
+
+    Day-to-day this is invisible — a deliberate version change regenerates the lock file during
+    the next restore. In CI, add -p:RestoreLockedMode=true so an unexpected graph change fails
+    the build instead of being resolved silently.
+
+    ⚠ The condition is not cosmetic. WPF markup compilation generates a throwaway
+    "<Project>_<random>_wpftmp.csproj" *inside the project folder*, so it inherits this file.
+    That temp project has no lock file of its own, its restore fails, and without a successful
+    restore none of the XAML-generated fields exist — a clean ConfigTool build then dies with
+    hundreds of CS0103 ("PageHost does not exist") errors that point at the source files rather
+    than at the real cause. Verified: 793 errors with the property applied unconditionally,
+    zero with this guard.
+  -->
+  <PropertyGroup Condition="!$(MSBuildProjectName.EndsWith('_wpftmp'))">
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      NuGet's vulnerability audit. The .NET 10 SDK already enables it with these values;
+      stating them makes the guarantee explicit and survives an SDK default changing under us.
+      Mode "all" is what makes it worth having: the advisories this project has actually had to
+      react to (CVE-2025-6965 in the SQLite bundled by SQLitePCLRaw) sat in transitive packages,
+      which "direct" would not report.
+    -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+
+    <!--
+      High and critical advisories (NU1903/NU1904) break the build; low and moderate stay
+      warnings. A relay that holds Graph credentials and accepts untrusted mail should not be
+      buildable with a known critical hole in its dependency graph — but a moderate advisory in
+      a test-only package must not stop work either.
+    -->
+    <WarningsAsErrors>$(WarningsAsErrors);NU1903;NU1904</WarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

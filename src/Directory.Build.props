@@ -1,5 +1,12 @@
 <Project>
 
+  <!--
+    Pull in the repository-root Directory.Build.props (NuGet lock files + vulnerability audit).
+    MSBuild stops at the nearest Directory.Build.props — this one — so without this import the
+    root file would apply to tests/ only and silently skip both shipping applications.
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
   <PropertyGroup>
     <Version>1.3.3</Version>
     <AssemblyVersion>1.3.3.0</AssemblyVersion>
