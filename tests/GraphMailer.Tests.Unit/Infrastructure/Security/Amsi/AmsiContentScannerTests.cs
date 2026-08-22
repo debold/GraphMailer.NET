@@ -224,31 +224,11 @@ public sealed class AmsiContentScannerTests
     // =========================================================================
 
     /// <summary>
-    /// Rebuilds the industry-standard antivirus test vector at runtime.
-    ///
-    /// The bytes are stored XOR-masked on purpose. A plain literal would put the signature into
-    /// this source file and into the compiled test assembly, where the antivirus running on the
-    /// build machine would flag and quarantine them — breaking the working copy and the build
-    /// output. Splitting a literal is not enough either: the compiler folds adjacent string
-    /// literals back into one. Masked bytes never form the signature until this method runs.
+    /// The test vector itself lives in <see cref="AmsiSelfTest"/>, because the ConfigTool's
+    /// scanner self-test scans the very same bytes. Keeping one copy means this round-trip proves
+    /// what that button relies on, rather than two masked blobs drifting apart.
     /// </summary>
-    private static byte[] BuildAntivirusTestVector()
-    {
-        ReadOnlySpan<byte> masked =
-        [
-            0x02, 0x6F, 0x15, 0x7B, 0x0A, 0x7F, 0x1A, 0x1B, 0x0A, 0x01, 0x6E, 0x06,
-            0x0A, 0x00, 0x02, 0x6F, 0x6E, 0x72, 0x0A, 0x04, 0x73, 0x6D, 0x19, 0x19,
-            0x73, 0x6D, 0x27, 0x7E, 0x1F, 0x13, 0x19, 0x1B, 0x08, 0x77, 0x09, 0x0E,
-            0x1B, 0x14, 0x1E, 0x1B, 0x08, 0x1E, 0x77, 0x1B, 0x14, 0x0E, 0x13, 0x0C,
-            0x13, 0x08, 0x0F, 0x09, 0x77, 0x0E, 0x1F, 0x09, 0x0E, 0x77, 0x1C, 0x13,
-            0x16, 0x1F, 0x7B, 0x7E, 0x12, 0x71, 0x12, 0x70,
-        ];
-
-        var plain = new byte[masked.Length];
-        for (var i = 0; i < masked.Length; i++)
-            plain[i] = (byte)(masked[i] ^ 0x5A);
-        return plain;
-    }
+    private static byte[] BuildAntivirusTestVector() => AmsiSelfTest.TestVector();
 
     /// <summary>
     /// End-to-end proof that the P/Invoke layer, the session handling and the part walking

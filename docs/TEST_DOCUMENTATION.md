@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1175 tests** (1102 unit · 73 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-13
+**Total: 1186 tests** (1113 unit · 73 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-22
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -584,6 +584,24 @@ opt-in test at the end of the table.
 | `EnumerateTargets_AttachmentWithoutFileName_StillGetsAName` | Attachment with no file name | Non-empty name — AMSI needs a content name for every buffer |
 | `Scanner_WhenUnavailable_ReturnsUnavailableWithoutTouchingTheMessage` | Scanner constructed on the test machine | Availability and provider list agree; unavailable is distinct from "clean" |
 | `ScanAsync_AntivirusTestVectorAsAttachment_IsDetected` | **Opt-in** (`GRAPHMAILER_AMSI_LIVE_TEST=1`): industry-standard test vector as an attachment, through the real AMSI stack | `Malware`, correct part name, hash present. Skipped by default: a detection is a genuine antivirus event logged against this process. The vector is stored XOR-masked so neither this source file nor the compiled test assembly contains the signature — a plain literal would be quarantined by the antivirus on the build machine, and splitting a literal does not help because the compiler folds adjacent literals back together |
+
+### AMSI scanner self-test (`Infrastructure/Security/Amsi/AmsiSelfTestTests.cs`)
+
+Backs the ConfigTool's **Test scanner** button. The vector now lives in `AmsiSelfTest` and is shared with the opt-in round-trip above, so one masked copy serves both.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `TestVector_IsTheStandardAntivirusTestFile` | SHA-256 of the unmasked vector | Matches the well-known hash — pins the vector without writing the signature into the source (a hash is not a signature) |
+| `TestVector_ReturnsAFreshArrayEachCall` | Two consecutive calls | Equal content, different instances — the buffer reaches native code and must not be shared |
+| `BuildProbeMessage_ExposesTheVectorAsADecodableAttachment` | Probe walked through `AmsiContentScanner.EnumerateTargets` | Exactly one attachment target, named `amsi-selftest.txt`, loading the **decoded** bytes — the probe must take the same path a real attachment takes |
+| `BuildProbeMessage_IsNeverAddressedOutsideTheMachine` | From/To of the probe | Only `@localhost` — a stray send stays harmless |
+| `Interpret_Detection_ReportsSuccessAndNamesTheResultCode` | `Malware` outcome, result code 32768 | `Detected`, detail names the code |
+| `Interpret_CleanProbe_IsNotReportedAsSuccess` | Scan completes, test file **not** flagged | `NotDetected` (not a pass) and the detail points at real-time protection — reporting this as success would claim mail is scanned when it is not |
+| `Interpret_SkippedBySizeLimit_IsAFailureThatNamesTheLimit` | Probe skipped by `MaxScanBytes` | `Failed`, detail names the maximum scan size |
+| `Interpret_Unavailable_ReportsUnavailable` | Scanner unavailable | `Unavailable` |
+| `Interpret_Failure_CarriesTheUnderlyingError` | `Failed("scan timed out after 30s")` | `Failed`, detail carries the original error |
+| `Interpret_EveryOutcome_ProducesAnExplanation` | Every `ScanOutcome` value | Non-empty detail for each — the text is the operator's whole answer |
+| `FixedOptionsMonitor_ReturnsTheSnapshotForEveryName` | Named and unnamed `Get`, `OnChange` | Same instance for any name; `OnChange` returns `null` — a one-shot probe has no reload lifetime |
 
 ---
 

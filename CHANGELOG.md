@@ -64,6 +64,20 @@
   here: a steady trickle of detections would keep postponing the alert indefinitely, in exactly the
   situation where it is most needed.
 
+  Finally, a **Test scanner** button on the page answers the question the provider list cannot: a
+  registered provider proves an antivirus product is installed, not that scanning works. The test
+  scans the standard, harmless antivirus test file as an attachment through the real scanner, so it
+  exercises AMSI initialisation, the session, the MIME split and the per-part decode — the parts
+  that can actually be misconfigured. It runs with the settings **currently shown on the page**,
+  including unsaved ones, so a timeout or size limit can be checked before it is committed; nothing
+  is sent by mail and no message is stored. A green result means the engine flagged the file; yellow
+  means the scan completed but the provider waved it through, which is deliberately *not* reported
+  as success — that state looks like a working filter while nothing is being caught. If the scan
+  mode is `Off`, a passing test says so rather than letting a green line imply mail is being
+  scanned. Expect the antivirus product to record a detection for the test file; that is the test
+  working. The test runs in the ConfigTool's process, so it confirms the engine on the machine, not
+  that the service's scanner started — the service reports that itself in the log at start.
+
 - **The "Currently Blocked IPs" list on the IP Filtering page now works.** It was a stub: the
   ↺ Refresh button emptied the list, *Unblock* only removed the row from the screen, and the help
   page described all of it as a live view — so the page answered "is this address blocked?" with a
