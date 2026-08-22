@@ -844,8 +844,8 @@
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "Transitive",
-        "resolved": "4.5.0",
-        "contentHash": "wLBKzFnDCxP12VL9ANydSYhk59fC4cvOr9ypYQLPnAj48NQIhqnjdD2yhP8yEKyBJEjERWS9DisKL7rX5eU25Q=="
+        "resolved": "10.0.11",
+        "contentHash": "PNoxCTPb+Tlux+GJyq4c89ddYdpioVSqfGx8pqOF6shCSKwUNNctXhQtRkCICjbJmGrJJsW8NY52kVYO/b8mlQ=="
       },
       "System.Security.Cryptography.Xml": {
         "type": "Transitive",
@@ -922,7 +922,8 @@
           "Serilog.Sinks.File": "[7.0.0, )",
           "SkiaSharp": "[4.151.1, )",
           "SkiaSharp.NativeAssets.Win32": "[4.151.1, )",
-          "SmtpServer": "[11.1.0, )"
+          "SmtpServer": "[11.1.0, )",
+          "System.Security.Cryptography.ProtectedData": "[10.0.11, )"
         }
       },
       "graphmailer.configtool": {

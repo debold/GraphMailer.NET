@@ -40,6 +40,15 @@
          with the publish order deciding which MSAL the service actually loads. Same failure class
          as the Microsoft.Data.Sqlite mismatch above, on the library that fetches Graph tokens. -->
     <PackageReference Include="Microsoft.Identity.Client" Version="4.88.0" />
+    <!-- Transitive via Microsoft.Identity.Client.Extensions.Msal, which still asks for 4.5.0 —
+         a 2018 build whose newest asset is netstandard2.0, so the DLL shipped next to a net10.0
+         application was a framework generation behind. 10.0.11 carries a real net10.0 asset.
+         No advisory on 4.5.0; this is about shipping a runtime-matched binary. Safe to pin
+         because the package is a two-method wrapper over the Windows DPAPI whose surface has
+         not changed in years. Only the Service resolves it — the ConfigTool never does, so
+         there is no shared-folder version to keep in sync. Drop the pin once Extensions.Msal
+         asks for a current version itself. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
     <!-- Base SDK only (TelemetryClient) for the opt-in daily telemetry heartbeat —
          no ASP.NET/auto-collection packages. The 3.x line is a compatibility layer over
          OpenTelemetry, so it brings the OTel exporter and persistent-storage packages
