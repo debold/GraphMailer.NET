@@ -39,7 +39,7 @@
          one — two deps.json in the same flat publish folder disagreeing over a single shipped DLL,
          with the publish order deciding which MSAL the service actually loads. Same failure class
          as the Microsoft.Data.Sqlite mismatch above, on the library that fetches Graph tokens. -->
-    <PackageReference Include="Microsoft.Identity.Client" Version="4.86.1" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.88.0" />
     <!-- Base SDK only (TelemetryClient) for the opt-in daily telemetry heartbeat —
          no ASP.NET/auto-collection packages. The 3.x line is a compatibility layer over
          OpenTelemetry, so it brings the OTel exporter and persistent-storage packages
