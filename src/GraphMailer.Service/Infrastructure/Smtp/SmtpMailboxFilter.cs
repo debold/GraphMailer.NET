@@ -60,6 +60,25 @@ internal sealed class SmtpMailboxFilter : MailboxFilter
             opts.IpWhitelist.Count, opts.IpBlacklist.Count,
             opts.AllowedSenders.Count, opts.BlockedSenders.Count,
             opts.AllowedRecipients.Count, opts.BlockedRecipients.Count);
+
+        // An IP rule that does not parse matches nothing, and nothing downstream says so: the
+        // rule count above still includes it, and no rejection ever names it. On the blacklist
+        // that means a rule the operator believes is blocking traffic is inert. The ConfigTool
+        // validates its own input, but a hand-edited or migrated config never went through it.
+        WarnAboutInvalidIpRules("IpBlacklist", opts.IpBlacklist);
+        WarnAboutInvalidIpRules("IpWhitelist", opts.IpWhitelist);
+    }
+
+    private void WarnAboutInvalidIpRules(string listName, IReadOnlyList<string> entries)
+    {
+        var invalid = IpFilterService.FindInvalidEntries(entries);
+        if (invalid.Count == 0)
+            return;
+
+        _logger.LogWarning(
+            "[SmtpFilter] {Count} entr(y/ies) in {List} are not a valid IP address or CIDR range and match nothing: {Entries}. " +
+            "Correct them in the ConfigTool — until then these rules have no effect.",
+            invalid.Count, listName, string.Join(", ", invalid));
     }
 
     public override async Task<bool> CanAcceptFromAsync(

@@ -146,4 +146,44 @@ public sealed class IpFilterServiceTests
         IpFilterService.GetDenyReason("10.0.0.5", ["10.0.0.0/8"], ["10.0.0.5"])
             .Should().Be("matches IP blacklist entry '10.0.0.5'");
     }
+
+    // ── Invalid entries ──────────────────────────────────────────────────────
+    // A rule that does not parse matches nothing. On a blacklist that is a rule the operator
+    // believes is blocking traffic while it is inert, and neither the rule count nor any
+    // rejection log reveals it — so the entries have to be reportable.
+
+    [Theory]
+    [InlineData("not-an-ip")]
+    [InlineData("10.0.0.300")]
+    [InlineData("10.0.0.0/33")]
+    [InlineData("10.0.0.0/abc")]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void FindInvalidEntries_MalformedEntry_IsReported(string entry)
+        => IpFilterService.FindInvalidEntries([entry]).Should().Equal(entry);
+
+    [Theory]
+    [InlineData("10.0.0.5")]
+    [InlineData("10.0.0.0/8")]
+    [InlineData("192.168.0.0/16")]
+    [InlineData("::1")]
+    [InlineData("2001:db8::/32")]
+    [InlineData(" 10.0.0.5 ")]
+    public void FindInvalidEntries_ValidEntry_IsNotReported(string entry)
+        => IpFilterService.FindInvalidEntries([entry]).Should().BeEmpty();
+
+    [Fact]
+    public void FindInvalidEntries_ReportsOnlyTheBadOnes()
+    {
+        IpFilterService.FindInvalidEntries(["10.0.0.0/8", "nonsense", "192.168.1.1", "10.0.0.0/99"])
+            .Should().Equal("nonsense", "10.0.0.0/99");
+    }
+
+    [Fact]
+    public void MalformedEntry_MatchesNothing_AndDoesNotThrow()
+    {
+        // The matching side must stay tolerant: one bad entry cannot break the whole list.
+        IpFilterService.IsInAnyRange("10.0.0.5", ["nonsense", "10.0.0.0/8"]).Should().BeTrue();
+        IpFilterService.IsInAnyRange("172.16.0.1", ["nonsense"]).Should().BeFalse();
+    }
 }

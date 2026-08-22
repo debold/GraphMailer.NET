@@ -96,16 +96,41 @@ internal static class IpFilterService
         return null;
     }
 
-    private static bool TryMatch(IPAddress address, string cidr)
+    /// <summary>
+    /// The entries of <paramref name="cidrs"/> that are not a usable IP or CIDR range.
+    ///
+    /// Such an entry matches nothing, which is silent by nature: on a blacklist it means a rule
+    /// the operator believes is active does nothing at all, and neither the rejection log nor
+    /// the rule count reveals it. The ConfigTool validates what is typed into it, but a
+    /// hand-edited or migrated <c>graphmailer.json</c> never passes through that check — so the
+    /// service reports them itself at startup.
+    /// </summary>
+    public static IReadOnlyList<string> FindInvalidEntries(IReadOnlyList<string> cidrs)
+        => [.. cidrs.Where(entry => !TryParseEntry(entry, out _))];
+
+    /// <summary>
+    /// Parses one list entry. Bare IPs are normalised to /32 (IPv4) or /128 (IPv6) so a single
+    /// address and a range go through the same code path — and so "valid" means the same thing
+    /// to <see cref="TryMatch"/> and to <see cref="FindInvalidEntries"/>.
+    /// </summary>
+    private static bool TryParseEntry(string cidr, out IPNetwork network)
     {
+        network = default;
+        if (string.IsNullOrWhiteSpace(cidr))
+            return false;
+
         try
         {
-            // Normalise bare IPs to /32 (IPv4) or /128 (IPv6) so TryParse works
-            var entry = cidr.Contains('/') ? cidr : cidr + (cidr.Contains(':') ? "/128" : "/32");
-            if (IPNetwork.TryParse(entry, out var network))
-                return network.Contains(address);
+            var trimmed = cidr.Trim();
+            var entry = trimmed.Contains('/') ? trimmed : trimmed + (trimmed.Contains(':') ? "/128" : "/32");
+            return IPNetwork.TryParse(entry, out network);
         }
-        catch { /* ignore malformed entries */ }
-        return false;
+        catch
+        {
+            return false;
+        }
     }
+
+    private static bool TryMatch(IPAddress address, string cidr)
+        => TryParseEntry(cidr, out var network) && network.Contains(address);
 }

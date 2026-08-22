@@ -54,6 +54,14 @@ Any listener using STARTTLS or Implicit TLS needs a certificate to present to cl
 selects it from the Windows certificate store (`LocalMachine\My`) — you pick it from the list on
 this page.
 
+> [!IMPORTANT]
+> Subject name and issuer are matched **exactly**, not as a fragment. A subject of
+> `mail.contoso.com` selects a certificate whose Common Name (or a DNS entry in its Subject
+> Alternative Names) is exactly that — `mail.contoso.com.example.net` and `mail.contoso.community`
+> are not selected. The same applies to the issuer: enter the CA's full name (`My Internal CA`,
+> with or without a leading `CN=`), not a part of it. If nothing matches, no listener certificate
+> is loaded and the log says which selector found nothing.
+
 - Selection is **by subject name** (and optional issuer); when a renewed certificate with the same
   subject appears, the one with the latest expiry is used automatically. This makes certificate
   **renewal seamless** — no need to reselect after renewal.

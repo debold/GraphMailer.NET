@@ -116,6 +116,62 @@ public sealed class SecretIntegrityCheckServiceTests : IDisposable
         logger.HasEntry(LogLevel.Warning, "not valid JSON").Should().BeTrue();
     }
 
+    // ── Plaintext secrets ────────────────────────────────────────────────────
+    // The log is the operator's only channel here: nothing else notices a secret that was
+    // never encrypted, and nothing encrypts it later on its own.
+
+    [Fact]
+    public async Task PlaintextSecret_LogsWarningNamingTheField()
+    {
+        var path = WriteConfig("""
+        { "GraphApi": { "ClientSecret": "s3cr3t-value" } }
+        """);
+        var logger = new FakeLogger<SecretIntegrityCheckService>();
+        var sut = Create(path, Substitute.For<IAdminNotificationService>(), logger);
+
+        await sut.RunCheckAsync(CancellationToken.None);
+
+        logger.HasEntry(LogLevel.Warning, "plaintext").Should().BeTrue();
+        logger.HasEntry(LogLevel.Warning, "GraphApi.ClientSecret").Should().BeTrue(
+            "the operator has to know which field to re-enter");
+    }
+
+    [Fact]
+    public async Task PlaintextSecret_DoesNotSuppressTheUndecryptableCheck()
+    {
+        // Both conditions at once: a plaintext secret must not stop the decryption check
+        // from running and reporting, which is the more urgent of the two.
+        var path = WriteConfig($$"""
+        { "GraphApi": { "ClientSecret": "{{ForeignEncValue("secret")}}" },
+          "Backup":   { "Password":     "archive-pw" } }
+        """);
+        var notify = Substitute.For<IAdminNotificationService>();
+        var logger = new FakeLogger<SecretIntegrityCheckService>();
+        var sut = Create(path, notify, logger);
+
+        await sut.RunCheckAsync(CancellationToken.None);
+
+        logger.HasEntry(LogLevel.Warning, "Backup.Password").Should().BeTrue();
+        logger.HasEntry(LogLevel.Error, "cannot be decrypted").Should().BeTrue();
+        await notify.Received(1).NotifyConfigDecryptionFailedAsync(
+            Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task EncryptedSecretsOnly_LogsNoPlaintextWarning()
+    {
+        var path = WriteConfig($$"""
+        { "GraphApi": { "ClientSecret": "ENC[{{_protector.Protect("ok")}}]" } }
+        """);
+        var logger = new FakeLogger<SecretIntegrityCheckService>();
+        var sut = Create(path, Substitute.For<IAdminNotificationService>(), logger);
+
+        await sut.RunCheckAsync(CancellationToken.None);
+
+        logger.HasEntry(LogLevel.Warning, "plaintext").Should().BeFalse(
+            "a warning on a correctly encrypted config would train operators to ignore it");
+    }
+
     private static string ForeignEncValue(string plain)
     {
         var dir = Path.Combine(Path.GetTempPath(), $"secretcheck-foreign-{Guid.NewGuid():N}");

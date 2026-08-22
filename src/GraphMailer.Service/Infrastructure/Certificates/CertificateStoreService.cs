@@ -119,15 +119,34 @@ internal sealed class CertificateStoreService(
             return false;
 
         if (!string.IsNullOrWhiteSpace(_options.Issuer))
-            return cert.Issuer.Contains(_options.Issuer, StringComparison.OrdinalIgnoreCase);
+            return IssuerMatches(cert, _options.Issuer);
 
         return true;
     }
 
-    private static bool SubjectMatches(X509Certificate2 cert, string subjectName)
+    /// <summary>OID of the Common Name attribute in a distinguished name.</summary>
+    private const string CommonNameOid = "2.5.4.3";
+
+    /// <summary>
+    /// The Common Names in a distinguished name, one entry per CN attribute.
+    ///
+    /// Parsed into relative distinguished names rather than searched as a string: the DN is
+    /// "CN=mail.contoso.com, O=Contoso, C=DE", so a substring test for "CN=mail.contoso.com"
+    /// also accepts <c>CN=mail.contoso.com.attacker.net</c> and <c>CN=mail.contoso.community</c>
+    /// — the "CN=" anchors the start of the value but nothing anchors the end. Enumerating the
+    /// attributes gives the value itself, which can be compared exactly, and handles DN quoting
+    /// and escaping on the way.
+    /// </summary>
+    private static IEnumerable<string> CommonNames(X500DistinguishedName dn)
+        => dn.EnumerateRelativeDistinguishedNames()
+             .Where(rdn => rdn.GetSingleElementType().Value == CommonNameOid)
+             .Select(rdn => rdn.GetSingleElementValue())
+             .Where(value => value is not null)!;
+
+    internal static bool SubjectMatches(X509Certificate2 cert, string subjectName)
     {
-        // Check CN in Subject distinguished name
-        if (cert.Subject.Contains($"CN={subjectName}", StringComparison.OrdinalIgnoreCase))
+        // Exact CN match — see CommonNames for why this is not a substring test.
+        if (CommonNames(cert.SubjectName).Any(cn => cn.Equals(subjectName, StringComparison.OrdinalIgnoreCase)))
             return true;
 
         // Check Subject Alternative Names (DNS entries)
@@ -141,6 +160,27 @@ internal sealed class CertificateStoreService(
         // SAN format: "DNS Name=smtp.example.com, DNS Name=mail.example.com, ..."
         return sanText.Split(',', StringSplitOptions.TrimEntries)
             .Any(e => e.Equals($"DNS Name={subjectName}", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Whether the certificate was issued by the configured issuer.
+    ///
+    /// The option is documented as a DN fragment ("CN=My Internal CA"), but a bare CA name is
+    /// the more natural thing to type, so both are accepted: an optional "CN=" prefix is
+    /// stripped and the remainder compared against the issuer's Common Names exactly.
+    ///
+    /// This is deliberately stricter than the substring match it replaces. An issuer configured
+    /// as a fragment that is not a whole CN — "Internal", say, expecting it to hit
+    /// "CN=My Internal CA" — no longer matches, and the selector then finds no certificate and
+    /// says so in the log rather than silently accepting a CA nobody meant.
+    /// </summary>
+    internal static bool IssuerMatches(X509Certificate2 cert, string configuredIssuer)
+    {
+        var wanted = configuredIssuer.Trim();
+        if (wanted.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
+            wanted = wanted[3..].Trim();
+
+        return CommonNames(cert.IssuerName).Any(cn => cn.Equals(wanted, StringComparison.OrdinalIgnoreCase));
     }
 
     private string BuildSelectorDescription()

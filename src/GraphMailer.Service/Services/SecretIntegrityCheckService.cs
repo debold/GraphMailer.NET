@@ -76,11 +76,11 @@ internal sealed class SecretIntegrityCheckService : BackgroundService
             return;
         }
 
-        IReadOnlyList<string> failing;
+        SecretIntegrityChecker.SecretScanResult scan;
         try
         {
             var protector = _dataProtection.CreateProtector(DataProtectionExtensions.ConfigPurpose);
-            failing = SecretIntegrityChecker.FindUndecryptableSecrets(json, protector);
+            scan = SecretIntegrityChecker.Scan(json, protector);
         }
         catch (JsonException ex)
         {
@@ -88,6 +88,20 @@ internal sealed class SecretIntegrityCheckService : BackgroundService
             return;
         }
 
+        // Secrets left in plaintext. The runtime accepts them — that is what makes initial setup
+        // possible — but nothing turns them into ENC[...] on its own, so without this line they
+        // stay readable in graphmailer.json and in every copy or backup of it, with no signal at
+        // all. Warning rather than Error: the service works fine, the protection just is not on.
+        if (scan.Plaintext.Count > 0)
+        {
+            _logger.LogWarning(
+                "[SecretCheck] {Count} config secret(s) are stored in plaintext, not as ENC[...]: {Fields}. " +
+                "Anyone who can read graphmailer.json — or a backup or copy of it — can read these values. " +
+                "Re-enter them in the ConfigTool and save to encrypt them with the Data Protection key ring.",
+                scan.Plaintext.Count, string.Join(", ", scan.Plaintext));
+        }
+
+        var failing = scan.Undecryptable;
         if (failing.Count == 0)
         {
             _logger.LogInformation(

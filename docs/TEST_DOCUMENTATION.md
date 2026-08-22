@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1236 tests** (1163 unit · 73 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-22
+**Total: 1284 tests** (1199 unit · 73 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-22
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -103,6 +103,10 @@
 | `GetDenyReason_NotInWhitelist_SaysSo` | Whitelist non-empty, IP not covered | `"not covered by any IP whitelist entry"` |
 | `GetDenyReason_UnparsableIp_SaysSo` | `"unknown"` as remote IP | `"remote IP could not be parsed"` |
 | `GetDenyReason_BlacklistWinsOverWhitelist` | IP in both lists | Blacklist match reported (mirrors `IsAllowed` precedence) |
+| `FindInvalidEntries_MalformedEntry_IsReported` (Theory) | `not-an-ip`, `10.0.0.300`, `/33`, `/abc`, empty, whitespace | Each reported — a blacklist rule that cannot parse matches nothing and says so nowhere else |
+| `FindInvalidEntries_ValidEntry_IsNotReported` (Theory) | Bare IPv4/IPv6, CIDR ranges, surrounding whitespace | Nothing reported |
+| `FindInvalidEntries_ReportsOnlyTheBadOnes` | Mixed list of valid and malformed entries | Only the two malformed entries, in list order |
+| `MalformedEntry_MatchesNothing_AndDoesNotThrow` | Malformed entry alongside a valid one | Matching stays tolerant — one bad entry cannot break the rest of the list |
 
 ---
 
@@ -196,6 +200,26 @@
 | `NonStringValues_AreIgnored` | Numbers / booleans / null in JSON | Empty result (only strings inspected) |
 | `Scan_CountsTotalEncryptedValues` | Two `ENC[...]` values (decryptable) + one plain string | `TotalEncrypted` = 2, no undecryptable |
 | `Scan_ReportsTotalAndFailuresForMixedDocument` | Two values encrypted with a foreign key ring | `TotalEncrypted` = 2, both paths undecryptable |
+
+---
+
+### Plaintext secret detection (`Infrastructure/Encryption/PlaintextSecretDetectionTests.cs`)
+
+The runtime accepts a config value that is not `ENC[...]` — that is what makes initial setup
+possible — but nothing encrypts it afterwards, and the integrity check used to look only at values
+that already were encrypted. A plaintext client secret or SMTP password therefore stayed readable
+in `graphmailer.json`, and in any copy or backup of it, with no signal at all.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `GraphClientSecret_InPlaintext_IsReported` | `GraphApi.ClientSecret` unencrypted | Path reported |
+| `UserPasswords_InPlaintext_AreReportedPerUser` | Users 0 and 2 plaintext, user 1 encrypted | `Users[0].Password`, `Users[2].Password` — the index tells the operator which user to fix |
+| `BackupPassword_InPlaintext_IsReported` | `Backup.Password` unencrypted | Path reported |
+| `EncryptedSecrets_AreNotReported` | All secrets `ENC[...]` | Empty |
+| `EmptySecret_IsNotReported` | Secret keys present but empty | Empty — an unconfigured secret is not a leaked one |
+| `NonSecretKeys_AreNotReported` | Banner, MaxSizeBytes, SubjectName, Issuer | Empty — only keys that carry a secret count |
+| `SecretKeyName_IsMatchedCaseInsensitively` | Lowercase `password` key | Reported |
+| `MalformedEncMarker_CountsAsPlaintext` | `"ENC[truncated"` without closing bracket | Reported — the runtime would hand that to the client as a literal password |
 
 ---
 
@@ -463,6 +487,30 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 
 ---
 
+### Certificate selector matching (`Infrastructure/Certificates/CertificateSelectorMatchingTests.cs`)
+
+The subject used to be matched with `Subject.Contains("CN=" + name)`. A DN reads
+`CN=mail.contoso.com, O=Contoso`, so that anchors the start of the value and nothing anchors the
+end. Placing such a certificate needs write access to the machine store, so this was never a remote
+attack — but "newest `NotAfter` wins" then picks the wrong certificate silently, and the exact-match
+rule that already governed SAN matching applies to the CN too.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `SubjectMatches_ExactCommonName_IsAccepted` | `CN=mail.contoso.com, O=Contoso, C=DE` | Accepted — the normal case still works |
+| `SubjectMatches_CasingIsIgnored` | Search term in upper case | Accepted |
+| `SubjectMatches_NameExtendedToAnotherDomain_IsRejected` | `CN=mail.contoso.com.attacker.net` | Rejected — the regression case |
+| `SubjectMatches_LongerTldOnTheSameLabel_IsRejected` | `CN=mail.contoso.community` | Rejected |
+| `SubjectMatches_PrefixedName_IsRejected` | `CN=notmail.contoso.com` | Rejected — already correct before, pinned so the fix cannot regress it |
+| `SubjectMatches_NameOnlyInAnotherAttribute_IsRejected` | Wanted name appears as `O=`, not as CN | Rejected |
+| `IssuerMatches_ConfiguredAsDnFragment_IsAccepted` | `CN=My Internal CA` (the documented form) | Accepted |
+| `IssuerMatches_ConfiguredAsBareName_IsAccepted` | `My Internal CA` (the form people type) | Accepted |
+| `IssuerMatches_PartialCaName_IsRejected` | `Internal` against `CN=My Internal CA` | Rejected — deliberate tightening over the old substring match |
+| `IssuerMatches_DifferentCa_IsRejected` | Certificate issued by another CA | Rejected |
+| `IssuerMatches_CaNameExtended_IsRejected` | `CN=My Internal CA Backup` | Rejected |
+
+---
+
 ### MailQueueWriter (`Services/MailQueueWriterTests.cs`)
 
 | Test | Scenario | Expected result |
@@ -726,6 +774,9 @@ Backs the ConfigTool's **Test scanner** button. The vector now lives in `AmsiSel
 | `UndecryptableSecret_LogsError_AndNotifiesWithFieldPath` | One secret encrypted with a foreign key ring | `LogError` "cannot be decrypted" + `NotifyConfigDecryptionFailedAsync` called with `["GraphApi.ClientSecret"]` |
 | `NoConfigFile_NoNotification` | Config file does not exist | No notification (nothing to verify) |
 | `InvalidJson_NoNotification_LogsWarning` | Config file is not valid JSON | No notification; `Warning` log "not valid JSON" |
+| `PlaintextSecret_LogsWarningNamingTheField` | `GraphApi.ClientSecret` stored unencrypted | `Warning` naming both "plaintext" and the field path — the log is the only channel that reports this |
+| `PlaintextSecret_DoesNotSuppressTheUndecryptableCheck` | One plaintext secret **and** one undecryptable one | Both reported: `Warning` for the plaintext, `LogError` + notification for the undecryptable |
+| `EncryptedSecretsOnly_LogsNoPlaintextWarning` | All secrets correctly `ENC[...]` | No plaintext warning — a false alarm would train operators to ignore it |
 
 ---
 

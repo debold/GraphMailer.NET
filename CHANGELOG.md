@@ -165,6 +165,34 @@
   On Windows builds before Server 2022 / Windows 11, whose Schannel does not know TLS 1.3, the
   listener keeps offering 1.2 only. Nothing to configure; existing clients are unaffected.
 
+- **Certificate selection now matches the subject and issuer exactly.** The subject was compared as
+  a substring of the certificate's distinguished name. A DN reads `CN=mail.contoso.com, O=Contoso`,
+  so that anchored the start of the name but not its end: a certificate for
+  `mail.contoso.com.example.net` — or simply `mail.contoso.community` — also counted as a match,
+  and since the newest expiry date wins, the wrong certificate could be picked with nothing in the
+  log to suggest it. Placing such a certificate requires write access to the machine's certificate
+  store, so this was never remotely exploitable; the realistic case is two similarly named
+  certificates and the wrong one being served. Common Names are now compared as values rather than
+  searched for as text, matching how Subject Alternative Names were already handled.
+
+  **This is stricter than before.** An issuer configured as a fragment — `Internal`, expecting it to
+  find `CN=My Internal CA` — no longer matches. Enter the CA's full name (with or without `CN=`).
+  If nothing matches, no certificate is loaded and the log names the selector that found nothing.
+
+- **Secrets left unencrypted in the configuration are now reported at startup.** `graphmailer.json`
+  accepts a plaintext value where an `ENC[...]` one belongs — that is what makes the initial setup
+  work — but nothing ever encrypts it afterwards. The startup check that verifies secrets only ever
+  looked at values that *were* encrypted, so a plaintext Graph client secret or SMTP password stayed
+  readable in the file, and in every copy and backup of it, with no signal at all. The service now
+  names each affected field in a warning. Re-enter the value in the ConfigTool and save to encrypt
+  it; nothing is changed automatically, and nothing stops working in the meantime.
+
+- **Malformed IP filter rules are no longer silent.** An entry in the IP whitelist or blacklist that
+  is not a valid address or CIDR range matches nothing — while the startup line still counted it as
+  an active rule and no rejection ever mentioned it. On a blacklist that meant a rule the operator
+  believed was blocking traffic did nothing. Such entries are now named in a warning at startup. The
+  ConfigTool validates what is typed into it; this catches hand-edited and migrated configurations.
+
 - **Dependency round: everything current, and the dependency graph is now pinned.** All runtime
   packages moved to their latest versions — the `Microsoft.*` 10.0.11 servicing band, Graph 6.5.0,
   MSAL 4.88.0, SkiaSharp 4.151.1 — plus the test tooling and the help renderer's Markdig. No

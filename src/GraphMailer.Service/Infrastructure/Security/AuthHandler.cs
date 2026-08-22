@@ -86,9 +86,15 @@ internal sealed class AuthHandler
             return false;
         }
 
-        // Constant-time comparison prevents timing side-channel attacks:
-        // a regular == comparison can reveal password length and prefix matches
-        // through response-time differences measurable by a local attacker.
+        // Constant-time comparison so the *content* of the password cannot be recovered from
+        // response times: unlike ==, this does not stop at the first differing byte, so no
+        // prefix-match signal leaks.
+        //
+        // It does not hide the length. FixedTimeEquals returns false immediately when the two
+        // spans differ in size, so an attacker can still learn how long the stored password is.
+        // Closing that would mean comparing fixed-length hashes, which this project deliberately
+        // does not do (SMTP passwords are ENC-encrypted, not hashed, because the plaintext has to
+        // be recoverable). The remaining leak is one number over the LAN and is accepted.
         var storedBytes = System.Text.Encoding.UTF8.GetBytes(storedPassword);
         var inputBytes = System.Text.Encoding.UTF8.GetBytes(password);
         if (CryptographicOperations.FixedTimeEquals(storedBytes, inputBytes))
