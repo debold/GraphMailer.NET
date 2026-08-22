@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Sockets;
+using System.Security.Authentication;
 using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure.Certificates;
 using GraphMailer.Service.Infrastructure.Metrics;
@@ -197,6 +198,7 @@ internal sealed class SmtpRelayService : BackgroundService
                     if (cert is not null)
                     {
                         ep.Certificate(cert);
+                        ep.SupportedSslProtocols(EffectiveSslProtocols());
                         if (mode.Equals("Tls", StringComparison.OrdinalIgnoreCase))
                             ep.IsSecure(true);
                         _logger.LogInformation(
@@ -268,6 +270,28 @@ internal sealed class SmtpRelayService : BackgroundService
             configuredBytes, int.MaxValue);
         return int.MaxValue;
     }
+
+    /// <summary>
+    /// TLS versions offered on a TLS/StartTLS listener.
+    ///
+    /// SmtpServer's endpoint default is <see cref="SslProtocols.Tls12"/> alone, which locks the
+    /// listener out of TLS 1.3 forever. We deliberately do NOT hand over to the OS default
+    /// (<see cref="SslProtocols.None"/>) either: on a machine whose Schannel registry still has
+    /// TLS 1.0/1.1 enabled — not unusual on the legacy servers this relay exists for — that would
+    /// silently lower the floor. So: keep 1.2 as the floor, add 1.3 on top.
+    ///
+    /// TLS 1.3 reaches Schannel with Windows 11 / Server 2022 (build 20348); older builds are
+    /// offered 1.2 only rather than a protocol flag their Schannel does not know.
+    /// </summary>
+    internal static SslProtocols EffectiveSslProtocols() =>
+        EffectiveSslProtocols(OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348));
+
+    /// <param name="tls13Supported">Split out from the OS probe so both branches are testable.</param>
+    /// <inheritdoc cref="EffectiveSslProtocols()"/>
+    internal static SslProtocols EffectiveSslProtocols(bool tls13Supported) =>
+        tls13Supported
+            ? SslProtocols.Tls12 | SslProtocols.Tls13
+            : SslProtocols.Tls12;
 
     // -------------------------------------------------------------------------
     // Session tracking: per-session progress for the statistics store and the

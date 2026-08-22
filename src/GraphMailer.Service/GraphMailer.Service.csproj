@@ -34,6 +34,12 @@
          (Microsoft.Data.Sqlite 8.0.28 vs 8.0.29 → FileNotFoundException).
          Upgrade deliberately by bumping the version here. -->
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <!-- Explicit MSAL pin, must equal the one in GraphMailer.ConfigTool.csproj. Without it the
+         Service takes whatever Azure.Identity drags in (4.83.1) while the ConfigTool pins a newer
+         one — two deps.json in the same flat publish folder disagreeing over a single shipped DLL,
+         with the publish order deciding which MSAL the service actually loads. Same failure class
+         as the Microsoft.Data.Sqlite mismatch above, on the library that fetches Graph tokens. -->
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.86.1" />
     <!-- Base SDK only (TelemetryClient) for the opt-in daily telemetry heartbeat —
          no ASP.NET/auto-collection packages. The 3.x line is a compatibility layer over
          OpenTelemetry, so it brings the OTel exporter and persistent-storage packages

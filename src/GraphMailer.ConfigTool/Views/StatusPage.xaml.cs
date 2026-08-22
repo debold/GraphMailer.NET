@@ -140,6 +140,11 @@ public partial class StatusPage : UserControl
 
     // ── Software Update card ─────────────────────────────────────────────
 
+    /// <summary>
+    /// Always assigned through <see cref="GitHubUpdateChecker.SafeReleaseUrl"/> — never the raw
+    /// stored value. The service already filters the URL before writing the status file; this is
+    /// the check at the sink, next to the ShellExecute call that would act on it.
+    /// </summary>
     private string? _releaseUrl;
 
     private void UpdateSoftwareUpdateCard()
@@ -148,7 +153,7 @@ public partial class StatusPage : UserControl
 
         var status = UpdateCheckStatus.TryLoad(UpdateCheckStatus.StatusFilePath);
         var pending = File.Exists(UpdateCheckStatus.CheckRequestFilePath);
-        _releaseUrl = status?.ReleaseUrl;
+        _releaseUrl = GitHubUpdateChecker.SafeReleaseUrl(status?.ReleaseUrl);
         UpdReleaseLink.Visibility = string.IsNullOrEmpty(_releaseUrl) ? Visibility.Collapsed : Visibility.Visible;
 
         if (status?.LatestVersion is null)
@@ -208,6 +213,8 @@ public partial class StatusPage : UserControl
 
     private void UpdReleaseLink_Click(object sender, RoutedEventArgs e)
     {
+        // _releaseUrl passed SafeReleaseUrl on assignment — a page in our own GitHub repository,
+        // never a local path or a foreign host.
         if (string.IsNullOrEmpty(_releaseUrl)) return;
         try
         {
@@ -811,7 +818,14 @@ public partial class StatusPage : UserControl
 
     private static class NativeMethods
     {
+        /// <summary>
+        /// <c>iphlpapi.dll</c> is not a KnownDLL, so the default probing order would search the
+        /// application directory first — a planted copy would load into this elevated process.
+        /// Pinned to <c>System32</c>.
+        /// </summary>
         [System.Runtime.InteropServices.DllImport("iphlpapi.dll", SetLastError = true)]
+        [System.Runtime.InteropServices.DefaultDllImportSearchPaths(
+            System.Runtime.InteropServices.DllImportSearchPath.System32)]
         internal static extern uint GetExtendedTcpTable(
             IntPtr pTcpTable, ref int dwOutBufLen, bool sort,
             int ipVersion, int tableClass, int reserved);

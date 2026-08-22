@@ -36,6 +36,12 @@ listener has these fields:
 > mail until the client upgrades to TLS. `Implicit TLS` expects the connection to be encrypted
 > immediately (the classic port 465 behaviour).
 
+**TLS versions** are not configurable, and deliberately so: encrypted listeners accept **TLS 1.2 and
+TLS 1.3**, and nothing older. TLS 1.3 needs Windows Server 2022 / Windows 11 or newer; on earlier
+Windows versions the listener offers TLS 1.2 only. GraphMailer does not follow the machine's
+Schannel settings here — on a server where TLS 1.0 or 1.1 is still switched on for some other
+application, the mail listeners stay at 1.2 as their lowest version regardless.
+
 > [!WARNING]
 > Plaintext (`None`) listeners and `Optional` authentication rely entirely on the
 > [IP Filtering](ip-filtering.md) allow-list to decide who may relay mail. Only keep port 25

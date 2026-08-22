@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1204 tests** (1131 unit · 73 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-22
+**Total: 1236 tests** (1163 unit · 73 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-22
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -872,6 +872,18 @@ Backs the ConfigTool's **Test scanner** button. The vector now lives in `AmsiSel
 | `SelectStartableListeners_AllValid_ReturnsAllWithoutLogging` | Three valid, distinct ports | All returned, nothing logged |
 | `EffectiveMaxMessageSize_AboveIntMax_ClampsAndWarns` | `MaxSizeBytes` > `int.MaxValue` (~2 GB) | Clamped to `int.MaxValue` with a Warning (advertised SIZE differs from config) |
 | `EffectiveMaxMessageSize_WithinRange_PassesThroughSilently` | Default 25 MB value | Passed through unchanged, no log |
+| `EffectiveSslProtocols_Tls13CapableHost_OffersTls12And13` | Host is Windows 11 / Server 2022 or newer | `Tls12 \| Tls13` — SmtpServer's endpoint default (`Tls12` alone) is overridden |
+| `EffectiveSslProtocols_HostWithoutTls13_OffersTls12Only` | Older Windows build (Schannel without TLS 1.3) | `Tls12` — no protocol flag its Schannel does not know |
+| `EffectiveSslProtocols_NeverOffersAnythingBelowTls12` (Theory) | Both host capabilities | No SSL 2/3, TLS 1.0/1.1 bit ever set — the 1.2 floor is why the OS default (`SslProtocols.None`) is not used |
+| `EffectiveSslProtocols_OnThisHost_MatchesItsOsCapability` | Parameterless overload vs. the build-number probe | Both agree — guards the OS check itself |
+
+---
+
+### AMSI interop — DLL search path (`Infrastructure/Security/Amsi/AmsiNativeMethodsTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `EveryAmsiImport_PinsTheDllSearchPathToSystem32` | Reflection over every `DllImport` in `AmsiNativeMethods` | Each carries `[DefaultDllImportSearchPaths(System32)]` — `amsi.dll` is not a KnownDLL, so a planted copy next to the EXE would otherwise disable the scan and run as SYSTEM |
 
 ---
 
@@ -1020,27 +1032,6 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `Matches_SurroundingWhitespaceIsIgnored` | `"  backup  "` | `true` — the user's search input is trimmed |
 | `Matches_TermInNoColumn_ReturnsFalse` | Term appearing in no column | `false` |
 | `Matches_ErrorDetail_FindsFailedDeliveries` | Error string in the detail column, searched lowercase | `true` — filtering for an error is the main use of the search box |
-
----
-
-### List counter line — shared by the paged ConfigTool lists (`ConfigTool/ListCountLabelTests.cs`)
-
-Metrics → Recent Activity, Logs and Messages all page their rows and cap what they scan, so the
-counter next to their search box must never let a capped list read as a complete one.
-
-| Test | Scenario | Expected result |
-|---|---|---|
-| `Build_AllRowsLoaded_ReportsPlainTotal` | 412 of 412 rows loaded, no filter | `412 events` — nothing was left out, so no qualifier |
-| `Build_NoRows_IsEmpty` | Empty source, no filter | Empty string — the hint below the grid already covers it |
-| `Build_MoreRowsAvailable_NamesShownAndPool` | 500 of 3,421 loaded, no filter | `newest 500 of 3,421` |
-| `Build_FilteredAndFullyScanned_ReportsExactMatchCount` | Filter fully applied, 47 hits out of 3,421 | `47 matches of 3,421` |
-| `Build_FilteredAndStoppedAtPageLimit_MarksCountAsALowerBound` | Filtered load filled the 500-row page | `500+ matches of 3,421` — `+` marks the count as a lower bound |
-| `Build_NoMatches_StillNamesThePoolThatWasSearched` | Filter matched nothing | `0 matches of 3,421` — an empty result only means something next to what was searched |
-| `Build_UnknownPoolWithMoreAvailable_OmitsTheTotalButKeepsTheQualifier` | Logs page: file count is not known up front | `newest 2,000 entries` — no invented total, cut-off still marked |
-| `Build_UnknownPoolWhileFiltered_DropsTheOfClause` | Unknown pool with a filter | `47 matches` |
-| `Build_WithNote_AppendsItAfterASeparator` | Scan cap note supplied | `12 matches of 900,000 · stopped after 25,000 events` |
-| `Build_NoteOnAnEmptyLabel_HasNoLeadingSeparator` | Note but nothing else to say | The bare note, no leading `·` |
-| `Build_WheneverRowsAreLeftOut_LabelIsNeverSilent` (Theory) | Page limit reached (with and without filter) and scan cap reached | Label is never empty — regression guard for the old silent cut-offs |
 
 ---
 
@@ -1516,6 +1507,53 @@ Parses the GitHub `/releases/latest` response and compares the release tag (`v<F
 | `CheckAsync_SuccessResponse_ReturnsSuccess_AndSendsUserAgent` | Fake handler returns 200 + release JSON | Success result; request carries a `User-Agent` header and targets `api.github.com` |
 | `CheckAsync_HttpErrorStatus_IsErrorResult` | Fake handler returns 404 | Error result containing the status code; no exception |
 | `CheckAsync_NetworkFailure_IsErrorResult_NeverThrows` | Handler throws `HttpRequestException` | Error result with the exception message; never throws |
+
+---
+
+### Release link safety (`Services/UpdateCheck/ReleaseUrlSafetyTests.cs`)
+
+The release URL travels from GitHub's release JSON through the service's status file into
+`ShellExecute` in the **elevated** ConfigTool. Since the only page the application ever opens is a
+release of its own repository, the filter is an allow-list of exactly that — https, host
+`github.com` exactly, path inside `/debold/GraphMailer.NET` — and every way past it gets a test.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `SafeReleaseUrl_ReleasePageOfThisRepository_IsAccepted` | Real `https://github.com/debold/GraphMailer.NET/releases/tag/v…` | Returned unchanged — the normal case still works |
+| `SafeReleaseUrl_RepositoryRootWithoutTrailingSlash_IsAccepted` | `/debold/GraphMailer.NET` with no trailing slash | Accepted — the repository page itself is inside the allow-list |
+| `SafeReleaseUrl_OwnerAndRepoCasing_IsIgnored` | `GitHub.com/DeBold/graphmailer.net/…` | Accepted — GitHub resolves owner/repo case-insensitively |
+| `SafeReleaseUrl_PlainHttp_IsRejected` | `http://` URL on the right host | `null` — GitHub never answers with http |
+| `SafeReleaseUrl_LocalExecutablePath_IsRejected` | `C:\Windows\System32\cmd.exe` | `null` — `Uri.TryCreate` parses a drive path as scheme `file`; the scheme check is what stops it |
+| `SafeReleaseUrl_UncPath_IsRejected` | `\\attacker\share\payload.exe` | `null` |
+| `SafeReleaseUrl_OtherProtocolHandlers_AreRejected` (Theory) | `file://` / `ms-settings:` / `javascript:` / `ftp://` | `null` — the rule is "https", not a blocklist |
+| `SafeReleaseUrl_LookAlikeHost_IsRejected` (Theory) | `example.org`, `github.com.example.org`, `notgithub.com`, `evil.github.com.example.org` | `null` — exact host equality; `EndsWith`/`Contains` would pass these |
+| `SafeReleaseUrl_HostInUserInfoNotInAuthority_IsRejected` | `https://github.com@example.org/…` | `null` — everything before `@` is credentials; the real host is `example.org` |
+| `SafeReleaseUrl_CredentialsOnTheRealHost_IsRejected` | `https://user:pw@github.com/…` | `null` — GitHub never sends credentials in a URL |
+| `SafeReleaseUrl_NonDefaultPort_IsRejected` | `https://github.com:8443/…` | `null` |
+| `SafeReleaseUrl_PathOutsideThisRepository_IsRejected` (Theory) | Another owner, `GraphMailer.NET.evil`, `/debold`, `/` | `null` — a valid GitHub page is still not *our* page |
+| `SafeReleaseUrl_TraversalBackOutOfTheRepository_IsRejected` | `/debold/GraphMailer.NET/../../elsewhere` | `null` — pins that the check runs on the normalised path |
+| `SafeReleaseUrl_MissingOrRelativeValue_IsRejected` (Theory) | `null`, empty, whitespace, relative path | `null` — the link stays hidden |
+
+---
+
+### List counter line — shared by the paged ConfigTool lists (`ConfigTool/ListCountLabelTests.cs`)
+
+Metrics → Recent Activity, Logs and Messages all page their rows and cap what they scan, so the
+counter next to their search box must never let a capped list read as a complete one.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Build_AllRowsLoaded_ReportsPlainTotal` | 412 of 412 rows loaded, no filter | `412 events` — nothing was left out, so no qualifier |
+| `Build_NoRows_IsEmpty` | Empty source, no filter | Empty string — the hint below the grid already covers it |
+| `Build_MoreRowsAvailable_NamesShownAndPool` | 500 of 3,421 loaded, no filter | `newest 500 of 3,421` |
+| `Build_FilteredAndFullyScanned_ReportsExactMatchCount` | Filter fully applied, 47 hits out of 3,421 | `47 matches of 3,421` |
+| `Build_FilteredAndStoppedAtPageLimit_MarksCountAsALowerBound` | Filtered load filled the 500-row page | `500+ matches of 3,421` — `+` marks the count as a lower bound |
+| `Build_NoMatches_StillNamesThePoolThatWasSearched` | Filter matched nothing | `0 matches of 3,421` — an empty result only means something next to what was searched |
+| `Build_UnknownPoolWithMoreAvailable_OmitsTheTotalButKeepsTheQualifier` | Logs page: file count is not known up front | `newest 2,000 entries` — no invented total, cut-off still marked |
+| `Build_UnknownPoolWhileFiltered_DropsTheOfClause` | Unknown pool with a filter | `47 matches` |
+| `Build_WithNote_AppendsItAfterASeparator` | Scan cap note supplied | `12 matches of 900,000 · stopped after 25,000 events` |
+| `Build_NoteOnAnEmptyLabel_HasNoLeadingSeparator` | Note but nothing else to say | The bare note, no leading `·` |
+| `Build_WheneverRowsAreLeftOut_LabelIsNeverSilent` (Theory) | Page limit reached (with and without filter) and scan cap reached | Label is never empty — regression guard for the old silent cut-offs |
 
 ---
 

@@ -48,24 +48,38 @@ internal sealed class AmsiContextHandle : SafeHandleZeroOrMinusOneIsInvalid
 /// Note that a scan never yields a threat *name* — the only output is the numeric
 /// <see cref="AmsiResult"/>. The name exists solely inside the antimalware product
 /// (for Defender: event 1116 / <c>Get-MpThreat</c>), so nothing downstream can report it.
+///
+/// <c>amsi.dll</c> is not a KnownDLL, so the default probing order would search the
+/// application directory before <c>System32</c>: a planted <c>amsi.dll</c> next to the EXE
+/// would both disable the malware scan and run as SYSTEM inside the service. Every import
+/// below therefore carries <see cref="DefaultDllImportSearchPathsAttribute"/> — the attribute
+/// is only valid on methods (and assembly-wide, which would silently constrain unrelated
+/// future imports), so it cannot be stated once for the class.
 /// </summary>
 internal static class AmsiNativeMethods
 {
     private const string AmsiDll = "amsi.dll";
 
+    /// <summary>Pins every import in this class to <c>System32</c>; see the type remarks.</summary>
+    private const DllImportSearchPath SearchPath = DllImportSearchPath.System32;
+
     /// <summary>S_OK.</summary>
     internal const int Ok = 0;
 
     [DllImport(AmsiDll, CharSet = CharSet.Unicode)]
+    [DefaultDllImportSearchPaths(SearchPath)]
     internal static extern int AmsiInitialize(string appName, out AmsiContextHandle amsiContext);
 
     [DllImport(AmsiDll)]
+    [DefaultDllImportSearchPaths(SearchPath)]
     internal static extern void AmsiUninitialize(IntPtr amsiContext);
 
     [DllImport(AmsiDll)]
+    [DefaultDllImportSearchPaths(SearchPath)]
     internal static extern int AmsiOpenSession(AmsiContextHandle amsiContext, out IntPtr amsiSession);
 
     [DllImport(AmsiDll)]
+    [DefaultDllImportSearchPaths(SearchPath)]
     internal static extern void AmsiCloseSession(AmsiContextHandle amsiContext, IntPtr amsiSession);
 
     /// <param name="length">
@@ -77,6 +91,7 @@ internal static class AmsiNativeMethods
     /// attachment name measurably improves detection over a generic label.
     /// </param>
     [DllImport(AmsiDll, CharSet = CharSet.Unicode)]
+    [DefaultDllImportSearchPaths(SearchPath)]
     internal static extern int AmsiScanBuffer(
         AmsiContextHandle amsiContext,
         [In] byte[] buffer,

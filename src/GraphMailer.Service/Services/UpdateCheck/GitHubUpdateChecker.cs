@@ -31,7 +31,45 @@ internal sealed class GitHubUpdateChecker : IUpdateChecker, IDisposable
 {
     private const string RepoOwner = "debold";
     private const string RepoName = "GraphMailer.NET";
+    private const string ReleaseHost = "github.com";
     private static readonly Uri LatestReleaseUri = new($"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest");
+
+    /// <summary>
+    /// Reduces a release URL to one that can only point at this repository's own release pages,
+    /// or to <see langword="null"/>.
+    ///
+    /// The value arrives from outside the process — GitHub's JSON, then the status file — and ends
+    /// up in ShellExecute inside the *elevated* ConfigTool, where a non-web string (a UNC path,
+    /// <c>file://</c>, any registered protocol handler) would run with full privileges. Since the
+    /// only URL this application ever has reason to open is a release page of its own repository,
+    /// the check is against that repository rather than merely for a plausible-looking scheme:
+    /// https, host <c>github.com</c> exactly, and a path inside <c>/{owner}/{repo}</c>.
+    ///
+    /// Exact host equality on purpose — <c>EndsWith(".github.com")</c> would accept
+    /// <c>github.com.example.org</c>, and <c>Contains</c> would accept anything at all. Credentials
+    /// in the URL and a non-default port are refused too: GitHub never sends either, so their only
+    /// use here would be to make a link read as something it is not.
+    /// </summary>
+    internal static string? SafeReleaseUrl(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return null;
+
+        if (uri.Scheme != Uri.UriSchemeHttps ||
+            !uri.Host.Equals(ReleaseHost, StringComparison.OrdinalIgnoreCase) ||
+            !uri.IsDefaultPort ||
+            uri.UserInfo.Length > 0)
+            return null;
+
+        // AbsolutePath is already normalised, so "/owner/repo/../../elsewhere" cannot slip through.
+        var repoPath = $"/{RepoOwner}/{RepoName}";
+        var path = uri.AbsolutePath;
+        var insideRepo =
+            path.Equals(repoPath, StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith($"{repoPath}/", StringComparison.OrdinalIgnoreCase);
+
+        return insideRepo ? uri.AbsoluteUri : null;
+    }
 
     private readonly HttpClient _http;
     private readonly ILogger<GitHubUpdateChecker> _logger;
@@ -115,7 +153,8 @@ internal sealed class GitHubUpdateChecker : IUpdateChecker, IDisposable
             currentVersion,
             LatestVersion: latest.ToString(),
             UpdateAvailable: latest > current,
-            ReleaseUrl: url,
+            // Filtered at the source, so a URL that is not ours never reaches the status file.
+            ReleaseUrl: SafeReleaseUrl(url),
             ReleaseName: name,
             PublishedUtc: published);
     }

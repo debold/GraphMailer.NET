@@ -157,6 +157,39 @@
 
 ### Changed
 
+- **TLS listeners now offer TLS 1.3 as well as 1.2.** The SMTP library's endpoint default is TLS 1.2
+  alone, and it was never overridden — so a listener could not negotiate 1.3 however new the machine
+  underneath was. TLS 1.2 remains the **floor**: handing the choice to the operating system instead
+  would have been the shorter fix, but on a server whose Schannel registry still has TLS 1.0/1.1
+  enabled — not unusual on the kind of machine this relay exists for — that would silently lower it.
+  On Windows builds before Server 2022 / Windows 11, whose Schannel does not know TLS 1.3, the
+  listener keeps offering 1.2 only. Nothing to configure; existing clients are unaffected.
+
+- **Security hardening, three findings from a dependency and component review.** None of them was
+  exploitable as shipped, and all three needed only a local fix:
+
+  The service and the ConfigTool disagreed about which **MSAL** version to use — the ConfigTool
+  pinned one, the service silently took whatever `Azure.Identity` brought along. Both publish into
+  the same folder, so one of the two shipped DLLs won by publish order while the other application's
+  `deps.json` still named the version it was built against. That is the same failure class as the
+  `Microsoft.Data.Sqlite` mismatch this project already fixed once, on the library that fetches
+  Graph tokens; the service now pins the same version explicitly.
+
+  The **AMSI** interop and one network-status call resolved `amsi.dll` / `iphlpapi.dll` through the
+  default search order, which looks in the application directory before `System32`. Neither is a
+  Windows KnownDLL, so a file planted next to the executable would have been loaded — in the
+  malware scanner's case, both disabling the scan and running as SYSTEM. Both imports are now pinned
+  to `System32`.
+
+  The **release link** on the Status page came from GitHub's API response and was handed to the
+  shell unchecked, in an elevated process — a non-web string (a UNC path, a `file://` URL, any
+  registered protocol handler) would have been launched with full privileges. The only page this
+  application ever has reason to open is a release of its own repository, so that is what is
+  accepted now: `https`, host `github.com` exactly, and a path inside `debold/GraphMailer.NET`.
+  Look-alike hosts (`github.com.example.org`) and the credentials trick (`https://github.com@…`)
+  fail that check, and the filter runs twice — in the service before the URL is written to its
+  status file, and in the ConfigTool before the link is opened. Anything else hides the link.
+
 - **The Logs page reads all retained log files, not just the newest two.** The service keeps seven
   days of `graphmailer-*.log`, but the page only ever read the two most recent — and only the last
   2,000 lines of those — while the counter said `(1,997 entries)` as though that were the whole log.
