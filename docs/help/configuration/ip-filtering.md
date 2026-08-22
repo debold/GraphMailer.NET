@@ -40,6 +40,16 @@ your whole internal network.
 IP addresses or CIDR ranges that are **always rejected** at MAIL FROM, regardless of the whitelist.
 Use it to stop a specific problem source.
 
+## Adding an address from the log
+
+Both lists can be filled straight from the [Logs](../monitoring/logs.md) page: right-click a log
+entry and pick *Add &lt;address&gt; to whitelist* or *… to blacklist*. That switches to this page and
+opens the same entry dialog you get from **Add**, with the address filled in — so you can widen it
+to a CIDR range and add a comment before confirming, and a duplicate is rejected the same way.
+
+The new row is added to the list but **not saved**; press *Save* to apply it. Saving takes effect
+without a service restart, but it does not disconnect a session that is already open.
+
 ## Automatic IP Blocking
 
 GraphMailer counts failed events (failed authentication, filter rejections) per source IP and

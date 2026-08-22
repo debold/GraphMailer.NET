@@ -173,7 +173,14 @@
                       AutoGenerateColumns="False"
                       VirtualizingPanel.IsVirtualizing="True"
                       VirtualizingPanel.VirtualizationMode="Recycling"
+                      ContextMenuOpening="LogGrid_ContextMenuOpening"
                       SelectionChanged="LogGrid_SelectionChanged">
+                <!-- Filled in on opening, from the addresses in the row under the cursor.
+                     Declared empty rather than omitted: without a ContextMenu the grid never
+                     raises ContextMenuOpening, so there would be nothing to populate. -->
+                <DataGrid.ContextMenu>
+                    <ContextMenu/>
+                </DataGrid.ContextMenu>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Time"
                                         Binding="{Binding TimeLocal}"

@@ -58,6 +58,55 @@ public partial class IpFilteringPage : UserControl
         doc.IpBlocking.BlockDurationSeconds = (int.TryParse(BlockMinutes.Text, out var bm) ? bm : 10) * 60;
     }
 
+    // ── Adding from elsewhere ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Adds an address the operator picked out of a log entry. Routed through this page rather
+    /// than handled at the call site so the entry passes the same dialog, the same validation and
+    /// the same duplicate check as one typed here — and so the operator lands on the list they
+    /// just changed, where the pending entry is visible and still unsaved.
+    /// </summary>
+    /// <returns>The list the address went into, or null when the dialog was cancelled.</returns>
+    internal string? AddFromLog(string ipAddress, bool blacklist)
+    {
+        var list = blacklist ? _blacklist : _whitelist;
+        var name = blacklist ? "blacklist" : "whitelist";
+
+        var existing = list.FirstOrDefault(r => r.Entry == ipAddress);
+        if (existing is not null)
+        {
+            // Already covered — select it instead of opening a dialog that could only be
+            // dismissed with a duplicate error.
+            var grid = blacklist ? BlacklistGrid : WhitelistGrid;
+            grid.SelectedItem = existing;
+            grid.ScrollIntoView(existing);
+            return null;
+        }
+
+        var dlg = new IpEntryDialog(
+            title: blacklist ? "Add to Blacklist" : "Add to Whitelist",
+            description: blacklist
+                ? "Blacklisted IPs/CIDRs are rejected at MAIL FROM. Taken from a log entry — widen it to a "
+                  + "CIDR range if you want to cover the whole network. Applies once you save; a session "
+                  + "already open is not disconnected."
+                : "When the whitelist is not empty, only listed IPs/CIDRs may send mail — all others are "
+                  + "rejected at MAIL FROM. Taken from a log entry. Applies once you save.",
+            initialEntry: ipAddress,
+            extraValidate: v => list.Any(r => r.Entry == v) ? $"'{v}' is already in the {name}." : null)
+        { Owner = Window.GetWindow(this) };
+
+        if (dlg.ShowDialog() != true) return null;
+
+        var row = new IpEntryRow { Entry = dlg.ResultEntry, Comment = dlg.ResultComment };
+        list.Add(row);
+        _markDirty();
+
+        var target = blacklist ? BlacklistGrid : WhitelistGrid;
+        target.SelectedItem = row;
+        target.ScrollIntoView(row);
+        return name;
+    }
+
     // ── Whitelist ─────────────────────────────────────────────────────────
 
     private void AddWhitelist_Click(object sender, RoutedEventArgs e)

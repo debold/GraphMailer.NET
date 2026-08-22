@@ -508,7 +508,20 @@ public partial class MainWindow : Window
             () => (_currentDoc.MailQueue.MailDir, _currentDoc.MailQueue.ArchiveSentEmails)));
 
     private void NavLogs_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
-        => NavigateTo(NavLogs, "Logs", "monitoring/logs.html", () => _logPage ??= new LogPage());
+        => NavigateTo(NavLogs, "Logs", "monitoring/logs.html",
+            () => _logPage ??= new LogPage(AddIpFromLog));
+
+    /// <summary>
+    /// Puts an address the operator picked out of a log entry onto an IP filter list. Switching to
+    /// the IP Filtering page first is the point of doing this here rather than inside the log page:
+    /// the entry is added to the in-memory document and is not saved yet, so the operator has to
+    /// see the list — and the unsaved-changes marker — to know what still needs confirming.
+    /// </summary>
+    private void AddIpFromLog(string ipAddress, bool blacklist)
+    {
+        NavIpFiltering_Click(this, new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left));
+        _ipFilteringPage.AddFromLog(ipAddress, blacklist);
+    }
 
     // ── Toolbar ──────────────────────────────────────────────────────────────
 

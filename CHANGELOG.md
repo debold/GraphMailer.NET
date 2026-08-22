@@ -78,6 +78,31 @@
   working. The test runs in the ConfigTool's process, so it confirms the engine on the machine, not
   that the service's scanner started — the service reports that itself in the log at start.
 
+- **The Logs page has a row context menu.** **Copy entry** puts the complete entry on the clipboard
+  — timestamp, level, component, message and any stack trace — which is the form worth pasting into
+  a ticket. Copying used to be possible only from the details panel, and only for the message text
+  on its own.
+
+- **An IP in the log can be filtered with a right-click.** Acting on a rejection used to mean
+  reading the address off a log entry, switching to the IP Filtering page, pressing *Add* and
+  typing it back in. The Logs page now offers every address a log entry mentions — a deny reason
+  usually names both the client and the rule it matched — with a whitelist and a blacklist choice
+  for each; an entry without an address says so instead of offering an empty menu.
+
+  Picking one switches to the IP Filtering page and opens the **same dialog** the *Add* button
+  opens, prefilled: the duplicate check, the validation and the comment field are the ones already
+  there, and the address can be widened to a CIDR range before confirming. An address already on
+  the list selects the existing row rather than opening a dialog that could only end in a duplicate
+  error. Landing on the page is deliberate — the entry is added to the document but **not saved**,
+  and the operator needs to see the list and the unsaved-changes marker to know that.
+
+  Candidates are validated as addresses rather than pattern-matched, which is what keeps the menu
+  usable: a log line is full of dotted and colon-separated numbers, and a build number like
+  `1.3.3.1067`, a Defender platform path, a wall-clock time, or a qualified name like
+  `Amsi::ScanBuffer` would otherwise all turn up as offers. Zero-padded octets are refused too —
+  they are ambiguous, and an entry that reads back differently from what the log showed is worse
+  than none.
+
 - **The "Currently Blocked IPs" list on the IP Filtering page now works.** It was a stub: the
   ↺ Refresh button emptied the list, *Unblock* only removed the row from the screen, and the help
   page described all of it as a live view — so the page answered "is this address blocked?" with a

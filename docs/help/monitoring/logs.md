@@ -79,6 +79,30 @@ What the levels mean:
 > written to the log only — the SMTP responses sent to clients stay generic. So the log is the
 > authoritative place to see *why* a login was refused.
 
+## The row context menu
+
+**Right-click a row** for the actions on that entry.
+
+**Copy entry** puts the complete entry on the clipboard — timestamp, level, component, message and
+any stack trace — which is the form worth pasting into a ticket or a mail. (To copy just the message
+text, right-click it in the details panel below the list instead.)
+
+Below that, the menu offers every IP address the entry mentions — a rejection line usually names
+both the client and the rule it matched — with a *whitelist* and a *blacklist* choice for each.
+Entries with no address show a disabled *No IP address in this entry*.
+
+Picking one switches to the [IP Filtering](../configuration/ip-filtering.md) page and opens the
+entry dialog with the address filled in, so you can widen it to a CIDR range and add a comment
+before confirming. If the address is already on that list, the existing row is selected instead.
+
+> [!IMPORTANT]
+> The entry is **not saved yet** — it is added to the page, and you still have to press *Save*. Once
+> saved it takes effect without a service restart, but a session that is already open is not
+> disconnected.
+
+Version numbers, timestamps and similar dotted or colon-separated values in a log line are not
+offered: a candidate has to be a real address to appear in the menu.
+
 ## Related
 
 - [Monitoring](../configuration/monitoring.md) — set the log level (applies immediately)

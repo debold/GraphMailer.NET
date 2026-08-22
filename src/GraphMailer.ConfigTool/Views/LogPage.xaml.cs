@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using GraphMailer.ConfigTool.Helpers;
@@ -17,8 +18,16 @@ public partial class LogPage : UserControl
     private bool _filtered;
     private int _logLimit = LogFileReader.PageSize;
 
-    public LogPage()
+    /// <summary>
+    /// Puts an address from a log entry on the IP whitelist (<c>false</c>) or blacklist
+    /// (<c>true</c>). Supplied by the main window, which owns the IP filtering page — this page
+    /// reads log files and has no business touching configuration itself.
+    /// </summary>
+    private readonly Action<string, bool>? _addIpToFilter;
+
+    public LogPage(Action<string, bool>? addIpToFilter = null)
     {
+        _addIpToFilter = addIpToFilter;
         // Built before InitializeComponent(): the search box raises TextChanged while the XAML
         // is being parsed, and the handler must not find a null timer.
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
@@ -239,17 +248,99 @@ public partial class LogPage : UserControl
     /// <summary>Empty fields become an em dash, so every row keeps its place in the raster.</summary>
     private static string Show(string? value) => string.IsNullOrEmpty(value) ? "—" : value;
 
+    // ── IP context menu ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds the menu for the entry under the cursor: copying the entry, and the addresses it
+    /// mentions, so a rejection or a blocked-IP warning can go straight onto a filter list instead
+    /// of being copied across two pages by hand. Rebuilt on every open because everything but the
+    /// copy item depends entirely on that one row.
+    /// </summary>
+    private void LogGrid_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        var menu = LogGrid.ContextMenu;
+        if (menu is null) return;
+
+        menu.Items.Clear();
+
+        var entry = EntryUnderCursor(e.OriginalSource as DependencyObject);
+        if (entry is null)
+        {
+            e.Handled = true;   // header or empty space — no menu at all
+            return;
+        }
+
+        // Right-click acts on what it points at, which WPF does not select on its own. Without
+        // this the menu could offer one row's address while another row stays highlighted.
+        LogGrid.SelectedItem = entry;
+
+        // The whole entry, not the message alone: RawLine carries the timestamp, the level and any
+        // stack trace, which is what makes a pasted line useful in a ticket or a mail.
+        var copy = new MenuItem { Header = "Copy entry" };
+        copy.Click += (_, _) => CopyToClipboard(entry.RawLine);
+        menu.Items.Add(copy);
+
+        var addresses = _addIpToFilter is null ? [] : LogIpExtractor.Extract(entry.Message);
+        if (addresses.Count == 0)
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(new MenuItem { Header = "No IP address in this entry", IsEnabled = false });
+            return;
+        }
+
+        foreach (var ip in addresses)
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(FilterItem($"Add {ip} to whitelist…", ip, blacklist: false));
+            menu.Items.Add(FilterItem($"Add {ip} to blacklist…", ip, blacklist: true));
+        }
+    }
+
+    private MenuItem FilterItem(string header, string ipAddress, bool blacklist)
+    {
+        var item = new MenuItem { Header = header };
+        item.Click += (_, _) => _addIpToFilter!(ipAddress, blacklist);
+        return item;
+    }
+
+    /// <summary>
+    /// Walks up from whatever was right-clicked to the row that holds it. The logical-tree
+    /// fallback covers sources that are not visuals (a <c>Run</c> inside a cell's text), where
+    /// <see cref="VisualTreeHelper.GetParent"/> throws rather than returning null.
+    /// </summary>
+    private static LogEntry? EntryUnderCursor(DependencyObject? source)
+    {
+        while (source is not null and not DataGridRow)
+        {
+            source = source is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+
+        return (source as DataGridRow)?.Item as LogEntry;
+    }
+
     /// <summary>Context-menu copy for the message body (stack traces are worth pasting).</summary>
     private void DetailCopy_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { Parent: ContextMenu { PlacementTarget: TextBlock target } }) return;
         if (string.IsNullOrEmpty(target.Text) || target.Text == "—") return;
 
-        try { Clipboard.SetText(target.Text); }
+        CopyToClipboard(target.Text);
+    }
+
+    /// <summary>
+    /// Copies without letting a clipboard failure reach the user as a crash: the clipboard is a
+    /// shared OS resource and another process can hold it locked for a moment.
+    /// </summary>
+    private static void CopyToClipboard(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+
+        try { Clipboard.SetText(text); }
         catch (Exception ex)
         {
-            // The clipboard can be locked by another process — never take down the page for it
-            ConfigToolLog.ErrorOnChange("LogPage", ex, "Could not copy the log message to the clipboard");
+            ConfigToolLog.ErrorOnChange("LogPage", ex, "Could not copy to the clipboard");
         }
     }
 

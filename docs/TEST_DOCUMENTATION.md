@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1186 tests** (1113 unit · 73 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-22
+**Total: 1204 tests** (1131 unit · 73 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-22
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -1084,6 +1084,30 @@ its input must still say so, and both must be the same length (they were 8 and 6
 | `MoreLabel_ExactlyOneLeftOut_UsesTheSingular` | 10 of 11 shown | `+ 1 more host not shown` |
 | `MoreLabel_LargeRemainder_IsThousandsSeparated` | 10 of 1,510 shown | `+ 1,500 more hosts not shown` |
 | `TopRankingSize_IsOneNumberForEveryRanking` | The shared constant | `10` — pins that the two rankings cannot drift apart again |
+
+---
+
+### Log IP extractor — right-click an address in the Logs page (`ConfigTool/LogIpExtractorTests.cs`)
+
+Feeds the Logs page's context menu. The risk is entirely false positives — a log line is full of dotted and colon-separated numbers — so every case below is a shape that actually occurs in this application's output.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Extract_RejectionLine_FindsTheClientAndTheMatchedRulesAddress` | `rejected from 192.168.1.50: matches IP blacklist entry '192.168.1.0/24'` | Both addresses, in order — the rule's prefix length is not offered; widening is the dialog's job |
+| `Extract_BlockedIpWarning_FindsTheAddress` | Block warning ending in `(until 14:05:00 UTC)` | Only `10.20.30.40` — the expiry time is not an address |
+| `Extract_LoopbackIpv6_IsFound` | `Connection from ::1 accepted` | `::1` |
+| `Extract_LinkLocalIpv6WithZoneId_IsFound` | `fe80::1%3` | Address including the zone id |
+| `Extract_FullIpv6_IsFound` | `2001:db8::8a2e:370:7334` | Found unchanged |
+| `Extract_VersionNumber_IsNotAnAddress` | `1.3.3.1067 supersedes 1.3.2.998` | Empty — the last group is out of range |
+| `Extract_DefenderPlatformPath_IsNotAnAddress` | `…\Platform\4.18.26070.9-0\MpOav.dll` | Empty |
+| `Extract_WallClockTime_IsNotAnAddress` | `Block expires at 13:45:30 UTC` | Empty — three colon-separated numbers are not eight IPv6 groups |
+| `Extract_QualifiedNameWithDoubleColon_IsNotAnAddress` | `Native call failed in Amsi::ScanBuffer` | Empty — without the regex lookarounds this yields `::ba`, which parses as a valid address |
+| `Extract_OutOfRangeOctets_AreRejected` | `999.888.777.666` | Empty |
+| `Extract_PaddedOctets_AreRejected` | `010.000.000.001` | Empty — ambiguous, and would read back differently from the log |
+| `Extract_AddressNamedTwice_IsOfferedOnce` | Same address twice in one line | One entry |
+| `Extract_SeveralAddresses_KeepsTheOrderTheyAppearIn` | Three addresses | All three, in order of appearance |
+| `Extract_AddressWithPort_YieldsTheAddressWithoutThePort` | `192.168.0.9:587` | `192.168.0.9` |
+| `Extract_NothingToFind_ReturnsEmpty` (Theory, 4 cases) | `null`, empty, whitespace, a listener line with a port but no address | Empty |
 
 ---
 
