@@ -165,6 +165,21 @@
   On Windows builds before Server 2022 / Windows 11, whose Schannel does not know TLS 1.3, the
   listener keeps offering 1.2 only. Nothing to configure; existing clients are unaffected.
 
+- **Dependency round: everything current, and the dependency graph is now pinned.** All runtime
+  packages moved to their latest versions — the `Microsoft.*` 10.0.11 servicing band, Graph 6.5.0,
+  MSAL 4.88.0, SkiaSharp 4.151.1 — plus the test tooling and the help renderer's Markdig. No
+  package in the tree carries a known vulnerability.
+
+  The `SQLitePCLRaw` security pin is **gone**, and that is a fix rather than a regression: it
+  existed because `Microsoft.Data.Sqlite` used to drag in a SQLite affected by CVE-2025-6965.
+  Version 10.0.11 depends on the fixed 2.1.12 itself, so the pin had done its job.
+
+  Restore is now **reproducible**: a `packages.lock.json` per project pins all ~90 transitive
+  packages with a content hash, where "pinned versions" previously covered only the packages named
+  in the project files. A `nuget.config` restricts resolution to nuget.org alone instead of
+  inheriting whatever feeds a machine happens to have configured, and a high or critical advisory
+  in any package — direct or transitive — now fails the build rather than printing a warning.
+
 - **Security hardening, three findings from a dependency and component review.** None of them was
   exploitable as shipped, and all three needed only a local fix:
 
