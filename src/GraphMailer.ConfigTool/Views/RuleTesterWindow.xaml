@@ -1,0 +1,271 @@
+<Window x:Class="GraphMailer.ConfigTool.Views.RuleTesterWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Rule Tester"
+        Width="1120"
+        Height="760"
+        MinWidth="880"
+        MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Icon="/Assets/graphmailer.ico"
+        Background="{StaticResource BackgroundBrush}">
+
+    <Window.Resources>
+        <Style x:Key="FieldCaption" TargetType="TextBlock" BasedOn="{StaticResource LabelText}">
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+
+        <Style x:Key="InlineCaption" TargetType="TextBlock" BasedOn="{StaticResource LabelText}">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+
+        <!-- A locked field has to look locked. The shared style's read-only tint is too faint to
+             notice, and the text stays selectable on purpose — copying a body out of a loaded
+             message is useful — so the background carries the signal instead. -->
+        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Style.Triggers>
+                <Trigger Property="IsReadOnly" Value="True">
+                    <Setter Property="Background" Value="#FFEDEDED"/>
+                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+                    <Setter Property="BorderBrush" Value="#FFD6D6D6"/>
+                    <Setter Property="ToolTip"
+                            Value="This value comes from the loaded file. Use “Edit as form” to change it."/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="16">
+
+        <!-- ── Close ──────────────────────────────────────────────────────── -->
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Close" Style="{StaticResource SecondaryButton}"
+                    IsCancel="True" Click="Close_Click"/>
+        </StackPanel>
+
+        <!-- ── Commands ───────────────────────────────────────────────────── -->
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
+            <Button Content="Run test" Style="{StaticResource SmallPrimaryButton}"
+                    Margin="0,0,8,0" Click="RunTest_Click" IsDefault="True"/>
+            <Button Content="Load message…" Style="{StaticResource SmallButton}"
+                    Margin="0,0,8,0" Click="LoadEml_Click"/>
+            <Button x:Name="EditAsFormButton" Content="Edit as form"
+                    Style="{StaticResource SmallButton}"
+                    Margin="0,0,16,0" IsEnabled="False" Click="EditAsForm_Click"
+                    ToolTip="Keep the loaded message's content but make the fields editable. The file's exact structure is then no longer used."/>
+            <CheckBox x:Name="SimulateEnforce" Style="{StaticResource ToggleSwitch}"
+                      VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBlock Text="Treat Audit rules as Enforce" VerticalAlignment="Center"
+                       Foreground="{StaticResource TextBrush}"/>
+        </StackPanel>
+
+        <Border DockPanel.Dock="Bottom" x:Name="LoadedBanner"
+                Visibility="Collapsed"
+                Background="#FFEFF6FC" BorderBrush="#FF9EC5E8" BorderThickness="1"
+                CornerRadius="4" Padding="10,6" Margin="0,10,0,0">
+            <TextBlock x:Name="LoadedFileText" TextWrapping="Wrap" FontSize="11.5"
+                       Foreground="#FF1A3D5C"/>
+        </Border>
+
+        <!-- The input half takes exactly the height it needs; only on a screen too small for that
+             is it capped (in code, from the grid's height) and allowed to scroll. Scrolling by
+             default would hide fields the operator is about to fill in. -->
+        <Grid x:Name="SplitGrid" SizeChanged="SplitGrid_SizeChanged">
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="InputRow" Height="Auto" MinHeight="90"/>
+                <RowDefinition Height="8"/>
+                <RowDefinition Height="*" MinHeight="130"/>
+            </Grid.RowDefinitions>
+
+            <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+
+                    <!-- Message properties, ribbon style -->
+                    <Border Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="4" Padding="10,6" Margin="0,0,0,10">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Importance" Style="{StaticResource InlineCaption}"/>
+                            <ComboBox x:Name="TestImportance" Width="100" VerticalAlignment="Center"
+                                      Margin="0,0,22,0">
+                                <ComboBoxItem Tag="Low">Low</ComboBoxItem>
+                                <ComboBoxItem Tag="Normal" IsSelected="True">Normal</ComboBoxItem>
+                                <ComboBoxItem Tag="High">High</ComboBoxItem>
+                            </ComboBox>
+
+                            <TextBlock Text="Protection" Style="{StaticResource InlineCaption}"/>
+                            <CheckBox x:Name="TestSigned" Style="{StaticResource ToggleSwitch}"
+                                      VerticalAlignment="Center" Margin="0,0,8,0" Click="Signed_Changed"/>
+                            <TextBlock Text="Signed" VerticalAlignment="Center" Margin="0,0,18,0"
+                                       Foreground="{StaticResource TextBrush}"/>
+                            <CheckBox x:Name="TestEncrypted" Style="{StaticResource ToggleSwitch}"
+                                      VerticalAlignment="Center" Margin="0,0,8,0" Click="Encrypted_Changed"/>
+                            <TextBlock Text="Encrypted" VerticalAlignment="Center" Margin="0,0,18,0"
+                                       Foreground="{StaticResource TextBrush}"/>
+
+                            <TextBlock Style="{StaticResource BodyText}" FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Text="Body and attachment actions are skipped on protected mail."/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Message fields on the left, transport beside them: the transport group is
+                         short, and stacking it below wasted the height the result needs. -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="From" Style="{StaticResource FieldCaption}"/>
+                            <TextBox x:Name="TestFrom" Text="sender@example.com" Margin="0,0,0,8"/>
+
+                            <TextBlock Text="To (one per line)" Style="{StaticResource FieldCaption}"/>
+                            <TextBox x:Name="TestRecipients" Text="recipient@example.com"
+                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                     MinLines="2" MaxLines="2"
+                                     VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                                     Margin="0,0,0,8"
+                                     ToolTip="Goes into the To header and the envelope."/>
+
+                            <!-- Cc beside Bcc: both are usually empty, and stacking them cost the
+                                 height the content tabs need. -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Cc (one per line)" Style="{StaticResource FieldCaption}"/>
+                                    <TextBox x:Name="TestCc"
+                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                             MinLines="2" MaxLines="2"
+                                             VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                                             ToolTip="Goes into the Cc header and the envelope."/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Bcc (one per line)" Style="{StaticResource FieldCaption}"/>
+                                    <TextBox x:Name="TestBcc"
+                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                             MinLines="2" MaxLines="2"
+                                             VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                                             ToolTip="Envelope only — a blind copy appears in no header, which is exactly what makes it blind."/>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="Subject" Style="{StaticResource FieldCaption}"/>
+                            <TextBox x:Name="TestSubject" Text="Test message" Margin="0,0,0,8"/>
+
+                            <TextBlock Text="Attachments — &quot;report.pdf&quot; or &quot;report.pdf | 20480&quot; per line"
+                                       Style="{StaticResource FieldCaption}"/>
+                            <TextBox x:Name="TestAttachments"
+                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                     MinLines="2" MaxLines="2"
+                                     VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                                     ToolTip="One attachment per line. The size in bytes is optional and is what an attachment-size rule compares against."/>
+                        </StackPanel>
+
+                        <!-- Stretches to the height of the fields beside it rather than hugging
+                             its content, so the two columns read as one block. -->
+                        <Border Grid.Column="2"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="4" Padding="12,10">
+                            <StackPanel MinWidth="240">
+                                <TextBlock Text="Transport" Style="{StaticResource SectionHeader}"
+                                           Margin="0,0,0,8"/>
+
+                                <TextBlock Text="Client IP" Style="{StaticResource FieldCaption}"/>
+                                <TextBox x:Name="TestClientIp" Text="192.168.1.50" Margin="0,0,0,8"/>
+
+                                <TextBlock Text="Port" Style="{StaticResource FieldCaption}"/>
+                                <ComboBox x:Name="TestPort" Margin="0,0,0,10"/>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <CheckBox x:Name="TestTls" Style="{StaticResource ToggleSwitch}"
+                                              VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="TLS" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextBrush}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <CheckBox x:Name="TestAuthenticated" Style="{StaticResource ToggleSwitch}"
+                                              VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Authenticated" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextBrush}"/>
+                                </StackPanel>
+
+                                <TextBlock x:Name="TransportHint" Style="{StaticResource BodyText}"
+                                           FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap" Margin="0,10,0,0"
+                                           Text="How the message reached the relay. None of this is part of the message itself."/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"
+                          Background="{StaticResource BorderBrush}" Opacity="0.5"
+                          VerticalAlignment="Center"
+                          ToolTip="Drag to give the result more or less room."/>
+
+            <!-- The result is a tab of its own: it needs the same room the body does, and giving
+                 it a block below cost the height that made the window too tall to use. -->
+            <TabControl Grid.Row="2" x:Name="ContentTabs"
+                        Background="Transparent" BorderThickness="0" Padding="0">
+                <TabItem Header="Text body" Style="{StaticResource FlatTabItem}">
+                    <TextBox x:Name="TestBodyText" Text="Message body"
+                             AcceptsReturn="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                             Margin="0,8,0,0"/>
+                </TabItem>
+                <TabItem Header="HTML body" Style="{StaticResource FlatTabItem}">
+                    <TextBox x:Name="TestBodyHtml"
+                             AcceptsReturn="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                             FontFamily="Consolas" Margin="0,8,0,0"/>
+                </TabItem>
+                <TabItem Header="Headers" Style="{StaticResource FlatTabItem}">
+                    <DockPanel Margin="0,8,0,0">
+                        <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource BodyText}"
+                                   FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="One header per line, as &quot;X-Origin: erp&quot;. Only headers named x-… reach the recipient — see the help page."/>
+                        <TextBox x:Name="TestHeaders"
+                                 AcceptsReturn="True" TextWrapping="NoWrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 VerticalContentAlignment="Top"
+                                 FontFamily="Consolas"/>
+                    </DockPanel>
+                </TabItem>
+                <TabItem x:Name="ResultTab" Header="Result" Style="{StaticResource FlatTabItem}">
+                    <Border Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="4" Margin="0,8,0,0">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      Padding="12,10">
+                            <TextBlock x:Name="TestResultText"
+                                       FontFamily="Consolas" FontSize="12"
+                                       Foreground="{StaticResource TextBrush}"
+                                       Text="Run the test to see which rules match this message and what they would do."/>
+                        </ScrollViewer>
+                    </Border>
+                </TabItem>
+            </TabControl>
+        </Grid>
+
+    </DockPanel>
+</Window>

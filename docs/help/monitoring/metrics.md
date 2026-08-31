@@ -78,7 +78,14 @@ How the SMTP side of the relay is being used:
   after EHLO, after AUTH, after MAIL/RCPT, …). Many aborts right after AUTH are the typical
   fingerprint of a monitoring system checking the relay.
 - **Rejections by Reason** — IP blacklist / missing whitelist entry, dynamic IP block, failed
-  authentication, blocked sender/recipient, size limit, and more.
+  authentication, blocked sender/recipient, size limit, and more. A message refused by a rule
+  appears here as *Refused by a message rule*; a discarded one does not, because the sending
+  application was told it was accepted.
+- **Message Rules** — how often each rule fired, split by mode. *Changed*, *Refused* and
+  *Discarded* are what the rule did; *No effect* counts a rule that matched but whose actions
+  could not run, such as a body change on a signed message. Hits from rules in audit mode are
+  called out separately — those messages were relayed unchanged. See
+  [Message Rules](../configuration/message-rules.md).
 - **Top Client Hosts** — sessions, aborted sessions and delivered mails per client IP, for the ten
   busiest hosts. Hosts with a high aborted share are flagged as possible monitoring probes. If more
   hosts were seen, a line below the table says how many are not shown.

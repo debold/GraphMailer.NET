@@ -49,6 +49,7 @@ public partial class MainWindow : Window
     private AccessControlPage _accessPage = null!;
     private IpFilteringPage _ipFilteringPage = null!;
     private MalwareScanPage _malwareScanPage = null!;
+    private MessageRulesPage _messageRulesPage = null!;
     private GraphApiPage _graphApiPage = null!;
     private MailQueuePage _queuePage = null!;
     private MonitoringPage _monitoringPage = null!;
@@ -113,6 +114,11 @@ public partial class MainWindow : Window
                 // straight away without saving in between.
                 () => _accessPage.ConfiguredUsernames);
             _malwareScanPage.LoadFrom(_currentDoc);
+            // Data dir, not mail dir: the per-rule hit counts come from metrics.db.
+            // Live listener ports, so the rule tester offers a port a message could arrive on.
+            _messageRulesPage = new MessageRulesPage(
+                MarkDirty, () => AppPaths.DataDir, () => _smtpPage.ConfiguredListenerPorts);
+            _messageRulesPage.LoadFrom(_currentDoc);
             _graphApiPage = new GraphApiPage(MarkDirty, b => _suppressDirty = b); _graphApiPage.LoadFrom(_currentDoc);
             _queuePage = new MailQueuePage(MarkDirty); _queuePage.LoadFrom(_currentDoc);
             _monitoringPage = new MonitoringPage(MarkDirty); _monitoringPage.LoadFrom(_currentDoc);
@@ -485,6 +491,9 @@ public partial class MainWindow : Window
     private void NavMalwareScan_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
         => NavigateTo(NavMalwareScan, "Malware Scan", "configuration/malware-scan.html", () => _malwareScanPage!);
 
+    private void NavMessageRules_Click(object s, MouseButtonEventArgs e)
+        => NavigateTo(NavMessageRules, "Message Rules", "configuration/message-rules.html", () => _messageRulesPage!);
+
     private void NavGraphApi_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
         => NavigateTo(NavGraphApi, "Graph API", "configuration/graph-api.html", () => _graphApiPage!);
 
@@ -593,11 +602,20 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_messageRulesPage.HasValidationErrors)
+        {
+            MessageBox.Show(
+                "The Message Rules page has a limit outside its allowed range (shown in red on that page).\nFix it before saving.",
+                "Cannot Save", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         // Collect changes from all open pages into _currentDoc
         _smtpPage.CollectTo(_currentDoc);
         _accessPage.CollectTo(_currentDoc);
         _ipFilteringPage.CollectTo(_currentDoc);
         _malwareScanPage.CollectTo(_currentDoc);
+        _messageRulesPage.CollectTo(_currentDoc);
         _graphApiPage.CollectTo(_currentDoc);
         _queuePage.CollectTo(_currentDoc);
         _monitoringPage.CollectTo(_currentDoc);
@@ -681,6 +699,7 @@ public partial class MainWindow : Window
             _accessPage.LoadFrom(_currentDoc);
             _ipFilteringPage.LoadFrom(_currentDoc);
             _malwareScanPage.LoadFrom(_currentDoc);
+            _messageRulesPage.LoadFrom(_currentDoc);
             _graphApiPage.LoadFrom(_currentDoc);
             _queuePage.LoadFrom(_currentDoc);
             _monitoringPage.LoadFrom(_currentDoc);

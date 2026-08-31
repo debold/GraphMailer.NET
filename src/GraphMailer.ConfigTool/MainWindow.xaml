@@ -272,6 +272,22 @@
                                                 </StackPanel>
                                         </Border>
 
+                                        <Border x:Name="NavMessageRules"
+                                                Style="{StaticResource NavItem}"
+                                                MouseLeftButtonUp="NavMessageRules_Click">
+                                                <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="&#x1F4DC;"
+                                                                   FontSize="15"
+                                                                   Width="20"
+                                                                   TextAlignment="Center"
+                                                                   Foreground="#FFCCCCCC"/>
+                                                        <TextBlock Text="Message Rules"
+                                                                   FontSize="13"
+                                                                   Foreground="#FFCCCCCC"
+                                                                   Margin="10,0,0,0"/>
+                                                </StackPanel>
+                                        </Border>
+
                                         <Border x:Name="NavGraphApi"
                                                 Style="{StaticResource NavItem}"
                                                 MouseLeftButtonUp="NavGraphApi_Click">

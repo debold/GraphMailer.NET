@@ -2,6 +2,7 @@ using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure.Certificates;
 using GraphMailer.Service.Infrastructure.Encryption;
 using GraphMailer.Service.Infrastructure.Metrics;
+using GraphMailer.Service.Infrastructure.Rules;
 using GraphMailer.Service.Infrastructure.Security;
 using GraphMailer.Service.Infrastructure.Security.Amsi;
 using GraphMailer.Service.Infrastructure.Smtp;
@@ -87,6 +88,7 @@ internal sealed class SmtpTestHost : IAsyncDisposable
         ITenantSenderDirectory? senderDirectory = null,
         IMailContentScanner? malwareScanner = null,
         string malwareScanMode = "Off",
+        IEnumerable<MessageRule>? messageRules = null,
         ILoggerProvider? loggerProvider = null)
     {
         var port = GetFreePort();
@@ -116,6 +118,8 @@ internal sealed class SmtpTestHost : IAsyncDisposable
             ["SenderValidation:FailClosed"] = senderValidationFailClosed ? "true" : "false",
             // Off unless a test opts in, so the scan never interferes with the other suites.
             ["MalwareScan:Mode"] = malwareScanMode,
+            // Off unless a test supplies rules, so the engine never touches the other suites.
+            ["MessageRules:Enabled"] = messageRules is null ? "false" : "true",
         };
 
         int i = 0;
@@ -140,6 +144,7 @@ internal sealed class SmtpTestHost : IAsyncDisposable
         AddListToConfig(config, "BlockedSenders", blockedSenders);
         AddListToConfig(config, "AllowedRecipients", allowedRecipients);
         AddListToConfig(config, "BlockedRecipients", blockedRecipients);
+        AddRulesToConfig(config, messageRules);
 
         var keysDir = new DirectoryInfo(Path.Combine(workDir, "keys"));
         keysDir.Create();
@@ -181,6 +186,7 @@ internal sealed class SmtpTestHost : IAsyncDisposable
                 services.Configure<IpBlockingProtectionOptions>(ctx.Configuration.GetSection("IpBlockingProtection"));
                 services.Configure<SenderValidationOptions>(ctx.Configuration.GetSection(SenderValidationOptions.SectionName));
                 services.Configure<MalwareScanOptions>(ctx.Configuration.GetSection(MalwareScanOptions.SectionName));
+                services.Configure<MessageRulesOptions>(ctx.Configuration.GetSection(MessageRulesOptions.SectionName));
                 services.Configure<SmtpAccessOptions>(ctx.Configuration);
 
                 services.AddDataProtection()
@@ -209,6 +215,7 @@ internal sealed class SmtpTestHost : IAsyncDisposable
                 // that exercise the scan inject a scripted one.
                 services.AddSingleton(malwareScanner ?? UnavailableScanner.Instance);
                 services.AddSingleton<BlockedMessageRecorder>();
+                services.AddSingleton<MessageRuleProcessor>();
                 services.AddSingleton<IAdminNotificationService>(_ => Substitute.For<IAdminNotificationService>());
 
                 services.AddHostedService<SmtpRelayService>();
@@ -306,6 +313,57 @@ internal sealed class SmtpTestHost : IAsyncDisposable
     }
 
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Flattens rules into the indexed keys the configuration binder expects
+    /// (<c>MessageRules:Rules:0:Actions:0:Type</c>), mirroring <see cref="AddListToConfig"/>.
+    /// Only the properties an entry actually sets are written, so an omitted one keeps the
+    /// binder's default exactly as it would from a real config file.
+    /// </summary>
+    private static void AddRulesToConfig(
+        Dictionary<string, string?> config,
+        IEnumerable<MessageRule>? rules)
+    {
+        if (rules is null) return;
+
+        var r = 0;
+        foreach (var rule in rules)
+        {
+            var prefix = $"MessageRules:Rules:{r++}";
+            config[$"{prefix}:Enabled"] = rule.Enabled ? "true" : "false";
+            config[$"{prefix}:Name"] = rule.Name;
+            config[$"{prefix}:Mode"] = rule.Mode.ToString();
+            config[$"{prefix}:Match"] = rule.Match.ToString();
+            config[$"{prefix}:StopProcessing"] = rule.StopProcessing ? "true" : "false";
+            if (rule.Description is not null) config[$"{prefix}:Description"] = rule.Description;
+
+            var c = 0;
+            foreach (var condition in rule.Conditions)
+            {
+                var key = $"{prefix}:Conditions:{c++}";
+                config[$"{key}:Field"] = condition.Field.ToString();
+                config[$"{key}:Operator"] = condition.Operator.ToString();
+                config[$"{key}:Value"] = condition.Value;
+                config[$"{key}:Negate"] = condition.Negate ? "true" : "false";
+                config[$"{key}:CaseSensitive"] = condition.CaseSensitive ? "true" : "false";
+                if (condition.HeaderName is not null) config[$"{key}:HeaderName"] = condition.HeaderName;
+            }
+
+            var a = 0;
+            foreach (var action in rule.Actions)
+            {
+                var key = $"{prefix}:Actions:{a++}";
+                config[$"{key}:Type"] = action.Type.ToString();
+                if (action.Value is not null) config[$"{key}:Value"] = action.Value;
+                if (action.Html is not null) config[$"{key}:Html"] = action.Html;
+                if (action.HeaderName is not null) config[$"{key}:HeaderName"] = action.HeaderName;
+                if (action.Recipient is { } recipient) config[$"{key}:Recipient"] = recipient.ToString();
+                if (action.Match is not null) config[$"{key}:Match"] = action.Match;
+                if (action.AttachmentMatch is { } match) config[$"{key}:AttachmentMatch"] = match.ToString();
+                if (action.SmtpCode is { } code) config[$"{key}:SmtpCode"] = code.ToString();
+            }
+        }
+    }
 
     private static void AddListToConfig(
         Dictionary<string, string?> config,

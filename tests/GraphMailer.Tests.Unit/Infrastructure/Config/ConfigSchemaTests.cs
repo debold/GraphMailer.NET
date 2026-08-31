@@ -501,4 +501,53 @@ public sealed class ConfigMigratorTests : IDisposable
         remaining.Should().NotContain("graphmailer.json.v1-00.bak", "the oldest backups are pruned first");
         remaining.Should().Contain("graphmailer.json.v1-12.bak", "the newest backup is always kept");
     }
+
+    // =========================================================================
+    // v10 → v11: MessageRules
+    // =========================================================================
+
+    [Fact]
+    public void Migrate_V10_ToCurrent_LeavesMessageRulesAbsent()
+    {
+        // Purely additive. Materialising the section into an existing file would suggest a
+        // policy the operator never configured; the binder's defaults already relay exactly
+        // as the installation did before the upgrade.
+        var root = JsonNode.Parse("""{ "SchemaVersion": 10, "Smtp": { "Banner": "keep me" } }""")!.AsObject();
+
+        var changed = ConfigSchema.Migrate(root);
+
+        changed.Should().BeTrue();
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+        root["Smtp"]!.AsObject()["Banner"]!.GetValue<string>().Should().Be("keep me");
+        root.ContainsKey("MessageRules").Should().BeFalse(
+            "the absent section is valid — the binder falls back to a disabled rule engine");
+    }
+
+    [Fact]
+    public void Migrate_V10_ToCurrent_PreservesAnExistingMessageRulesSection()
+    {
+        var root = JsonNode.Parse("""
+            {
+              "SchemaVersion": 10,
+              "MessageRules": {
+                "Enabled": true,
+                "Rules": [ { "Name": "keep", "Actions": [ { "Type": "Discard" } ] } ]
+              }
+            }
+            """)!.AsObject();
+
+        ConfigSchema.Migrate(root).Should().BeTrue();
+
+        var section = root["MessageRules"]!.AsObject();
+        section["Enabled"]!.GetValue<bool>().Should().BeTrue();
+        section["Rules"]!.AsArray().Should().ContainSingle();
+    }
+
+    [Fact]
+    public void Migrate_CurrentVersion_IsANoOp()
+    {
+        var root = JsonNode.Parse($$"""{ "SchemaVersion": {{ConfigSchema.Current}}, "Smtp": { "Banner": "x" } }""")!.AsObject();
+
+        ConfigSchema.Migrate(root).Should().BeFalse("a file already at the current version needs no migration");
+    }
 }

@@ -1,0 +1,104 @@
+<Window x:Class="GraphMailer.ConfigTool.Views.RuleActionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Action"
+        Width="560"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Icon="/Assets/graphmailer.ico"
+        Background="{StaticResource BackgroundBrush}">
+    <StackPanel Margin="24">
+
+        <TextBlock Text="Do this" Style="{StaticResource LabelText}" Margin="0,0,0,4"/>
+        <ComboBox x:Name="TypeBox" SelectionChanged="Type_Changed"/>
+
+        <TextBlock x:Name="DescriptionText"
+                   Style="{StaticResource BodyText}"
+                   TextWrapping="Wrap"
+                   Margin="0,8,0,0"/>
+
+        <!-- Recipient list (To / Cc / Bcc) -->
+        <TextBlock x:Name="RecipientLabel" Text="Recipient list"
+                   Style="{StaticResource LabelText}" Margin="0,12,0,4" Visibility="Collapsed"/>
+        <ComboBox x:Name="RecipientBox" SelectionChanged="Field_Changed" Visibility="Collapsed"
+                  Width="140" HorizontalAlignment="Left">
+            <ComboBoxItem>To</ComboBoxItem>
+            <ComboBoxItem>Cc</ComboBoxItem>
+            <ComboBoxItem>Bcc</ComboBoxItem>
+        </ComboBox>
+
+        <!-- Address being removed or replaced -->
+        <TextBlock x:Name="MatchLabel" Text="Address to match"
+                   Style="{StaticResource LabelText}" Margin="0,12,0,4" Visibility="Collapsed"/>
+        <TextBox x:Name="MatchBox" TextChanged="Validate" Visibility="Collapsed"/>
+
+        <!-- Header name -->
+        <TextBlock x:Name="HeaderNameLabel" Text="Header name"
+                   Style="{StaticResource LabelText}" Margin="0,12,0,4" Visibility="Collapsed"/>
+        <TextBox x:Name="HeaderNameBox" TextChanged="Validate" Visibility="Collapsed"/>
+
+        <!-- Attachment selector -->
+        <TextBlock x:Name="AttachmentMatchLabel" Text="Select attachments by"
+                   Style="{StaticResource LabelText}" Margin="0,12,0,4" Visibility="Collapsed"/>
+        <ComboBox x:Name="AttachmentMatchBox" SelectionChanged="Field_Changed" Visibility="Collapsed"
+                  Width="200" HorizontalAlignment="Left">
+            <ComboBoxItem Tag="NamePattern">File name pattern</ComboBoxItem>
+            <ComboBoxItem Tag="Extension">File extension</ComboBoxItem>
+            <ComboBoxItem Tag="MinSizeBytes">Minimum size in bytes</ComboBoxItem>
+        </ComboBox>
+
+        <!-- Primary value -->
+        <TextBlock x:Name="ValueLabel" Text="Value"
+                   Style="{StaticResource LabelText}" Margin="0,12,0,4" Visibility="Collapsed"/>
+        <TextBox x:Name="ValueBox" TextChanged="Validate" Visibility="Collapsed"
+                 AcceptsReturn="False"/>
+        <TextBox x:Name="MultilineValueBox" TextChanged="Validate" Visibility="Collapsed"
+                 AcceptsReturn="True" TextWrapping="Wrap" Height="70"
+                 VerticalScrollBarVisibility="Auto"/>
+
+        <!-- HTML counterpart for the body actions -->
+        <TextBlock x:Name="HtmlLabel" Text="HTML version (optional)"
+                   Style="{StaticResource LabelText}" Margin="0,12,0,4" Visibility="Collapsed"/>
+        <TextBox x:Name="HtmlBox" TextChanged="Validate" Visibility="Collapsed"
+                 AcceptsReturn="True" TextWrapping="Wrap" Height="70"
+                 VerticalScrollBarVisibility="Auto"/>
+
+        <!-- SMTP reply code -->
+        <TextBlock x:Name="SmtpCodeLabel" Text="SMTP reply code"
+                   Style="{StaticResource LabelText}" Margin="0,12,0,4" Visibility="Collapsed"/>
+        <TextBox x:Name="SmtpCodeBox" TextChanged="Validate" Visibility="Collapsed"
+                 Width="100" HorizontalAlignment="Left"/>
+
+        <!-- Delivery warning: the action works, it just may not have the effect it sounds like -->
+        <Border x:Name="WarningBox"
+                Visibility="Collapsed"
+                Background="#FFFFF4CE" BorderBrush="#FFEDBE00" BorderThickness="1"
+                CornerRadius="4" Padding="10,8" Margin="0,12,0,0">
+            <TextBlock x:Name="WarningText" TextWrapping="Wrap" FontSize="12" Foreground="#FF7A5700"/>
+        </Border>
+
+        <TextBlock x:Name="ErrorText"
+                   Foreground="{StaticResource DangerBrush}"
+                   FontSize="12"
+                   Margin="0,10,0,0"
+                   TextWrapping="Wrap"
+                   Visibility="Collapsed"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Cancel"
+                    Style="{StaticResource SecondaryButton}"
+                    Margin="0,0,8,0"
+                    IsCancel="True"
+                    Click="Cancel_Click"/>
+            <Button x:Name="OkButton"
+                    Content="OK"
+                    Style="{StaticResource PrimaryButton}"
+                    IsDefault="True"
+                    IsEnabled="False"
+                    Click="Ok_Click"/>
+        </StackPanel>
+
+    </StackPanel>
+</Window>

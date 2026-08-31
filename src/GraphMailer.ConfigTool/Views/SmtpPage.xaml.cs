@@ -17,6 +17,17 @@ public partial class SmtpPage : UserControl
     private readonly Action _markDirty;
     private readonly ObservableCollection<ListenerRow> _listeners = [];
 
+    /// <summary>
+    /// Ports of the enabled listeners, for pages that need to offer a real listener rather than a
+    /// typed number — currently the rule tester. Read live from the grid, so a port added here is
+    /// selectable there without saving in between.
+    /// </summary>
+    internal IReadOnlyList<int> ConfiguredListenerPorts =>
+        [.. _listeners.Where(r => r.Enabled && r.Port > 0)
+                      .Select(r => r.Port)
+                      .Distinct()
+                      .OrderBy(p => p)];
+
     public SmtpPage(Action markDirty)
     {
         _markDirty = markDirty;

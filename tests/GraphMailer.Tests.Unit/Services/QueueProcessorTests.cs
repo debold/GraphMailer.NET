@@ -89,6 +89,7 @@ public sealed class QueueProcessorTests : IDisposable
             new BlockedMessageRecorder(
                 Monitor(opts),
                 Monitor(new MalwareScanOptions()),
+                Monitor(new MessageRulesOptions()),
                 NullLogger<BlockedMessageRecorder>.Instance),
             NullLogger<QueueProcessor>.Instance);
     }

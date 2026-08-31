@@ -579,4 +579,135 @@ public sealed class MetricsServiceTests : IDisposable
         while (r.Read()) columns.Add(r.GetString(1));
         return columns;
     }
+
+    // -------------------------------------------------------------------------
+    // Message-rule hits (schema v4)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RecordRuleHit_InsertsThenIncrementsTheSameBucket()
+    {
+        var sut = CreateService();
+
+        await sut.RecordRuleHitAsync("External disclaimer", "Enforce", "modified", 25);
+        await sut.RecordRuleHitAsync("External disclaimer", "Enforce", "modified", 25);
+        await sut.RecordRuleHitAsync("External disclaimer", "Audit", "modified", 25);
+
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var c = conn.CreateCommand();
+        c.CommandText = "SELECT mode, count FROM message_rule_hits ORDER BY mode";
+        using var reader = c.ExecuteReader();
+
+        Assert.True(reader.Read());
+        Assert.Equal("Audit", reader.GetString(0));
+        Assert.Equal(1, reader.GetInt64(1));
+        Assert.True(reader.Read());
+        Assert.Equal("Enforce", reader.GetString(0));
+        Assert.Equal(2, reader.GetInt64(1));
+    }
+
+    [Fact]
+    public async Task RecordRuleHit_CountsEachOutcomeSeparately()
+    {
+        // "modified" and "rejected" answer different questions; merging them would hide
+        // whether a rule is changing mail or refusing it.
+        var sut = CreateService();
+
+        await sut.RecordRuleHitAsync("r", "Enforce", "modified", 25);
+        await sut.RecordRuleHitAsync("r", "Enforce", "rejected", 25);
+        await sut.RecordRuleHitAsync("r", "Enforce", "discarded", 25);
+        await sut.RecordRuleHitAsync("r", "Enforce", "skipped", 25);
+
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var c = conn.CreateCommand();
+        c.CommandText = "SELECT COUNT(DISTINCT outcome) FROM message_rule_hits";
+
+        Assert.Equal(4L, Convert.ToInt64(c.ExecuteScalar()));
+    }
+
+    [Fact]
+    public async Task RecordRuleHit_RuleNameIsStoredVerbatimAndNotInterpreted()
+    {
+        // Rule names are operator-authored free text and always travel as a bound parameter.
+        var sut = CreateService();
+        const string name = "'; DROP TABLE message_rule_hits; --";
+
+        await sut.RecordRuleHitAsync(name, "Enforce", "modified", 25);
+
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var c = conn.CreateCommand();
+        c.CommandText = "SELECT rule_name FROM message_rule_hits";
+
+        Assert.Equal(name, c.ExecuteScalar() as string);
+    }
+
+    [Fact]
+    public async Task RecordRuleHit_DoesNotTouchTheRejectionStatistics()
+    {
+        // Most hits are manipulations of mail that was delivered normally — counting them as
+        // rejections would inflate the totals with something nobody refused.
+        var sut = CreateService();
+
+        await sut.RecordRuleHitAsync("r", "Enforce", "rejected", 25);
+
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var c = conn.CreateCommand();
+        c.CommandText = "SELECT COALESCE(SUM(count), 0) FROM smtp_rejection_stats";
+
+        Assert.Equal(0L, Convert.ToInt64(c.ExecuteScalar()));
+    }
+
+    [Fact]
+    public void Constructor_V3Db_GainsTheRuleHitTableAndStampsV4()
+    {
+        var dataDir = Path.Combine(_tempDir, "data");
+        Directory.CreateDirectory(dataDir);
+        using (var seed = new SqliteConnection($"Data Source={DbPath}"))
+        {
+            seed.Open();
+            using var cmd = seed.CreateCommand();
+            cmd.CommandText = "PRAGMA user_version = 3;";
+            cmd.ExecuteNonQuery();
+        }
+
+        _ = CreateService();
+
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+
+        using var table = conn.CreateCommand();
+        table.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='message_rule_hits'";
+        Assert.Equal(1L, Convert.ToInt64(table.ExecuteScalar()));
+
+        using var uv = conn.CreateCommand();
+        uv.CommandText = "PRAGMA user_version";
+        Assert.Equal(MetricsService.SchemaVersion, Convert.ToInt32(uv.ExecuteScalar()));
+    }
+
+    [Fact]
+    public async Task CleanupOldRecords_PrunesExpiredRuleHits()
+    {
+        var sut = CreateService(EnabledOptions(retentionDays: 1));
+        await sut.RecordRuleHitAsync("r", "Enforce", "modified", 25);
+
+        using (var conn = new SqliteConnection($"Data Source={DbPath}"))
+        {
+            conn.Open();
+            using var age = conn.CreateCommand();
+            age.CommandText = "UPDATE message_rule_hits SET bucket_hour = '2000-01-01T00'";
+            age.ExecuteNonQuery();
+        }
+
+        await sut.CleanupOldRecordsAsync();
+
+        using var check = new SqliteConnection($"Data Source={DbPath}");
+        check.Open();
+        using var c = check.CreateCommand();
+        c.CommandText = "SELECT COUNT(*) FROM message_rule_hits";
+        Assert.Equal(0L, Convert.ToInt64(c.ExecuteScalar()));
+    }
 }

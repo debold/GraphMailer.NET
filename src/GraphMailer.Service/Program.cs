@@ -5,6 +5,7 @@ using GraphMailer.Service.Infrastructure.Backup;
 using GraphMailer.Service.Infrastructure.Certificates;
 using GraphMailer.Service.Infrastructure.Encryption;
 using GraphMailer.Service.Infrastructure.Metrics;
+using GraphMailer.Service.Infrastructure.Rules;
 using GraphMailer.Service.Infrastructure.Security;
 using GraphMailer.Service.Infrastructure.Security.Amsi;
 using GraphMailer.Service.Infrastructure.Smtp;
@@ -152,6 +153,7 @@ try
     builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection(BackupOptions.SectionName));
     builder.Services.Configure<RecommendationOptions>(builder.Configuration.GetSection(RecommendationOptions.SectionName));
     builder.Services.Configure<MalwareScanOptions>(builder.Configuration.GetSection(MalwareScanOptions.SectionName));
+    builder.Services.Configure<MessageRulesOptions>(builder.Configuration.GetSection(MessageRulesOptions.SectionName));
 
     // Servers list (not a single-section option – bound directly as IList)
     builder.Services.Configure<List<SmtpServerEntry>>(builder.Configuration.GetSection("Servers"));
@@ -164,6 +166,7 @@ try
     builder.Services.AddSingleton<IValidateOptions<GraphApiOptions>, GraphApiOptionsValidator>();
     builder.Services.AddSingleton<IValidateOptions<SmtpOptions>, SmtpOptionsValidator>();
     builder.Services.AddSingleton<IValidateOptions<MalwareScanOptions>, MalwareScanOptionsValidator>();
+    builder.Services.AddSingleton<IValidateOptions<MessageRulesOptions>, MessageRulesOptionsValidator>();
 
     // Data Protection (for dashboard encrypt/decrypt in Phase 5, same key ring as above)
     builder.Services.AddDataProtection()
@@ -191,6 +194,10 @@ try
     // shared, and the provider enumeration behind IsAvailable is a startup fact.
     builder.Services.AddSingleton<IMailContentScanner, AmsiContentScanner>();
     builder.Services.AddSingleton<BlockedMessageRecorder>();
+
+    // Message rules. Stateless apart from the compiled-regex cache, so one instance serves
+    // every SMTP session; the rule set itself is read per message from IOptionsMonitor.
+    builder.Services.AddSingleton<MessageRuleProcessor>();
 
     // Phase 2 – Queue writer + SMTP relay service
     builder.Services.AddSingleton<MailQueueWriter>();

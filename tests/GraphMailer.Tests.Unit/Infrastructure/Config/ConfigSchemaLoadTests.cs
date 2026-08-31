@@ -901,4 +901,170 @@ public sealed class ConfigSchemaLoadTests : IDisposable
         doc.BypassIpAddresses.Should().BeEmpty();
         doc.AllowedContentHashes.Should().BeEmpty();
     }
+
+    // =========================================================================
+    // MessageRules
+    // =========================================================================
+
+    [Fact]
+    public void Load_MessageRules_SectionAbsent_UsesDefaults()
+    {
+        WriteJson("""{ "Smtp": { "Banner": "test" } }""");
+
+        var section = _sut.Load().MessageRules;
+
+        section.Enabled.Should().BeFalse("an upgrade must never start rewriting mail unattended");
+        section.MaxBodyScanBytes.Should().Be(1_048_576);
+        section.RegexTimeoutMs.Should().Be(100);
+        section.StoreDiscardedMessages.Should().BeFalse();
+        section.DiscardRecordRetentionDays.Should().Be(60);
+        section.Rules.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Load_MessageRules_ScalarsAppearInDoc()
+    {
+        WriteJson("""
+            {
+              "MessageRules": {
+                "Enabled": true,
+                "MaxBodyScanBytes": 2048,
+                "RegexTimeoutMs": 250,
+                "StoreDiscardedMessages": true,
+                "DiscardRecordRetentionDays": 30
+              }
+            }
+            """);
+
+        var section = _sut.Load().MessageRules;
+
+        section.Enabled.Should().BeTrue();
+        section.MaxBodyScanBytes.Should().Be(2048);
+        section.RegexTimeoutMs.Should().Be(250);
+        section.StoreDiscardedMessages.Should().BeTrue();
+        section.DiscardRecordRetentionDays.Should().Be(30);
+    }
+
+    [Fact]
+    public void Load_MessageRules_RuleWithConditionsAndActions_AppearsInDoc()
+    {
+        WriteJson("""
+            {
+              "MessageRules": {
+                "Enabled": true,
+                "Rules": [
+                  {
+                    "Enabled": true,
+                    "Name": "External disclaimer",
+                    "Description": "Tags mail leaving the company",
+                    "Mode": "Enforce",
+                    "Match": "Any",
+                    "StopProcessing": true,
+                    "Conditions": [
+                      { "Field": "EnvelopeRecipient", "Operator": "DomainIs", "Value": "@partner.test", "Negate": true },
+                      { "Field": "Header", "Operator": "Exists", "HeaderName": "X-Internal", "CaseSensitive": true }
+                    ],
+                    "Actions": [
+                      { "Type": "PrependBody", "Value": "EXTERNAL", "Html": "<b>EXTERNAL</b>" },
+                      { "Type": "AddRecipient", "Recipient": "Bcc", "Value": "archive@example.com" },
+                      { "Type": "Reject", "SmtpCode": 554, "Value": "no" }
+                    ]
+                  }
+                ]
+              }
+            }
+            """);
+
+        var rule = _sut.Load().MessageRules.Rules.Should().ContainSingle().Subject;
+
+        rule.Name.Should().Be("External disclaimer");
+        rule.Description.Should().Be("Tags mail leaving the company");
+        rule.Mode.Should().Be("Enforce");
+        rule.Match.Should().Be("Any");
+        rule.StopProcessing.Should().BeTrue();
+
+        rule.Conditions.Should().HaveCount(2);
+        rule.Conditions[0].Field.Should().Be("EnvelopeRecipient");
+        rule.Conditions[0].Operator.Should().Be("DomainIs");
+        rule.Conditions[0].Negate.Should().BeTrue();
+        rule.Conditions[1].HeaderName.Should().Be("X-Internal");
+        rule.Conditions[1].CaseSensitive.Should().BeTrue();
+
+        rule.Actions.Should().HaveCount(3);
+        rule.Actions[0].Html.Should().Be("<b>EXTERNAL</b>");
+        rule.Actions[1].Recipient.Should().Be("Bcc");
+        rule.Actions[2].SmtpCode.Should().Be(554);
+    }
+
+    [Fact]
+    public void Load_MessageRules_PreservesRuleOrder()
+    {
+        // The array order IS the evaluation order — reordering on load would change what the
+        // relay does without anyone editing a rule.
+        WriteJson("""
+            {
+              "MessageRules": {
+                "Rules": [
+                  { "Name": "zeta", "Actions": [ { "Type": "Discard" } ] },
+                  { "Name": "alpha", "Actions": [ { "Type": "Discard" } ] },
+                  { "Name": "mid", "Actions": [ { "Type": "Discard" } ] }
+                ]
+              }
+            }
+            """);
+
+        _sut.Load().MessageRules.Rules.Select(r => r.Name).Should().Equal("zeta", "alpha", "mid");
+    }
+
+    [Fact]
+    public void Load_MessageRules_UnknownMode_FallsBackToAudit()
+    {
+        // A typo in the file must not silently start rewriting or refusing mail.
+        WriteJson("""
+            { "MessageRules": { "Rules": [ { "Name": "r", "Mode": "Enfroce", "Actions": [ { "Type": "Discard" } ] } ] } }
+            """);
+
+        _sut.Load().MessageRules.Rules.Should().ContainSingle().Which.Mode.Should().Be("Audit");
+    }
+
+    [Fact]
+    public void Load_MessageRules_UnknownMatch_FallsBackToAll()
+    {
+        WriteJson("""
+            { "MessageRules": { "Rules": [ { "Name": "r", "Match": "Either", "Actions": [ { "Type": "Discard" } ] } ] } }
+            """);
+
+        _sut.Load().MessageRules.Rules.Should().ContainSingle().Which.Match.Should().Be("All");
+    }
+
+    [Fact]
+    public void Load_MessageRules_ActionWithoutType_IsDropped()
+    {
+        WriteJson("""
+            {
+              "MessageRules": {
+                "Rules": [
+                  { "Name": "r", "Actions": [ { "Value": "orphan" }, { "Type": "Discard" } ] }
+                ]
+              }
+            }
+            """);
+
+        _sut.Load().MessageRules.Rules.Should().ContainSingle()
+            .Which.Actions.Should().ContainSingle().Which.Type.Should().Be("Discard");
+    }
+
+    [Fact]
+    public void Load_MessageRules_RuleWithoutConditions_KeepsAnEmptyList()
+    {
+        // An empty condition list is a deliberate "apply to all", not a broken rule.
+        WriteJson("""
+            { "MessageRules": { "Rules": [ { "Name": "all mail", "Actions": [ { "Type": "Discard" } ] } ] } }
+            """);
+
+        var rule = _sut.Load().MessageRules.Rules.Should().ContainSingle().Subject;
+
+        rule.Conditions.Should().BeEmpty();
+        rule.Enabled.Should().BeTrue("a rule is enabled unless it says otherwise");
+    }
 }

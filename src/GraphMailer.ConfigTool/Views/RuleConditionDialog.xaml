@@ -1,0 +1,71 @@
+<Window x:Class="GraphMailer.ConfigTool.Views.RuleConditionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Condition"
+        Width="520"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Icon="/Assets/graphmailer.ico"
+        Background="{StaticResource BackgroundBrush}">
+    <StackPanel Margin="24">
+
+        <TextBlock Text="Look at" Style="{StaticResource LabelText}" Margin="0,0,0,4"/>
+        <ComboBox x:Name="FieldBox" SelectionChanged="Field_Changed"/>
+
+        <TextBlock x:Name="HeaderNameLabel" Text="Header name"
+                   Style="{StaticResource LabelText}" Margin="0,12,0,4" Visibility="Collapsed"/>
+        <TextBox x:Name="HeaderNameBox" TextChanged="Validate" Visibility="Collapsed"/>
+
+        <TextBlock Text="Condition" Style="{StaticResource LabelText}" Margin="0,12,0,4"/>
+        <ComboBox x:Name="OperatorBox" SelectionChanged="Operator_Changed"/>
+
+        <TextBlock x:Name="ValueLabel" Text="Value"
+                   Style="{StaticResource LabelText}" Margin="0,12,0,4"/>
+        <TextBox x:Name="ValueBox" TextChanged="Validate"/>
+
+        <!-- The field-specific hint carries what no label can: the semantics of the operator on
+             this particular field, and what negation then means. -->
+        <TextBlock x:Name="HintText"
+                   Style="{StaticResource BodyText}"
+                   FontSize="11"
+                   Foreground="{StaticResource TextSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,6,0,0"/>
+
+        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+            <CheckBox x:Name="NegateBox" Style="{StaticResource ToggleSwitch}"
+                      VerticalAlignment="Center" Margin="0,0,8,0" Click="Validate"/>
+            <TextBlock Text="Invert this condition" VerticalAlignment="Center" Margin="0,0,24,0"
+                       Foreground="{StaticResource TextBrush}"/>
+            <CheckBox x:Name="CaseSensitiveBox" Style="{StaticResource ToggleSwitch}"
+                      VerticalAlignment="Center" Margin="0,0,8,0" Click="Validate"/>
+            <TextBlock x:Name="CaseSensitiveLabel" Text="Match upper and lower case exactly"
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource TextBrush}"/>
+        </StackPanel>
+
+        <TextBlock x:Name="ErrorText"
+                   Foreground="{StaticResource DangerBrush}"
+                   FontSize="12"
+                   Margin="0,10,0,0"
+                   TextWrapping="Wrap"
+                   Visibility="Collapsed"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Cancel"
+                    Style="{StaticResource SecondaryButton}"
+                    Margin="0,0,8,0"
+                    IsCancel="True"
+                    Click="Cancel_Click"/>
+            <Button x:Name="OkButton"
+                    Content="OK"
+                    Style="{StaticResource PrimaryButton}"
+                    IsDefault="True"
+                    IsEnabled="False"
+                    Click="Ok_Click"/>
+        </StackPanel>
+
+    </StackPanel>
+</Window>

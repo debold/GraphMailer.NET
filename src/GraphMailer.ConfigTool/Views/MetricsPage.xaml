@@ -4,53 +4,6 @@
              Background="{StaticResource BackgroundBrush}">
         <UserControl.Resources>
 
-                <!-- Flat tab strip matching the app's light Fluent look -->
-                <Style x:Key="StatsTabItem"
-                       TargetType="TabItem">
-                        <Setter Property="Template">
-                                <Setter.Value>
-                                        <ControlTemplate TargetType="TabItem">
-                                                <Border x:Name="Bd"
-                                                        Background="Transparent"
-                                                        BorderThickness="0,0,0,2.5"
-                                                        BorderBrush="Transparent"
-                                                        Padding="16,8,16,9"
-                                                        Margin="0,0,2,0">
-                                                        <TextBlock x:Name="Txt"
-                                                                   Text="{TemplateBinding Header}"
-                                                                   FontSize="13.5"
-                                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                        <Trigger Property="IsSelected"
-                                                                 Value="True">
-                                                                <Setter TargetName="Bd"
-                                                                        Property="BorderBrush"
-                                                                        Value="{StaticResource AccentBrush}"/>
-                                                                <Setter TargetName="Txt"
-                                                                        Property="Foreground"
-                                                                        Value="{StaticResource AccentBrush}"/>
-                                                                <Setter TargetName="Txt"
-                                                                        Property="FontWeight"
-                                                                        Value="SemiBold"/>
-                                                        </Trigger>
-                                                        <MultiTrigger>
-                                                                <MultiTrigger.Conditions>
-                                                                        <Condition Property="IsMouseOver"
-                                                                                   Value="True"/>
-                                                                        <Condition Property="IsSelected"
-                                                                                   Value="False"/>
-                                                                </MultiTrigger.Conditions>
-                                                                <Setter TargetName="Txt"
-                                                                        Property="Foreground"
-                                                                        Value="{StaticResource TextBrush}"/>
-                                                        </MultiTrigger>
-                                                </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                </Setter.Value>
-                        </Setter>
-                </Style>
-
                 <!-- KPI card building blocks -->
                 <Style x:Key="KpiValue"
                        TargetType="TextBlock">
@@ -170,7 +123,7 @@
 
                         <!-- ══════════ OVERVIEW ══════════ -->
                         <TabItem Header="Overview"
-                                 Style="{StaticResource StatsTabItem}">
+                                 Style="{StaticResource FlatTabItem}">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel Margin="0,14,0,4">
@@ -374,7 +327,7 @@
                         <!-- Own tab rather than the tail of Overview: the grid fills the height,
                              so the details panel is always visible without scrolling. -->
                         <TabItem Header="Activity"
-                                 Style="{StaticResource StatsTabItem}">
+                                 Style="{StaticResource FlatTabItem}">
                                 <!-- Bottom padding = the card's corner radius: the grid paints an opaque
                                      background and would otherwise cover the rounded bottom corners
                                      (the header solves this with its own CornerRadius, which a
@@ -705,7 +658,7 @@
 
                         <!-- ══════════ RECEPTION ══════════ -->
                         <TabItem Header="Reception"
-                                 Style="{StaticResource StatsTabItem}">
+                                 Style="{StaticResource FlatTabItem}">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel Margin="0,14,0,4">
@@ -881,6 +834,53 @@
                                                         </StackPanel>
                                                 </Border>
 
+                                                <!-- Rule hits are counted in both modes, like the malware findings above
+                                                     and for the same reason: an audit-mode hit changed nothing, so the
+                                                     two must stay distinguishable. Most hits are manipulations of mail
+                                                     that was delivered normally, which is why they are not rejections. -->
+                                                <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                                                        <StackPanel>
+                                                                <Border Style="{StaticResource CardHeader}">
+                                                                        <TextBlock Text="Message Rules"
+                                                                                   Style="{StaticResource SectionHeader}"/>
+                                                                </Border>
+                                                                <StackPanel Margin="16,12,16,14">
+                                                                        <DataGrid x:Name="RcRuleHitsGrid"
+                                                                                  MinHeight="70"
+                                                                                  MaxHeight="260"
+                                                                                  IsReadOnly="True"
+                                                                                  CanUserAddRows="False"
+                                                                                  AutoGenerateColumns="False"
+                                                                                  GridLinesVisibility="Horizontal">
+                                                                                <DataGrid.Columns>
+                                                                                        <DataGridTextColumn Header="Rule"
+                                                                                                            Binding="{Binding RuleName}"
+                                                                                                            Width="2*"/>
+                                                                                        <DataGridTextColumn Header="Mode"
+                                                                                                            Binding="{Binding Mode}"
+                                                                                                            Width="90"/>
+                                                                                        <DataGridTextColumn Header="Changed"
+                                                                                                            Binding="{Binding Modified}"
+                                                                                                            Width="90"/>
+                                                                                        <DataGridTextColumn Header="Refused"
+                                                                                                            Binding="{Binding Rejected}"
+                                                                                                            Width="90"/>
+                                                                                        <DataGridTextColumn Header="Discarded"
+                                                                                                            Binding="{Binding Discarded}"
+                                                                                                            Width="90"/>
+                                                                                        <DataGridTextColumn Header="No effect"
+                                                                                                            Binding="{Binding Skipped}"
+                                                                                                            Width="90"/>
+                                                                                </DataGrid.Columns>
+                                                                        </DataGrid>
+                                                                        <TextBlock x:Name="RcRuleHitsHint"
+                                                                                   Style="{StaticResource HintText}"
+                                                                                   TextWrapping="Wrap"
+                                                                                   Margin="0,8,0,0"/>
+                                                                </StackPanel>
+                                                        </StackPanel>
+                                                </Border>
+
                                                 <Grid Margin="0,0,0,14">
                                                         <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*"/>
@@ -970,7 +970,7 @@
 
                         <!-- ══════════ DELIVERY ══════════ -->
                         <TabItem Header="Delivery"
-                                 Style="{StaticResource StatsTabItem}">
+                                 Style="{StaticResource FlatTabItem}">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel Margin="0,14,0,4">
@@ -1112,7 +1112,7 @@
 
                         <!-- ══════════ END-TO-END ══════════ -->
                         <TabItem Header="End-to-End"
-                                 Style="{StaticResource StatsTabItem}">
+                                 Style="{StaticResource FlatTabItem}">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel Margin="0,14,0,4">
@@ -1222,7 +1222,7 @@
 
                         <!-- ══════════ SERVER ══════════ -->
                         <TabItem Header="Server"
-                                 Style="{StaticResource StatsTabItem}">
+                                 Style="{StaticResource FlatTabItem}">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel Margin="0,14,0,4">

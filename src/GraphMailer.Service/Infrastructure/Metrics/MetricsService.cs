@@ -233,6 +233,40 @@ internal sealed class MetricsService : IMetricsService
         }
     }
 
+    public async Task RecordRuleHitAsync(
+        string ruleName, string mode, string outcome, int listenerPort, CancellationToken ct = default)
+    {
+        if (!_options.CurrentValue.Enabled) return;
+
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            await using var conn = OpenConnection();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO message_rule_hits (bucket_hour, listener_port, rule_name, mode, outcome, count)
+                VALUES ($bucket, $port, $rule, $mode, $outcome, 1)
+                ON CONFLICT(bucket_hour, listener_port, rule_name, mode, outcome)
+                DO UPDATE SET count = count + 1
+                """;
+            cmd.Parameters.AddWithValue("$bucket", BucketHour(DateTime.UtcNow));
+            cmd.Parameters.AddWithValue("$port", listenerPort);
+            // Rule names are operator-authored free text — always a bound parameter.
+            cmd.Parameters.AddWithValue("$rule", ruleName);
+            cmd.Parameters.AddWithValue("$mode", mode);
+            cmd.Parameters.AddWithValue("$outcome", outcome);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Metrics] Failed to record message-rule hit");
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     public async Task RecordPerfMetricAsync(string metricType, double value, CancellationToken ct = default)
     {
         if (!_options.CurrentValue.Enabled) return;
@@ -418,6 +452,7 @@ internal sealed class MetricsService : IMetricsService
                 ("smtp_session_stats", "bucket_hour", "<=", cutoffBucket),
                 ("smtp_rejection_stats", "bucket_hour", "<=", cutoffBucket),
                 ("malware_detections", "bucket_hour", "<=", cutoffBucket),
+                ("message_rule_hits", "bucket_hour", "<=", cutoffBucket),
             })
             {
                 await using var cmd = conn.CreateCommand();
@@ -644,6 +679,25 @@ internal sealed class MetricsService : IMetricsService
                 CREATE INDEX IF NOT EXISTS idx_malware_bucket
                     ON malware_detections(bucket_hour);
 
+                -- Message-rule hits, counted in BOTH rule modes. Its own table for the same
+                -- reason as malware_detections: most hits are manipulations of a message that
+                -- was delivered normally, so folding them into smtp_rejection_stats would
+                -- inflate the rejection totals with mail nobody rejected.
+                -- Deliberately no client_ip column: a rule can match a large share of all mail,
+                -- and per-IP rows would grow the table without answering a question anyone asks.
+                CREATE TABLE IF NOT EXISTS message_rule_hits (
+                    bucket_hour   TEXT NOT NULL,
+                    listener_port INT  NOT NULL,
+                    rule_name     TEXT NOT NULL,
+                    mode          TEXT NOT NULL,
+                    outcome       TEXT NOT NULL,
+                    count         INT  NOT NULL DEFAULT 0,
+                    PRIMARY KEY (bucket_hour, listener_port, rule_name, mode, outcome)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_rule_hits_bucket
+                    ON message_rule_hits(bucket_hour);
+
                 CREATE TABLE IF NOT EXISTS perf_metrics (
                     id          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                     metric_type TEXT    NOT NULL,
@@ -671,7 +725,7 @@ internal sealed class MetricsService : IMetricsService
     // -------------------------------------------------------------------------
 
     /// <summary>metrics.db schema version understood by this build.</summary>
-    internal const int SchemaVersion = 3;
+    internal const int SchemaVersion = 4;
 
     /// <summary>
     /// Brings an existing database up to <see cref="SchemaVersion"/> via idempotent, forward-only
@@ -713,6 +767,7 @@ internal sealed class MetricsService : IMetricsService
         }
         // v2 → v3: the malware_detections table, created by InitialiseSchema (IF NOT EXISTS)
         // like the other stats tables — nothing to transform, only the version to record.
+        // v3 → v4: the message_rule_hits table, likewise created by InitialiseSchema.
 
         SetUserVersion(conn, SchemaVersion);
         if (migrated)

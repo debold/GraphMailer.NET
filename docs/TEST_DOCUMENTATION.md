@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1284 tests** (1199 unit · 73 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-22
+**Total: 1755 tests** (1669 unit · 86 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-25
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -585,6 +585,30 @@ throughout; the machine's real antimalware provider is never involved.
 
 ---
 
+### SmtpMessageStore — message rules (`Infrastructure/Smtp/SmtpMessageStoreTests.cs`)
+
+Where the rule engine sits in the DATA gate: what the client is told, what reaches the queue, and
+the ordering guarantee against the malware scan.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `SaveAsync_RulesDisabled_QueuesTheMessageUnchanged` | Engine off | Message queued exactly as received |
+| `SaveAsync_RuleRejects_ReturnsTheConfiguredCodeAndQueuesNothing` | Reject rule with code 554 | The configured code reaches the client; queue empty |
+| `SaveAsync_RuleRejects_CountsARuleRejection` | Reject rule | `RecordRejectionAsync("rule_rejected", …)` called once, so the rejection breakdown stays coherent |
+| `SaveAsync_RuleDiscards_Returns250AndQueuesNothing` | Discard rule | SMTP 250, queue empty, record written with source `MessageRule` and the rule name |
+| `SaveAsync_RuleDiscards_StoresTheMessageOnlyWhenAskedTo` | Discard with storage off | No `.eml` alongside the record — keeping every discarded message is a deliberate choice |
+| `SaveAsync_RuleDiscards_WithStorageEnabled_KeepsTheMessage` | Discard with storage on | The message is stored — a silent drop is otherwise impossible to debug |
+| `SaveAsync_RuleDiscards_DoesNotCountAsReceived` | Discard rule | No received metric — consistent with the malware-Enforce path; a discarded message never entered the mail flow |
+| `SaveAsync_RuleModifiesSubject_QueuesTheModifiedMessage` | Subject prefix rule | Both the queued `.eml` and its metadata carry the new subject |
+| `SaveAsync_RuleAddsBccRecipient_QueuesTheNewEnvelope` | Bcc rule | Address in the queued envelope, absent from the message |
+| `SaveAsync_RuleRemovesEveryRecipient_DiscardsRatherThanQueues` | Rule removes all recipients | SMTP 250, nothing queued — a message with nobody to deliver to would only produce an NDR to an innocent sender |
+| `SaveAsync_AuditRule_QueuesTheMessageUnchanged` | Audit-mode subject rule | Message queued unchanged |
+| `SaveAsync_MatchedRule_IsCounted` | Enforce rule that changes the message | `RecordRuleHitAsync(rule, "Enforce", "modified", …)` called once — one row per rule and message |
+| `SaveAsync_RulesRunAfterTheMalwareScan` | Enforce scan plus a subject rule | The scanner saw the original bytes, the rule still ran afterwards — regression guard for an antivirus bypass: a rule that strips attachments must not be able to delete the part the scan is meant to catch |
+| `SaveAsync_MalwareRejection_PreventsRulesFromRunning` | Detection in Enforce mode plus a rule | 554 and no rule-hit metric — a malware verdict outranks a policy verdict |
+
+---
+
 ### Malware scan page input rules (`ConfigTool/MalwareScanValidationTests.cs`)
 
 These matter more than typical UI validation: a hash that is not a real digest can never equal a
@@ -1163,6 +1187,346 @@ Feeds the Logs page's context menu. The risk is entirely false positives — a l
 
 ---
 
+### MessageRuleEvaluator — condition matching (`Infrastructure/Rules/MessageRuleEvaluatorTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Matches_SubjectOperators_BehaveAsDocumented` | Every text operator against one subject | Equals/Contains/StartsWith/EndsWith/Matches/RegexMatches behave as the operator matrix documents |
+| `Matches_CaseSensitive_DistinguishesCase` | Same value with and without the case flag | Case-insensitive by default; the flag makes it exact |
+| `Matches_Wildcard_SemicolonSeparatedAlternatives_MatchAnyOne` | `FW:*;RE:*` against "RE: order 4711" | Matches — `;` separates alternatives |
+| `Matches_DomainIs_DoesNotMatchSubdomains` | `@example.com` against `a@example.com` and `a@sub.example.com` | Only the exact domain matches — a domain rule must not silently cover every host beneath it |
+| `Matches_Exists_And_IsEmpty_AskAboutTheFieldNotAValue` | Message with and without a subject | Exists/IsEmpty answer about the field, ignoring the comparison value |
+| `Matches_MultiValuedField_IsExistential` | Two recipients, one at the named domain | True — one matching value is enough |
+| `Matches_NegatedMultiValuedField_MeansNoValueMatches` | Negated domain condition over mixed and internal-only recipients | True only when **no** recipient matches — the reading that makes "no external recipient" expressible |
+| `Matches_HeaderField_ChecksEveryOccurrence` | Header present twice with different values | Matches on either occurrence |
+| `Matches_HeaderField_WithoutHeaderName_NeverMatches` | Header condition with no header name | False — never throws |
+| `Matches_RecipientCount_ComparesNumerically` | GreaterThan / LessThan / Equals against 2 recipients | Numeric comparison, not string comparison |
+| `Matches_NumericFieldWithNonNumericValue_NeverMatches` | "many" as the value of a numeric condition | False |
+| `Matches_BooleanFields_UseIsTrue` | Authenticated / TLS on an authenticated and an anonymous session | IsTrue reflects the session; negation expresses "not authenticated" |
+| `Matches_ClientIp_InIpRange_UsesCidr` | 10.20.5.7 and 192.168.1.1 against 10.20.0.0/16 | Only the address inside the range matches |
+| `Matches_ClientIp_InIpRange_AcceptsSeveralRanges` | Two CIDRs separated by `;` | Matches the second one |
+| `Matches_IsSignedAndIsEncrypted_ClassifyProtectedMail` | S/MIME signed, PGP encrypted, plain | Each classified correctly; plain matches neither |
+| `Matches_AttachmentExtension_ChecksEveryAttachment` | PDF plus DOCM attachment | Matches `.docm`, not `.exe` |
+| `Matches_AttachmentExtension_AcceptsBothSpellings` | `xml`, `.xml`, `XML`, `docx`, `.docx` against a `.xml` attachment | Both spellings match; the reported defect was that only the dotted form did, while the RemoveAttachments action already accepted either — a rule written one way looked configured and silently never fired |
+| `Matches_AttachmentExtension_BothSpellings_WorkWithEveryOperator` | Wildcard, regular expression and EndsWith against `test.xml` | All operators see both spellings |
+| `Matches_AttachmentExtension_FileWithoutOne_YieldsNoValue` | Attachment named `README` | No extension value, so Exists is false |
+| `Matches_AttachmentName_SupportsWildcards` | `invoice-*.pdf` | Matches the attachment name |
+| `Matches_AttachmentCount_CountsSplitterAttachments` | Two attachments | Count is 2, taken from the same splitter the delivery path uses |
+| `Matches_Importance_ResolvesTheDeliveredValue` | Importance header, X-Priority, neither | All three resolve to the value that will actually be delivered |
+| `Matches_InvalidRegex_DoesNotMatchAndDoesNotThrow` | `([unclosed` as a pattern | No match, no exception — a broken rule must not stop mail |
+| `Matches_CatastrophicPattern_CompletesWithoutStalling` | `^(a+)+$` against 40 a's and a `!` | Returns within seconds — ReDoS guard (linear engine, else a match timeout) |
+| `Matches_UnsupportedFieldOperatorPair_NeverMatches` | DomainIs on a numeric field | False — the pair is not in the schema |
+| `Matches_BodyCondition_TruncatesRatherThanSkipsOversizedBodies` | Needle past a 100-byte cap | Prefix still compared, needle not found, truncation flagged — skipping would make a negated condition fire on every large message |
+| `IsMatch_DisabledRule_NeverMatches` | Disabled rule | False regardless of conditions |
+| `IsMatch_NoConditions_MatchesEveryMessage` | Rule without conditions | True — a deliberate "apply to all" |
+| `IsMatch_MatchAll_RequiresEveryCondition` | Two conditions, one true | False |
+| `IsMatch_MatchAny_RequiresOneCondition` | Two conditions, one true | True |
+| `FindProblems_ValidRuleSet_ReportsNothing` | Well-formed rule | Empty problem list |
+| `FindProblems_InvalidRegex_IsReportedAsAnError` | Uncompilable pattern | Reported as an error — the rule would otherwise silently never fire |
+| `FindProblems_UnsupportedFieldOperatorPair_IsReportedAsAnError` | Field/operator pair outside the schema | Reported as an error |
+| `FindProblems_ActionMissingRequiredParameter_IsReportedAsAnError` | SetHeader without a header name | Reported as an error |
+| `FindProblems_RuleWithoutActions_IsReportedAsAnError` | Rule with no actions | Reported — the rule does nothing |
+| `FindProblems_RejectCodeOutOfRange_IsReportedAsAnError` | Reject with code 250 | Reported — 250 is not a rejection |
+| `FindProblems_DuplicateRuleNames_AreReportedAsAWarning` | Two rules with the same name | Warning — log lines and statistics identify a rule by name |
+| `FindProblems_InvalidCidr_IsReportedAsAnError` | `nonsense;10.0.0.0/99` | Reported; a bare `123` is **not** invalid — the service normalises it like everywhere else |
+| `DescribeHeaderDeliveryWarning_FlagsHeadersGraphDoesNotCarry` | `X-Custom`, `List-Unsubscribe`, `X-MS-Exchange-…`, `X-Priority` | Only `x-…` headers pass without a warning |
+
+
+### Message rules — enum coverage (`Infrastructure/Rules/MessageRuleCoverageTests.cs`)
+
+Exhaustiveness driven by the enums themselves. The individual behaviour lives in the evaluator
+and action suites; what these add is the guarantee that the set stays complete — a value added to
+either enum without a test case fails here with a message saying so, rather than shipping
+something an operator can configure and nobody has ever run.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `EveryConditionField_MatchesAndFailsAsExpected` | Every one of the condition fields, each with a matching and a non-matching condition against one shared message | Both directions behave; an unhandled field throws with "add a test case" |
+| `EveryConditionField_IsSupportedByAtLeastOneOperator` | Every field | Has at least one legal operator — a field with none could be selected and would never match |
+| `EveryOperator_IsLegalForAtLeastOneField` | Every operator | Usable with at least one field — otherwise it sits in a drop-down that never appears |
+| `EveryActionType_HasAnEffect` | Every action type applied to a message that satisfies it | Terminal actions produce a verdict; the rest report a change |
+| `EveryActionType_IsAcceptedByTheValidator` | The sample action for each type | No validation error — the runtime is exercised on something the tool would actually save |
+| `EveryActionType_HasAReadableDescription` | Every action type | A description beyond the bare enum name (Discard excepted: it carries no parameters) |
+| `EveryActionType_DeclaresItsParameters` | Every action type | Declares the properties it uses, so the editor cannot show an empty form for it |
+
+### Message rules — combining conditions (`Infrastructure/Rules/MessageRuleEvaluatorTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `IsMatch_MatchAll_AcrossDifferentFieldTypes_RequiresEveryOne` | Text, IP range, attachment and boolean in one All rule | All four must hold; one false condition defeats it — a per-type bug would otherwise hide behind three passing branches |
+| `IsMatch_MatchAny_AcrossDifferentFieldTypes_NeedsOnlyOne` | Same mix under Any | One true condition is enough; none true does not match |
+| `IsMatch_MatchAll_WithANegatedCondition_CombinesCorrectly` | "Quarterly report, but not to a partner" | Negation composes with the other conditions instead of inverting the rule |
+| `IsMatch_MatchAny_WithANegatedCondition_CanBeTheOnlyReason` | Negated boolean as the only satisfied condition | Matches on an anonymous session, not on an authenticated one |
+| `IsMatch_TwoNegatedMultiValuedConditions_MeanNeitherSetMatches` | Two negated recipient-domain conditions under All | "No recipient at either domain" — the composition an allow-list-style rule needs |
+| `IsMatch_MatchAll_MiddleConditionFalse_DoesNotMatch` | Three conditions, the middle one false | No match — guards an evaluator that stops at the first or only checks the last |
+| `IsMatch_MatchAny_MiddleConditionTrue_Matches` | Three conditions, the middle one true | Matches |
+| `IsMatch_ConditionsMixingBodyAndEnvelope_ComposeAcrossTheParseBoundary` | Envelope, body and size in one rule | Consistent regardless of which side needs the MIME parse |
+| `IsMatch_SingleFalseCondition_IsEnoughToSkipTheRule` | One false condition | Rule skipped |
+
+### MessageRuleActions — MimeKit mutations (`Infrastructure/Rules/MessageRuleActionsTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `AddRecipient_To_AddsToHeaderAndEnvelope` | Add a To recipient | Present in the header **and** the envelope — the envelope is what decides delivery |
+| `AddRecipient_Cc_UsesTheCcHeader` | Add a Cc recipient | Lands in Cc, not To; envelope updated |
+| `AddRecipient_Bcc_TouchesTheEnvelopeOnlyAndWritesNoHeader` | Add a Bcc recipient | Envelope only — a Bcc header would be ignored on delivery and would leak the blind copy into the archive |
+| `AddRecipient_AlreadyPresent_IsNotDuplicated` | Add an address that already exists (different case) | Added once |
+| `AddRecipient_InvalidAddress_ChangesNothingAndWarns` | "not an address" | No change, warning returned |
+| `RemoveRecipient_RemovesFromEnvelopeAndEveryHeaderList` | Address in To, Cc and the envelope | Gone from all three — a header-only removal would turn the recipient into an invisible blind copy |
+| `RemoveRecipient_DomainWildcard_RemovesEveryAddressAtThatDomain` | `@partner.test` | Both matching recipients removed, the third kept |
+| `RemoveRecipient_NoMatch_ReportsSoAndChangesNothing` | Pattern matching nobody | Nothing changed; the detail says so |
+| `ReplaceRecipient_SwapsInBothPlacesAndKeepsTheOriginalList` | Replace a Cc address | New address in Cc and the envelope; the To recipient untouched |
+| `SetSubject_ReplacesTheSubject` | Set subject | Replaced |
+| `PrefixSubject_AndSuffixSubject_WrapTheExistingSubject` | Prefix then suffix | Both applied around the original |
+| `PrefixSubject_EncodedSubject_KeepsTheDecodedText` | RFC 2047 subject with umlauts | Prefix applied to the decoded text and survives a serialise/parse round-trip |
+| `PrependBody_TextOnlyMessage_InsertsBeforeTheBody` | Text-only message | Banner above the body; warning that there is no HTML part |
+| `AppendBody_TextOnlyMessage_InsertsAfterTheBody` | Text-only message | Text appended below the body |
+| `PrependBody_HtmlMessage_InsertsAfterTheBodyTag` | `<html><body>…` | Fragment spliced right after the body tag, wrapped in one `<div>` |
+| `AppendBody_HtmlMessage_InsertsBeforeTheClosingBodyTag` | `…</body></html>` | Fragment spliced before the closing tag |
+| `PrependBody_HtmlFragmentWithoutBodyTag_InsertsAtTheStart` | Bare HTML fragment | Prepended at position 0 |
+| `PrependBody_Alternative_ChangesBothRenderings` | multipart/alternative | Both the text and the HTML part changed; no warning |
+| `PrependBody_Mixed_ChangesTheBodyPartNotTheAttachments` | multipart/mixed with an attachment | Body changed, attachment untouched |
+| `PrependBody_MissingHtmlPart_IsNeverSynthesised` | Text-only message with an HTML snippet configured | No HTML part created — that would flip the delivered body type for every recipient |
+| `PrependBody_AttachmentOnlyMessage_ChangesNothingAndWarns` | Message with no body part at all | Nothing changed, warning returned |
+| `PrependBody_NonAsciiBanner_SurvivesAnIso88591Body` | Banner with umlauts and CJK into a Latin-1 body | Readable after a round-trip — `SetText` updates the charset |
+| `BuildHtmlFragment_WithoutHtml_EscapesTheTextAndConvertsNewlines` | Text containing `<b>` and a newline | Escaped first, then newline → `<br>` — an operator's `<` must not become markup |
+| `BuildHtmlFragment_WithHtml_WrapsItInASingleBlock` | HTML snippet given | Wrapped in one `<div>` so it cannot merge into the surrounding markup |
+| `SetHeader_ReplacesEveryExistingOccurrence` | Header present twice | Exactly one occurrence remains, with the new value |
+| `AddHeader_KeepsExistingOccurrences` | Header present once | Two occurrences afterwards |
+| `RemoveHeader_RemovesEveryOccurrence` | Header present twice | Both removed; the count is reported |
+| `SetHeader_ValueWithNewlines_IsStripped` | Value containing `\r\nBcc: …` | CR/LF removed — header injection straight from a config file |
+| `RemoveAttachments_ByExtension_RemovesOnlyMatchingOnes` | `.docm;.xlsm` against a PDF and a DOCM | Only the DOCM removed |
+| `RemoveAttachments_ByExtension_AcceptsEntriesWithoutALeadingDot` | `docm` | Matches `.docm` |
+| `RemoveAttachments_ByNamePattern_UsesWildcards` | `invoice-*` | Only the matching attachment removed |
+| `RemoveAttachments_ByMinSize_RemovesTheLargeOnes` | Threshold 4096 against 64 B and 8 kB | Only the large one removed |
+| `RemoveAttachments_InlineParts_AreKept` | Matching pattern against a cid-referenced image | Kept, with a warning — removing it would leave a dangling reference and a broken body |
+| `RemoveAttachments_LastAttachmentGone_CollapsesTheMultipartWrapper` | Sole attachment removed from a mixed container | Container collapses to the body part |
+| `RemoveAttachments_NoMatch_ChangesNothing` | `.exe` against a PDF | Attachment kept |
+| `SetImportance_AcceptsTheDocumentedTokens` | High / low / Normal | Mapped, case-insensitively |
+| `SetImportance_UnknownToken_ChangesNothingAndWarns` | "Urgent!" | No change, warning names the valid tokens |
+| `PreservesWhitespace_CoversTheProseActionsOnly` | Every action type | Only subject and body actions preserve whitespace; token actions trim |
+| `IsValueMissing_ProseAction_AcceptsAWhitespaceOnlyValue` | `" "`, `""`, null on a prefix action | Only empty and null count as missing — a prefix of a single space is a deliberate choice |
+| `IsValueMissing_TokenAction_RejectsAWhitespaceOnlyValue` | `"  "` on SetImportance | Missing |
+| `PrefixSubject_TrailingSpace_IsKept` | Prefix `"[EXTERNAL] "` | Subject becomes `"[EXTERNAL] Quarterly report"` — trimming would glue the tag onto the subject |
+| `SuffixSubject_LeadingSpace_IsKept` | Suffix `" (unverified)"` | Leading space kept |
+| `PrependBody_LeadingAndTrailingWhitespace_IsKept` | Indented banner | Indentation preserved — it carries the layout |
+| `SetFrom_ChangesTheHeaderAndTheEnvelopeSender` | Rewrite the sender | Header and envelope both changed — the sending mailbox comes from the envelope |
+| `SetReplyTo_TouchesOnlyTheReplyToHeader` | Set Reply-To | Reply-To set; From and the envelope sender unchanged |
+| `AddressMatches_HandlesExactDomainAndWildcardEntries` | Exact, `@domain`, `*` wildcard, `;` list | Exact domain does not match a subdomain; everything else as documented |
+
+### MessageRuleProcessor — the engine (`Infrastructure/Rules/MessageRuleProcessorTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Run_AppliesRulesInArrayOrder` | Two prefix rules | The second prefixes what the first produced; both recorded in order |
+| `Run_StopProcessing_PreventsLaterRules` | First rule stops processing | The second never runs |
+| `Run_StopProcessing_IsHonouredInAuditModeToo` | Audit rule with stop-processing | Nothing changed, but the later rule is still skipped — an audit run must follow the enforce path |
+| `Run_DisabledRule_IsSkipped` | Disabled rule | No match recorded, message unchanged |
+| `Run_GloballyDisabled_DoesNothing` | Engine switched off | No rule evaluated — the switch is honoured in the engine, not only in the caller, so the rule tester sees the truth |
+| `Run_AuditMode_RecordsEverythingAndChangesNothing` | Audit rule with a subject action | Message unchanged; the action is recorded as not applied |
+| `Run_AuditMode_StopsAtAWouldBeReject` | Audit rule that would reject, then another rule | Verdict stays Continue, but the later rule does not run |
+| `Run_Reject_CarriesTheConfiguredCodeAndText` | Reject with 554 and a custom text | Verdict, code, text and the deciding rule reported |
+| `Run_Reject_WithoutCode_UsesThePermanentDefault` | Reject with no code | 550 and the default text |
+| `Run_Discard_ReportsTheDiscardVerdict` | Discard action | Discard verdict; the rule counts as discarded |
+| `Run_TerminalAction_StopsLaterActionsInTheSameRule` | Reject followed by a subject action | The subject action never runs |
+| `SanitiseReplyText_StripsControlCharactersAndFallsBack` | CR/LF, whitespace, empty | Control characters removed, trimmed, empty falls back to the default — a newline in an SMTP reply would let the rest be read as protocol |
+| `SanitiseReplyText_OverlongText_IsCapped` | 500 characters | Capped at 200 |
+| `NormaliseCode_KeepsOnlyRejectionCodes` | null, 250, 399, 600, 451, 554 | Only 4xx/5xx survive; anything else falls back to 550 |
+| `Run_ProtectedMessage_SkipsBodyActionsButAppliesTheRest` | Signed/encrypted message with body, subject and header actions | Body action skipped with a warning; subject and header applied — those sit outside the signature |
+| `Run_ProtectedMessage_StillRejects` | Signed message, reject rule | Rejected — protection must not neuter a refusal |
+| `Run_ProtectedMessage_SkipsAttachmentRemoval` | Signed message, attachment action | Skipped; the rule counts as `skipped`, which is not the same as a dead rule |
+| `Run_EveryRecipientRemoved_DiscardsInsteadOfQueueing` | Rule removes all recipients | Discard verdict — queueing would produce a delivery failure and an NDR to an innocent sender |
+| `Run_TooManyRecipientsAfterRules_RejectsAtData` | Rule pushes the count over the limit | 554 during the session instead of a permanent failure hours later |
+| `Run_SetFromToABlockedSender_IsRejected` | SetFrom to a blocked domain | 550 — the sender policy ran at MAIL FROM against the original address |
+| `Run_SetFromToAPermittedSender_Proceeds` | SetFrom to an allowed address | Continues; the envelope sender changed |
+| `Run_TooManyCustomHeaders_Warns` | Six `x-` headers added | Warning — over the limit Graph rejects the message and the retry drops every custom header |
+| `Apply_NoRuleMatches_ReturnsTheSameByteArrayInstance` | No rule matches | The identical array is returned — an unchanged message is never re-serialised |
+| `Apply_RulesDisabled_ReturnsTheSameByteArrayInstance` | Engine off | Identical array returned |
+| `Apply_MessageChanged_ReSerialisesWithCrLfAndRoundTrips` | Subject prefixed | New bytes, CRLF line endings, parses back with the new subject |
+| `Apply_EnvelopeChanged_ReturnsTheNewRecipientList` | Bcc recipient added | The returned recipient list carries it |
+| `Apply_UnparsableMessage_SkipsEveryRuleAndReturnsItUntouched` | Garbage bytes with a reject rule configured | Continue verdict, original bytes — fail open |
+| `Apply_ProcessorFailure_DeliversTheMessageUnmodified` | Options monitor throws mid-run | Error logged, message relayed unmodified — a rule-engine bug must not become a mail outage |
+| `IsActive_ReflectsWhetherAnythingWouldRun` | No rules / disabled engine / disabled rule / active rule | Only the last one is active — lets the caller skip the MIME parse entirely |
+| `Run_TwiceOverTheSameBytes_ProducesTheSameResult` | The same message bytes run through the rules twice | Identical result — the tester used to hold a parsed message that the first run mutated, so the second silently saw a different one and an attachment rule looked broken |
+| `Run_AttachmentRemoval_MatchesAMessageBuiltLikeTheTesterBuildsOne` | Attachment removal against a message shaped like the tester builds | Removed — guards the seam between the sample message and the engine |
+| `Run_WithoutExplain_RecordsNothingExtra` | Ordinary run | No per-rule explanation recorded — the mail path must not pay for a diagnostic it never reads |
+| `Run_Explain_NamesTheConditionThatDidNotMatch` | Rule matching `.xml` against a message carrying a PDF | Reports the exact condition that failed — otherwise there is no way to tell a wrong rule from a message that simply does not fit |
+| `Run_Explain_MatchingRuleIsReportedAsMatched` | Same rule against a message carrying an XML | Reported as matched |
+| `Run_Explain_DisabledRuleSaysSo` | Disabled rule | Reported as switched off |
+| `Run_Explain_RuleAfterAStopIsReportedAsNotReached` | Rule below one that stops processing | Reported as not reached — the other answer to "why did my rule do nothing" |
+| `Run_Explain_DoesNotChangeWhatTheRulesDo` | The same rules run with and without the explanation | Identical message, matches and verdict — the explanation is reporting, never behaviour |
+| `Run_Explain_MatchAny_SaysNoneOfTheConditionsMatched` | Any-rule where no condition holds | Says so, and lists the conditions |
+| `Run_Explain_ReportsEveryRuleInOrder` | Matching, non-matching and disabled rule | All three reported, in configuration order |
+
+### MessageRuleContext — the input snapshot (`Infrastructure/Rules/MessageRuleContextTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Create_ValidMessage_ExposesTheEnvelopeAndTheParsedMessage` | Bytes plus envelope and session | Envelope, subject, size, message id and session facts all present |
+| `Create_UnparsableBytes_FlagsParseFailedInsteadOfThrowing` | Malformed bytes | No exception — the caller decides, and for the relay that means "deliver unmodified" |
+| `EnvelopeRecipients_IsMutable_AndIsWhatDecidesDelivery` | Add a recipient to the context | The list is mutable; it is what actions change |
+| `Split_MatchesTheSplitterTheDeliveryPathUses` | Message with two attachments | Attachment view equals `MimeMessageSplitter.Split` — a second notion of "attachment" would act on parts the delivery path classifies differently |
+| `BodyText_And_BodyHtml_ReturnTheChosenRenderings` | multipart/alternative | Both renderings exposed separately |
+| `BodyText_MissingPart_IsEmptyRatherThanNull` | HTML-only message | Text body is empty, not null |
+| `BodyText_OverTheCap_IsTruncatedAndFlagged` | 5000-character body, 100-byte cap | Truncated to the cap and flagged |
+| `BodyTruncated_StaysFalse_WhenNothingReadsTheBody` | Large body, no body condition | Never decoded — body views are materialised on demand |
+| `Protection_ClassifiesTheStandardShapes` | multipart/signed with PKCS#7 and PGP, multipart/encrypted | Each classified correctly |
+| `Protection_PlainMessage_IsNone` | Ordinary message | None |
+| `Protection_Pkcs7Mime_UsesTheSmimeTypeParameter` | `signed-data` vs `enveloped-data` | Signed and Encrypted respectively |
+| `Protection_NestedSignedPart_IsFound` | Signed part inside a multipart/mixed | Found — many mailers wrap a signed body to carry an attachment |
+| `InvalidateDerived_RefreshesTheCachedViews` | Body changed behind the cache | The refreshed view reflects the change |
+
+### MessageRulesOptionsValidator (`Infrastructure/Validation/MessageRulesOptionsValidatorTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Validate_Defaults_Succeed` | Default options | Success |
+| `Validate_Disabled_SucceedsEvenWithBrokenRules` | Engine off, invalid limit, broken rule | Success — nothing is evaluated while it is off |
+| `Validate_EnabledWithoutRules_Succeeds` | Enabled, no rules | Success |
+| `Validate_NonPositiveMaxBodyScanBytes_Fails` | 0 / −1 | Startup failure — no content condition could ever match |
+| `Validate_NonPositiveRegexTimeout_Fails` | 0 / −5 | Startup failure — every pattern would time out |
+| `Validate_NonPositiveDiscardRetention_Fails` | 0 | Startup failure — evidence deleted as soon as it is written |
+| `Validate_RuleWithInvalidRegex_StillSucceeds` | One rule with an uncompilable pattern | Success with a warning — one unusable rule must not take mail flow down |
+| `Validate_RuleWithoutActions_StillSucceeds` | Rule with no actions | Success with a warning |
+| `Validate_RuleWithUndeliverableHeader_StillSucceeds` | SetHeader on `List-Unsubscribe` | Success with a warning — the header just will not reach the recipient |
+| `Validate_EnforcingRules_Succeed` | Enforce rule plus message storage | Success |
+
+### ListReorder — rule ordering (`ConfigTool/ListReorderTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `MoveUp_MiddleItem_MovesItOnePlaceTowardsTheStart` | Move the middle item up | Order changed by one place |
+| `MoveDown_MiddleItem_MovesItOnePlaceTowardsTheEnd` | Move the middle item down | Order changed by one place |
+| `MoveUp_FirstItem_DoesNothingAndReportsIt` | First item | `false` and unchanged — the page must not mark the config dirty for a no-op |
+| `MoveDown_LastItem_DoesNothingAndReportsIt` | Last item | `false` and unchanged |
+| `MoveUp_ItemNotInTheList_DoesNothing` | Unknown item | `false` in both directions |
+| `Move_SingleItemList_IsAlwaysANoOp` | One-element list | `false` in both directions |
+| `Move_EmptyList_DoesNotThrow` | Empty list | No exception, `false` |
+| `MoveUp_ThenMoveDown_RestoresTheOriginalOrder` | Up then down | Original order |
+
+### MessageRuleValidation — page input rules (`ConfigTool/MessageRuleValidationTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `ValidateCondition_ValidTextCondition_IsAccepted` | Subject contains "invoice" | Accepted |
+| `ValidateCondition_UnsupportedPair_IsRejected` | DomainIs on a numeric field | Rejected |
+| `ValidateCondition_HeaderWithoutName_IsRejected` | Header condition without a name | Rejected |
+| `ValidateCondition_MissingValue_IsRejected` | Blank value for an operator that needs one | Rejected |
+| `ValidateCondition_OperatorWithoutValue_NeedsNone` | IsEmpty with no value | Accepted |
+| `ValidateCondition_InvalidRegex_IsRejected` | `([unclosed` | Rejected |
+| `ValidateCondition_ValidRegex_IsAccepted` | `^INV-\d+$` | Accepted |
+| `ValidateCondition_IpRange_MirrorsTheAddressRules` | CIDR, bare IP, `;` list, `123`, `/99`, nonsense | Only real addresses and ranges accepted — `123` is refused here even though the runtime would normalise it, because a typo becoming a rule for an unintended address is exactly the silent failure this catches |
+| `ValidateCondition_NumericFieldWithText_IsRejected` | "many" on a numeric field | Rejected |
+| `ValidateCondition_DomainWithoutAtSign_IsRejected` | `example.com` without `@` | Rejected |
+| `OperatorsFor_MirrorsTheServiceSchema` | Every condition field | The page offers exactly the operators the runtime supports |
+| `ValidateAction_ValidAction_IsAccepted` | PrefixSubject with a value | Accepted |
+| `ValidateAction_MissingRequiredValue_IsRejected` | PrefixSubject with no value | Rejected |
+| `ValidateAction_HeaderActionWithoutName_IsRejected` | SetHeader without a header name | Rejected |
+| `ValidateAction_RecipientActionWithoutList_IsRejected` | AddRecipient without To/Cc/Bcc | Rejected |
+| `ValidateAction_Address_UsesTheSameRuleAsEveryOtherPage` | Valid address, display-name form, `user@localhost`, blank | Accepted or refused exactly as `EmailValidation` decides — a different rule here would mean an address one page takes and another refuses |
+| `ValidateAction_EveryAddressAction_SharesTheSameRule` | SetFrom, SetReplyTo, ReplaceRecipient | All four address actions go through the one shared rule |
+| `ValidateAddressPattern_AcceptsTheShapesTheRuntimeMatches` | Exact, `@domain`, `*@domain`, `invoice-*@domain`, bare `*`, `;` list, nonsense | The Access Control grammar plus the wildcards the rule engine supports |
+| `ValidateAction_RemoveRecipient_ValidatesThePattern` | Nonsense vs a domain entry as the address to match | Pattern validated — previously not checked at all |
+| `ValidateAction_RejectCode_MustBeARejection` | 550, 554, 451, 250, 600 | Only 4xx/5xx accepted |
+| `ValidateAction_AttachmentSizeThatIsNotANumber_IsRejected` | "big" as a byte count | Rejected |
+| `ValidateAction_Importance_AcceptsOnlyTheKnownTokens` | High, low, Urgent | Only the documented tokens accepted |
+| `DescribeActionWarning_UndeliverableHeader_IsFlagged` | `List-Unsubscribe` | Warned — not carried to Microsoft 365 |
+| `DescribeActionWarning_CustomXHeader_IsNotFlagged` | `X-Relay-Policy` | No warning |
+| `DescribeActionWarning_BodyActionWithoutHtml_ExplainsWhatIsDelivered` | Body action with no HTML version | Warns that only the HTML body is delivered when both exist |
+| `DescribeActionWarning_SetFrom_MentionsTheSenderChecks` | SetFrom | Warns that the sending mailbox changes |
+| `DescribeActionWarning_Discard_SaysNothingIsDelivered` | Discard | Warns that the sender is told the message was accepted |
+| `FindProblems_ReportsWhatTheServiceWouldReport` | Section with an invalid pattern | Same problem the startup validator reports — the page delegates rather than re-deriving |
+| `IsDuplicateName_IsCaseInsensitiveAndIgnoresTheRuleBeingEdited` | Same name in different case; the rule itself | Duplicate detected; editing a rule does not flag itself |
+| `IsDuplicateName_BlankName_IsNotADuplicate` | Blank name | Not a duplicate |
+| `ToOptions_UnknownEnumToken_FallsBackToTheSafeChoice` | `Enfroce` / `Either` | Audit and All — a typo must not silently start enforcing |
+| `ToOptions_CarriesEveryFieldThroughUnchanged` | Fully populated section | Every scalar, condition and action reaches the runtime options |
+
+### MessageRuleStatsReader (`ConfigTool/MessageRuleStatsReaderTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Read_MissingDatabase_ReturnsNothing` | No metrics.db | Empty — a fresh install is not an error |
+| `Read_DatabaseWithoutTheTable_ReturnsNothing` | Database written before the table existed | Empty |
+| `Read_GroupsByRuleAndMode` | Hits for two rules across both modes | One row per rule and mode, counted correctly |
+| `Read_CountsEveryOutcomeSeparately` | modified / rejected / discarded / skipped | Four separate counters |
+| `Read_IgnoresHitsOutsideTheWindow` | Window starting in the future | Empty |
+| `ReadHitTotals_SumsBothModesPerRule` | Enforce and Audit hits for one rule | Summed per rule name |
+| `ReadHitTotals_MissingDatabase_ReturnsAnEmptyMap` | No metrics.db | Empty map |
+
+### MessageSnapshot — before/after comparison (`ConfigTool/MessageSnapshotTests.cs`)
+
+The rule tester used to print the whole message twice and leave the reader to spot the difference.
+The point of this class is subtraction, so the tests are mostly about what must **not** appear.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Diff_IdenticalSnapshots_ReportsNothing` | Same snapshot twice | No changes |
+| `Diff_UnrelatedFieldsStaySilent` | Only the subject moves | Only the subject is reported |
+| `Diff_Subject_ReportsBothSides` | Subject prefixed | Old and new value |
+| `Diff_AddedEnvelopeRecipient_ShowsAsEnvelopeAndBcc` | Envelope recipient added, headers untouched | Envelope and Bcc reported, To is not — that is exactly what a blind copy is |
+| `Diff_ReorderedRecipients_IsNotAChange` | Same recipients, different order | Not a change; order carries no meaning in an address list |
+| `Diff_AddedHeader_ReportsOnlyThatHeader` | One header added | Only that header — a message carries dozens, and printing them all would bury the one thing that happened |
+| `Diff_ChangedHeaderValue_PairsTheOldAndNewValue` | Header value replaced | Reported as one change, not a removal plus an addition |
+| `Diff_RemovedHeader_SaysSo` | Header removed | Reported as removed |
+| `Diff_Importance_IsReported` | Importance raised | Reported |
+| `Diff_BodyChange_IsReportedAndShortened` | Long body replaced | Reported, trimmed, and the trim is visible |
+| `Diff_EmptyValue_ReadsAsNoneRatherThanBlank` | Subject cleared | Shows "(none)" rather than an empty gap |
+| `Capture_DerivesBccFromTheEnvelope` | Envelope recipient in no header | Reported as Bcc |
+| `Capture_NamesHeaderAddressesTheEnvelopeDoesNotConfirm` | To: header naming an address the envelope lacks | Listed as not delivered — it looks like a recipient in the message and is dropped |
+| `Capture_ReportsAttachmentsWithTheirSizes` | One attachment | Name and byte size |
+
+### MailPairLocator — message and metadata pairing (`ConfigTool/MailPairLocatorTests.cs`)
+
+The service stores every message as `{id}.eml` plus `{id}.meta.json`. Half a pair is a normal
+thing to find, so each case has to yield what it does hold rather than being refused.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `MetaPathFor_MessageFile_AppendsTheSidecarSuffix` | `abc123.eml` | `abc123.meta.json` |
+| `EmlPathFor_Sidecar_StripsTheWholeDoubleExtension` | `abc123.meta.json` | `abc123.eml` — guards the near-miss where a naive `ChangeExtension` leaves `abc123.meta` and the lookup can never succeed |
+| `MetaPathFor_IsCaseInsensitiveOnTheSuffix` | `.EML`, `.Eml` | Recognised |
+| `MetaPathFor_SomethingOtherThanAMessage_IsNull` | `.txt`, a sidecar, blank, null | Null |
+| `EmlPathFor_SomethingOtherThanASidecar_IsNull` | `.eml`, `.json`, blank, null | Null |
+| `Resolve_CompletePair_FindsBothHalvesFromEitherSide` | Both files present, either one picked | Both paths returned |
+| `Resolve_MessageWithoutASidecar_StillYieldsTheMessage` | Lone `.eml` | Message returned, no metadata — the envelope then comes from the headers |
+| `Resolve_SidecarWithoutAMessage_StillYieldsTheSidecar` | Lone `.meta.json` | Metadata returned — refusing it would throw away the envelope, which cannot be derived from a message at all |
+| `Resolve_UnrelatedFile_IsTakenAsAMessage` | `message.txt` | Treated as a message; whether it parses is the parser's answer to give |
+| `Resolve_SidecarOfADifferentMessage_IsNotPairedUp` | `aaa.eml` next to `bbb.meta.json` | Not paired — matching is by exact stem |
+| `Resolve_NoPath_YieldsNeitherHalf` | Blank, whitespace, null | Neither half |
+
+### SampleMessageBuilder — rule tester input (`ConfigTool/SampleMessageBuilderTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Build_TextOnly_ProducesASinglePlainPart` | Text body only | One plain part — the shape decides what a body rule can do |
+| `Build_HtmlOnly_ProducesASingleHtmlPart` | HTML body only | One HTML part |
+| `Build_BothBodies_ProducesAnAlternative` | Both bodies | multipart/alternative |
+| `Build_WithAttachments_WrapsTheBodyInAMixedContainer` | Two attachments | Body plus two attachments in a mixed container |
+| `Build_SetsSenderRecipientsAndSubject` | Sender, two recipients, subject | All carried into the message |
+| `Build_InvalidAddress_IsSkippedRatherThanThrowing` | Half-finished address in the form | No exception — the tester runs on whatever is typed |
+| `Build_WithHeaders_AddsThem` | Custom header | Present in the message |
+| `ParseRecipients_HandlesTheUsualSeparatorsAndBlanks` | Newlines, commas, semicolons, blanks | Split correctly; blank lines ignored |
+| `ParseAttachments_NameOnly_UsesTheDefaultSize` | `report.pdf` | Default size applied |
+| `ParseAttachments_NameAndSize_KeepsBoth` | `big.zip | 20480` | Name and size kept — without a size an attachment-size rule cannot be tried out at all |
+| `ParseAttachments_UnparsableSize_FallsBackInsteadOfDroppingTheAttachment` | `report.pdf | huge` | Attachment kept at the default size; dropping it would look like the rule failing to match |
+| `ParseAttachments_SeveralLinesAndBlanks_AreHandled` | Mixed line endings and blank lines | Parsed, blanks ignored |
+| `ParseAttachments_Empty_YieldsNothing` | Blank and null | No attachments |
+| `FormatAttachments_RoundTripsThroughParse` | Rendered, then parsed again | Same names and sizes — loading a message fills the box, and editing must see the same list |
+| `Build_AttachmentWithASize_IsMatchableByASizeRule` | Attachment built from a spec with a size | The splitter reports that exact size, so a size rule can match it |
+| `ParseHeaders_NameAndValue_AreSplitAtTheFirstColon` | `X-Link: https://example.com/x` | Split at the first colon only, so a value may contain one |
+| `ParseHeaders_UnusableLine_IsSkipped` | No colon, empty name, blank | Skipped rather than becoming a nameless header |
+| `FormatHeaders_RoundTripsThroughParse` | Rendered, then parsed again | Same headers |
+| `Build_WithHeaders_MakesThemMatchableByAHeaderCondition` | Header entered in the form | Present on the message — without it a Header condition could not be tried out at all |
+| `Build_Importance_ReachesTheMessage` | Low, Normal, High | Set on the message |
+| `Build_Protection_IsClassifiedByTheService` | Signed, encrypted, neither | The service.s own classifier recognises the tester.s stand-in — otherwise a rule about signed mail could not be tried out |
+| `Build_Signed_KeepsTheBodyReachable` | Signed sample | The body is still found by the splitter; rules skip changing it, they do not stop seeing it |
+| `Build_Cc_LandsInTheCcHeaderNotInTo` | Cc entered separately | Reaches the Cc header, not To |
+| `Build_HasNoBccParameter_BecauseABlindCopyIsEnvelopeOnly` | Message built with To and Cc | No Bcc header — a blind copy exists in the envelope and in no header |
+| `Build_ToAndCc_AreBothVisibleToTheDeliveryView` | To, Cc and an envelope-only address | The snapshot reports them as To, Cc and Bcc — the three boxes round-trip through the view delivery uses |
+| `Build_InvalidCcAddress_IsSkippedRatherThanThrowing` | Half-finished Cc address | No exception |
+
+---
+
 ## Live Tests — `GraphMailer.Tests.Live` (opt-in, real M365 tenant)
 
 > These tests talk to a **real Microsoft 365 test tenant** and are skipped unless credentials
@@ -1223,6 +1587,29 @@ Feeds the Logs page's context menu. The risk is entirely false positives — a l
 | `Enforce_ScanFails_MessageIsStillDelivered` | Scanner errors, mode Enforce | Message delivered — a broken scanner must never become a mail outage |
 | `Enforce_CleanMessage_IsDeliveredAndLeavesNoRecord` | Clean verdict, mode Enforce | Message queued; `mail/blocked/` empty |
 | `Off_DetectingScanner_IsNeverConsulted` | Mode Off with a detecting scanner | Scanner not called; message queued |
+
+---
+
+### Message Rules over a real SMTP session (`Smtp/SmtpMessageRuleTests.cs`)
+
+The unit tests cover the decision logic; these cover the wire contract and what ends up on disk —
+the two things a sending application and an operator actually observe.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Reject_ClientGetsTheConfiguredStatusAndNothingIsQueued` | Rule refuses with 554 and a custom text | Client sees a permanent failure, not a transient one; the queue stays empty |
+| `Discard_ClientIsTold250ButNothingIsQueued` | Rule discards | Client sees an ordinary acceptance; nothing queued; a record is written under `mail\blocked\` — the only trace a discarded message leaves |
+| `RulesDisabled_MessageIsQueuedUnchanged` | Engine off | Message queued exactly as sent |
+| `PrefixSubject_ChangesTheQueuedMessageAndItsMetadata` | Subject prefix rule | Both the queued `.eml` and its metadata carry the new subject |
+| `PrefixSubject_KeepsTheTrailingSpaceAllTheWayToTheQueue` | Prefix `"[EXTERNAL] "` over a real session | The space survives the config file, the binder and the engine — a trim anywhere on that path glues the tag onto the subject |
+| `SuffixSubject_KeepsTheLeadingSpace` | Suffix `" (unverified)"` over a real session | Leading space preserved |
+| `AddBccRecipient_ReachesTheEnvelopeButNotTheMessage` | Bcc rule | Address in the queued envelope, absent from the message — a Bcc header would be ignored on delivery and would leak the blind copy into the archive |
+| `RemoveRecipient_LeavesTheEnvelopeAndTheHeader` | Remove one recipient, add another | Gone from the envelope **and** the header — a header-only removal would deliver to them as an invisible blind copy |
+| `RemoveAttachments_DropsThemFromTheQueuedMessageAndTheCount` | `.docm` attachment removed | Attachment gone from the message and the recorded count |
+| `AddHeader_ReachesTheQueuedMessage` | `X-GraphMailer-Policy` added | Present in the queued message |
+| `AuditRule_QueuesTheMessageUnchanged` | Audit-mode subject rule | Message queued unchanged |
+| `StopProcessing_PreventsLaterRules` | First rule stops processing | Only the first rule's change is present |
+| `ConditionThatDoesNotMatch_LeavesTheMessageAlone` | Recipient-domain condition that does not match | Message queued unchanged |
 
 ---
 
@@ -1382,6 +1769,12 @@ comes from actual `RCPT TO` commands rather than a literal in the test. No tenan
 | `Constructor_V2Db_GainsTheMalwareTableAndStampsV3` | v2-shaped DB, `user_version` 2 | `malware_detections` created and version stamped to 3 |
 | `RecordMalwareDetection_CountsBlockedAndAuditSeparately` | Two blocked findings and one audit finding | Counted apart — the audit figure is what shows an operator what enforcement *would* have stopped |
 | `RecordMalwareDetection_DoesNotTouchTheRejectionStatistics` | One audit-mode finding | `smtp_rejection_stats` stays empty — the reason the table exists at all: an audit finding rejected nothing |
+| `Constructor_V3Db_GainsTheRuleHitTableAndStampsV4` | v3-shaped DB, `user_version` 3 | `message_rule_hits` created and version stamped to 4 |
+| `RecordRuleHit_InsertsThenIncrementsTheSameBucket` | Two Enforce hits and one Audit hit for the same rule | One row per mode, counted 2 and 1 (UPSERT) |
+| `RecordRuleHit_CountsEachOutcomeSeparately` | modified / rejected / discarded / skipped | Four rows — merging them would hide whether a rule changes mail or refuses it |
+| `RecordRuleHit_RuleNameIsStoredVerbatimAndNotInterpreted` | Rule named with an SQL fragment | Stored verbatim — rule names are operator-authored and always travel as a bound parameter |
+| `RecordRuleHit_DoesNotTouchTheRejectionStatistics` | One rule hit with outcome `rejected` | `smtp_rejection_stats` stays empty — the store records the rejection separately, so the counters cannot double up |
+| `CleanupOldRecords_PrunesExpiredRuleHits` | Rule hit aged past the retention window | Row deleted by the retention sweep |
 
 ---
 
@@ -1718,6 +2111,9 @@ Daily opt-in heartbeat scheduler: persists cadence + install id + counter waterm
 | `QuarantineIfCorrupt_MissingFile_IsNoOp` | No file | `null` |
 | `Migrate_V9_ToCurrent_LeavesMalwareScanAbsent` | v9 doc (v10 only added the `MalwareScan` section) | Version stamped to current; no key written — materialising a mode would be a policy decision the operator never made, and the binder default (Audit) is the safe one |
 | `Migrate_V9_ToCurrent_PreservesAnExistingMalwareScanSection` | v9 doc that already carries a hand-written `MalwareScan` section | Section survives untouched |
+| `Migrate_V10_ToCurrent_LeavesMessageRulesAbsent` | v10 doc without a `MessageRules` section | Version stamped, other keys kept, no section written — materialising it would suggest a policy the operator never configured |
+| `Migrate_V10_ToCurrent_PreservesAnExistingMessageRulesSection` | v10 doc that already carries a `MessageRules` section | Section and its rules survive untouched |
+| `Migrate_CurrentVersion_IsANoOp` | Document already at the current version | Reports no change |
 | `PruneMigrationBackups_KeepsOnlyTheNewestTen` | 13 `.bak` files with staggered creation times | Oldest 3 deleted, newest 10 kept |
 | `Save_StampsCurrentSchemaVersion` (ConfigServiceTests) | Save a document | Reloaded `doc.SchemaVersion == ConfigSchema.Current` |
 
@@ -1794,6 +2190,14 @@ Verifies that every JSON key written by the service (`graphmailer.json`) is corr
 | `Load_MalwareScan_BypassIpComments_AppearInDoc` | Bypass address with a comment in the parallel map | Address and comment both surface |
 | `Load_MalwareScan_BypassIpCommentsAbsent_DefaultsToEmpty` | Address without comments map | Comment map empty |
 | `Load_MalwareScan_BypassListsAbsent_DefaultToEmpty` | No `MalwareScan` section | All three lists empty |
+| `Load_MessageRules_SectionAbsent_UsesDefaults` | No `MessageRules` section in the file | Engine off, limits at their defaults, no rules — an upgrade must never start rewriting mail |
+| `Load_MessageRules_ScalarsAppearInDoc` | All five scalars set | Each reaches the document |
+| `Load_MessageRules_RuleWithConditionsAndActions_AppearsInDoc` | Full rule with two conditions and three actions | Every field parsed, including `Negate`, `CaseSensitive`, `HeaderName`, `Recipient`, `Html` and `SmtpCode` |
+| `Load_MessageRules_PreservesRuleOrder` | Three rules in a deliberate order | Order preserved — the array order is the evaluation order |
+| `Load_MessageRules_UnknownMode_FallsBackToAudit` | `"Mode": "Enfroce"` | Falls back to Audit — a typo must not silently start rewriting mail |
+| `Load_MessageRules_UnknownMatch_FallsBackToAll` | `"Match": "Either"` | Falls back to All |
+| `Load_MessageRules_ActionWithoutType_IsDropped` | Action object with no `Type` | Dropped; the valid action survives |
+| `Load_MessageRules_RuleWithoutConditions_KeepsAnEmptyList` | Rule with no conditions | Empty list kept — a deliberate "apply to all"; `Enabled` defaults to true |
 
 ---
 
@@ -1862,3 +2266,11 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `MalwareScan_EmptyBypassLists_BindToEmptyLists` | Default document saved | All three lists empty — array-merge guard: a default entry in `appsettings.json` would leak into a shorter user list by index |
 | `Save_NotifMalwareDetected_False_BindsToMalwareDetectedEnabled_False` | `Notification.NotifMalwareDetected = false` | `AdminNotifications:NotificationTypes:MalwareDetected:Enabled == false` |
 | `Save_NotifMalwareScanFailure_False_BindsToMalwareScanFailureEnabled_False` | `Notification.NotifMalwareScanFailure = false` | `AdminNotifications:NotificationTypes:MalwareScanFailure:Enabled == false` |
+| `Save_MessageRules_ScalarsBindToMessageRulesOptions` | All five scalars saved | `MessageRulesOptions` bound |
+| `Save_MessageRules_RuleBindsWithConditionsAndActions` | Full rule saved | Enums, nested condition and action lists all bind onto the runtime types |
+| `Save_MessageRules_PreservesRuleOrderThroughBinding` | Three rules in a deliberate order | Order survives the round-trip through the configuration binder |
+| `Save_MessageRules_EmptyRuleList_BindsToAnEmptyList` | Default document saved | Empty — array-merge guard: a default rule in `appsettings.json` would leak into a shorter user list by index |
+| `Save_MessageRules_WritesOnlyThePropertiesAnActionUses` | PrefixSubject carrying a stray header name and reply code | Only `Value` written — the action schema decides what an action really carries |
+| `Save_MessageRules_SubjectPrefixKeepsItsTrailingSpace` | Prefix `"[EXTERNAL] "` saved | The space survives the config file, a reload and the options binder |
+| `Save_MessageRules_BodyTextKeepsItsWhitespace` | Body text with blank lines and indentation | Preserved through save and load |
+| `Save_MessageRules_RoundTripsThroughLoad` | Rule saved and loaded again | Every field comes back unchanged |

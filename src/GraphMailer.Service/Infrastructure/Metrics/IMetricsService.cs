@@ -104,6 +104,13 @@ internal static class RejectionReasons
     /// rejections that never happened.
     /// </summary>
     public const string MalwareDetected = "malware_detected";
+
+    /// <summary>
+    /// Written only when a message rule actually refused the message. A rule that discards
+    /// silently is not counted here — the client got a 250, so nothing was rejected; those are
+    /// recorded under <c>mail\blocked\</c> and in <c>message_rule_hits</c> instead.
+    /// </summary>
+    public const string RuleRejected = "rule_rejected";
 }
 
 /// <summary>
@@ -159,6 +166,21 @@ internal interface IMetricsService
     /// <param name="detectedIn">"attachment", "body" or "message".</param>
     Task RecordMalwareDetectionAsync(
         bool blocked, string detectedIn, string clientIp, int listenerPort, CancellationToken ct = default);
+
+    /// <summary>
+    /// Counts one message-rule hit. Recorded in <b>both</b> rule modes, exactly once per rule and
+    /// message — a rule with five actions counts once — so the statistics answer "which rules are
+    /// actually firing", including for rules still in audit mode.
+    /// </summary>
+    /// <param name="ruleName">Operator-authored; never interpolated into SQL.</param>
+    /// <param name="mode">"Audit" or "Enforce".</param>
+    /// <param name="outcome">
+    /// One of the <c>RuleOutcomes</c> tokens: "modified", "rejected", "discarded", or "skipped" when
+    /// the rule matched but every action was skipped (a signed message, for instance) — without
+    /// that last one a rule that never manages to do anything looks exactly like a dead rule.
+    /// </param>
+    Task RecordRuleHitAsync(
+        string ruleName, string mode, string outcome, int listenerPort, CancellationToken ct = default);
 
     /// <summary>Counts one finished SMTP session into its hourly aggregate bucket.</summary>
     Task RecordSmtpSessionAsync(SmtpSessionRecord r, CancellationToken ct = default);

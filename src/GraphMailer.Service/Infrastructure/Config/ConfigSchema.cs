@@ -17,7 +17,7 @@ namespace GraphMailer.Service.Infrastructure.Config;
 internal static class ConfigSchema
 {
     /// <summary>Config schema version understood by this build.</summary>
-    internal const int Current = 10;
+    internal const int Current = 11;
 
     internal const string VersionKey = "SchemaVersion";
 
@@ -45,7 +45,8 @@ internal static class ConfigSchema
         if (from < 8) MigrateTo8(root);
         if (from < 9) MigrateTo9(root);
         if (from < 10) MigrateTo10(root);
-        // if (from < 11) MigrateTo11(root);   // future steps go here, in order
+        if (from < 11) MigrateTo11(root);
+        // if (from < 12) MigrateTo12(root);   // future steps go here, in order
 
         root[VersionKey] = Current;
         return true;
@@ -215,6 +216,20 @@ internal static class ConfigSchema
     /// operator never made. The version bump records which shape wrote the file.
     /// </summary>
     private static void MigrateTo10(JsonObject root)
+    {
+        // Intentionally empty: purely additive schema change.
+        _ = root;
+    }
+
+    /// <summary>
+    /// v10 → v11: additive only — the <c>MessageRules</c> section (ordered rules that manipulate
+    /// or refuse incoming mail) was introduced. Older files without the key are already valid:
+    /// the option binder falls back to the defaults, and <c>MessageRules.Enabled</c> defaults to
+    /// <c>false</c>, so an upgraded installation relays exactly as it did before. Deliberately no
+    /// key is written here — materialising the section into an existing file would suggest a
+    /// policy the operator never configured. The version bump records which shape wrote the file.
+    /// </summary>
+    private static void MigrateTo11(JsonObject root)
     {
         // Intentionally empty: purely additive schema change.
         _ = root;

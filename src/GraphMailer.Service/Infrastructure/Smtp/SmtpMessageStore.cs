@@ -1,5 +1,6 @@
 using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure.Metrics;
+using GraphMailer.Service.Infrastructure.Rules;
 using GraphMailer.Service.Infrastructure.Security;
 using GraphMailer.Service.Infrastructure.Security.Amsi;
 using GraphMailer.Service.Services;
@@ -16,7 +17,8 @@ namespace GraphMailer.Service.Infrastructure.Smtp;
 /// <summary>
 /// SmtpServer IMessageStore implementation.
 /// Receives the complete RFC-5321 message and hands it off to MailQueueWriter.
-/// Also applies IP blocking and the malware scan as the final gates before queueing.
+/// Also applies IP blocking, the malware scan and the message rules as the final gates before
+/// queueing — in that order, so the scanner always sees the message as the client sent it.
 /// </summary>
 internal sealed class SmtpMessageStore : MessageStore
 {
@@ -28,6 +30,7 @@ internal sealed class SmtpMessageStore : MessageStore
     private readonly IOptionsMonitor<MalwareScanOptions> _scanOptions;
     private readonly BlockedMessageRecorder _blockedRecorder;
     private readonly IAdminNotificationService _notifications;
+    private readonly MessageRuleProcessor _rules;
     private readonly ILogger<SmtpMessageStore> _logger;
 
     public SmtpMessageStore(
@@ -39,6 +42,7 @@ internal sealed class SmtpMessageStore : MessageStore
         IOptionsMonitor<MalwareScanOptions> scanOptions,
         BlockedMessageRecorder blockedRecorder,
         IAdminNotificationService notifications,
+        MessageRuleProcessor rules,
         ILogger<SmtpMessageStore> logger)
     {
         _queue = queue;
@@ -49,6 +53,7 @@ internal sealed class SmtpMessageStore : MessageStore
         _scanOptions = scanOptions;
         _blockedRecorder = blockedRecorder;
         _notifications = notifications;
+        _rules = rules;
         _logger = logger;
     }
 
@@ -76,7 +81,8 @@ internal sealed class SmtpMessageStore : MessageStore
         var from = transaction.From is not null
             ? $"{transaction.From.User}@{transaction.From.Host}"
             : string.Empty;
-        var recipients = transaction.To.Select(m => $"{m.User}@{m.Host}").ToArray();
+        // Not var: the message rules below may hand back a different list.
+        IReadOnlyList<string> recipients = transaction.To.Select(m => $"{m.User}@{m.Host}").ToArray();
 
         // Materialised once: the scan and the queue write both need the bytes, and copying a
         // 25 MB message twice per delivery is pure waste.
@@ -89,6 +95,25 @@ internal sealed class SmtpMessageStore : MessageStore
             context, emlBytes, messageId, from, recipients, remoteIp, listenerPort, cancellationToken);
         if (scanRejection is not null)
             return scanRejection;
+
+        // Message rules run last, after the scan, and never before it. The scanner has to see
+        // the message exactly as the client sent it: a rule that strips attachments would
+        // otherwise delete the very part the scan is meant to detect and record, which would
+        // make the rule engine an antivirus bypass. A malware verdict also has to outrank a
+        // policy verdict — that path already writes evidence and notifies.
+        var gate = await ApplyMessageRulesAsync(
+            context, emlBytes, messageId, from, recipients, remoteIp, listenerPort, cancellationToken);
+
+        if (gate.Gate == RuleGate.Reject)
+            return gate.Response;
+
+        if (gate.Gate == RuleGate.Discard)
+            return SmtpResponse.Ok;
+
+        emlBytes = gate.Eml;
+        from = gate.From;
+        recipients = gate.Recipients;
+        sizeBytes = emlBytes.LongLength;
 
         MailMetadata meta;
         var sw = Stopwatch.StartNew();
@@ -141,6 +166,140 @@ internal sealed class SmtpMessageStore : MessageStore
         }
 
         return SmtpResponse.Ok;
+    }
+
+    /// <summary>What the rule engine decided about a message.</summary>
+    private enum RuleGate { Proceed, Reject, Discard }
+
+    /// <summary>
+    /// The gate's decision plus the message as the rules left it. A struct rather than
+    /// <c>out</c> parameters, which an async method cannot have.
+    /// </summary>
+    private readonly record struct RuleGateResult(
+        RuleGate Gate, SmtpResponse Response, byte[] Eml, string From, IReadOnlyList<string> Recipients);
+
+    /// <summary>
+    /// Runs the configured message rules and decides what happens to the message.
+    ///
+    /// Mirrors <see cref="ScanForMalwareAsync"/>'s contract, widened because rules also return
+    /// data: the caller queues <see cref="RuleGateResult.Eml"/> with
+    /// <see cref="RuleGateResult.Recipients"/>, not the bytes that arrived.
+    ///
+    /// The engine itself never throws — a rule problem produces an unmodified message, not an
+    /// SMTP failure.
+    /// </summary>
+    private async Task<RuleGateResult> ApplyMessageRulesAsync(
+        ISessionContext context,
+        byte[] emlBytes,
+        string messageId,
+        string from,
+        IReadOnlyList<string> recipients,
+        string remoteIp,
+        int listenerPort,
+        CancellationToken ct)
+    {
+        if (!_rules.IsActive)
+            return new RuleGateResult(RuleGate.Proceed, SmtpResponse.Ok, emlBytes, from, recipients);
+
+        var authUser = context.Authentication?.User ?? string.Empty;
+        var session = new RuleSessionFacts
+        {
+            ClientIp = remoteIp,
+            ListenerPort = listenerPort,
+            AuthUser = authUser,
+            Authenticated = context.Authentication?.IsAuthenticated ?? false,
+            Tls = context.Pipe?.IsSecure ?? false,
+        };
+
+        var result = _rules.Apply(emlBytes, from, recipients, session, messageId, ct);
+        var outcome = result.Outcome;
+
+        // One row per (rule, message) — a rule with five actions counts once.
+        foreach (var rule in outcome.Matched)
+            await RecordRuleHitSafeAsync(rule.Name, rule.Mode.ToString(), rule.Outcome, listenerPort);
+
+        switch (outcome.Verdict)
+        {
+            case RuleVerdict.Reject:
+                _logger.LogWarning(
+                    "[MessageRules] Message from {From} to {Recipients} rejected by rule {Rule} (IP: {Ip}) – {Code} {Text}",
+                    from, string.Join(", ", recipients), outcome.DecidingRule ?? "(unknown)",
+                    remoteIp, outcome.SmtpCode, outcome.SmtpText);
+
+                await RecordRejectionSafeAsync(RejectionReasons.RuleRejected, remoteIp, listenerPort);
+
+                // The code and the text are the operator's, already sanitised by the processor —
+                // a CR or LF here would end the reply line and let the rest be read as further
+                // protocol responses.
+                return new RuleGateResult(
+                    RuleGate.Reject,
+                    new SmtpResponse((SmtpReplyCode)outcome.SmtpCode, outcome.SmtpText),
+                    result.Eml, result.EnvelopeFrom, result.Recipients);
+
+            case RuleVerdict.Discard:
+                await RecordDiscardAsync(outcome, result, messageId, from, recipients, remoteIp, listenerPort, authUser, ct);
+                return new RuleGateResult(
+                    RuleGate.Discard, SmtpResponse.Ok, result.Eml, result.EnvelopeFrom, result.Recipients);
+
+            default:
+                return new RuleGateResult(
+                    RuleGate.Proceed, SmtpResponse.Ok, result.Eml, result.EnvelopeFrom, result.Recipients);
+        }
+    }
+
+    /// <summary>
+    /// Records a silently discarded message. The client is told 250, so nothing else would ever
+    /// show that this mail existed — the record under <c>mail\blocked\</c> is the only trace, and
+    /// the full message is stored with it when <c>MessageRules.StoreDiscardedMessages</c> is on.
+    /// </summary>
+    private async Task RecordDiscardAsync(
+        MessageRuleOutcome outcome,
+        MessageRuleResult result,
+        string messageId,
+        string from,
+        IReadOnlyList<string> recipients,
+        string remoteIp,
+        int listenerPort,
+        string authUser,
+        CancellationToken ct)
+    {
+        var rule = outcome.DecidingRule ?? "(unknown)";
+        var info = MailQueueWriter.ExtractMessageInfo(result.Eml, recipients);
+
+        _logger.LogWarning(
+            "[MessageRules] Message from {From} to {Recipients} discarded by rule {Rule} (IP: {Ip}) – " +
+            "the client was told 250 and the message was not queued",
+            from, string.Join(", ", recipients), rule, remoteIp);
+
+        await _blockedRecorder.RecordAsync(new BlockedMessageRecord
+        {
+            Source = BlockedMessageSources.MessageRule,
+            RuleName = rule,
+            MessageId = messageId,
+            DetectedAt = DateTime.UtcNow,
+            From = from,
+            To = [.. recipients],
+            Subject = info.Subject,
+            ClientIp = remoteIp,
+            AuthUser = authUser,
+            ListenerPort = listenerPort,
+            Mode = MessageRuleMode.Enforce.ToString(),
+            Blocked = true,
+            DetectedIn = "message",
+        }, ct, result.Eml);
+    }
+
+    /// <summary>Statistics must never change the SMTP outcome — swallow all errors.</summary>
+    private async Task RecordRuleHitSafeAsync(string ruleName, string mode, string outcome, int listenerPort)
+    {
+        try
+        {
+            await _metrics.RecordRuleHitAsync(ruleName, mode, outcome, listenerPort);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[MessageRules] Failed to record the rule-hit metric for {Rule}", ruleName);
+        }
     }
 
     /// <summary>

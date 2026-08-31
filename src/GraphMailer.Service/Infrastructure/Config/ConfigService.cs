@@ -129,6 +129,7 @@ internal sealed class ConfigService
             Ndr = ReadNdr(merged),
             SenderValidation = ReadSenderValidation(merged),
             MalwareScan = ReadMalwareScan(merged),
+            MessageRules = ReadMessageRules(merged),
             Logging = ReadLogging(merged),
             Backup = ReadBackup(merged),
             Recommendations = ReadRecommendations(merged),
@@ -253,6 +254,7 @@ internal sealed class ConfigService
         WriteNdr(root, doc.Ndr);
         WriteSenderValidation(root, doc.SenderValidation);
         WriteMalwareScan(root, doc.MalwareScan);
+        WriteMessageRules(root, doc.MessageRules);
         WriteLogging(root, doc.Logging);
         WriteBackup(root, doc.Backup);
         WriteRecommendations(root, doc.Recommendations);
@@ -768,6 +770,181 @@ internal sealed class ConfigService
             .ToDictionary(kv => kv.Key, kv => kv.Value);
         o["BypassIpComments"] = ToJsonDict(comments);
     }
+
+    private static ConfigDocument.MessageRulesSection ReadMessageRules(JsonObject root)
+    {
+        var o = root["MessageRules"] as JsonObject ?? new JsonObject();
+
+        var rules = new List<ConfigDocument.MessageRuleEntry>();
+        if (o["Rules"] is JsonArray arr)
+        {
+            foreach (var node in arr)
+            {
+                if (node is not JsonObject entry) continue;
+                rules.Add(ReadRule(entry));
+            }
+        }
+
+        return new ConfigDocument.MessageRulesSection
+        {
+            Enabled = o["Enabled"]?.GetValue<bool>() ?? false,
+            MaxBodyScanBytes = o["MaxBodyScanBytes"]?.GetValue<long>() ?? 1_048_576,
+            RegexTimeoutMs = o["RegexTimeoutMs"]?.GetValue<int>() ?? 100,
+            StoreDiscardedMessages = o["StoreDiscardedMessages"]?.GetValue<bool>() ?? false,
+            DiscardRecordRetentionDays = o["DiscardRecordRetentionDays"]?.GetValue<int>() ?? 60,
+            Rules = rules,
+        };
+    }
+
+    private static ConfigDocument.MessageRuleEntry ReadRule(JsonObject entry)
+    {
+        var conditions = new List<ConfigDocument.RuleConditionEntry>();
+        if (entry["Conditions"] is JsonArray conditionArray)
+        {
+            foreach (var node in conditionArray)
+            {
+                if (node is not JsonObject c) continue;
+                conditions.Add(new ConfigDocument.RuleConditionEntry
+                {
+                    Field = Str(c, "Field") ?? "Subject",
+                    Operator = Str(c, "Operator") ?? "Contains",
+                    Value = Str(c, "Value") ?? string.Empty,
+                    HeaderName = Str(c, "HeaderName"),
+                    Negate = c["Negate"]?.GetValue<bool>() ?? false,
+                    CaseSensitive = c["CaseSensitive"]?.GetValue<bool>() ?? false,
+                });
+            }
+        }
+
+        var actions = new List<ConfigDocument.RuleActionEntry>();
+        if (entry["Actions"] is JsonArray actionArray)
+        {
+            foreach (var node in actionArray)
+            {
+                if (node is not JsonObject a) continue;
+                var type = Str(a, "Type");
+                if (string.IsNullOrWhiteSpace(type)) continue;   // an action without a type does nothing
+                actions.Add(new ConfigDocument.RuleActionEntry
+                {
+                    Type = type,
+                    Value = Str(a, "Value"),
+                    Html = Str(a, "Html"),
+                    HeaderName = Str(a, "HeaderName"),
+                    Recipient = Str(a, "Recipient"),
+                    Match = Str(a, "Match"),
+                    AttachmentMatch = Str(a, "AttachmentMatch"),
+                    SmtpCode = a["SmtpCode"]?.GetValue<int?>(),
+                });
+            }
+        }
+
+        return new ConfigDocument.MessageRuleEntry
+        {
+            Enabled = entry["Enabled"]?.GetValue<bool>() ?? true,
+            Name = Str(entry, "Name") ?? string.Empty,
+            Description = Str(entry, "Description"),
+            // Unknown/absent mode falls back to Audit, never to Enforce: a typo in the file must
+            // not silently start rewriting or refusing mail.
+            Mode = NormaliseRuleMode(Str(entry, "Mode")),
+            Match = NormaliseConditionMatch(Str(entry, "Match")),
+            StopProcessing = entry["StopProcessing"]?.GetValue<bool>() ?? false,
+            Conditions = conditions,
+            Actions = actions,
+        };
+    }
+
+    private static string NormaliseRuleMode(string? raw)
+        => Enum.TryParse<Configuration.MessageRuleMode>(raw, ignoreCase: true, out var mode)
+            ? mode.ToString()
+            : Configuration.MessageRuleMode.Audit.ToString();
+
+    private static string NormaliseConditionMatch(string? raw)
+        => Enum.TryParse<Configuration.ConditionMatch>(raw, ignoreCase: true, out var match)
+            ? match.ToString()
+            : Configuration.ConditionMatch.All.ToString();
+
+    private static void WriteMessageRules(JsonObject root, ConfigDocument.MessageRulesSection s)
+    {
+        var o = EnsureSection(root, "MessageRules");
+        o["Enabled"] = s.Enabled;
+        o["MaxBodyScanBytes"] = s.MaxBodyScanBytes;
+        o["RegexTimeoutMs"] = s.RegexTimeoutMs;
+        o["StoreDiscardedMessages"] = s.StoreDiscardedMessages;
+        o["DiscardRecordRetentionDays"] = s.DiscardRecordRetentionDays;
+
+        var rules = new JsonArray();
+        foreach (var rule in s.Rules)
+            rules.Add(WriteRule(rule));
+        o["Rules"] = rules;
+    }
+
+    private static JsonObject WriteRule(ConfigDocument.MessageRuleEntry rule)
+    {
+        var node = new JsonObject
+        {
+            ["Enabled"] = rule.Enabled,
+            ["Name"] = rule.Name,
+            ["Mode"] = NormaliseRuleMode(rule.Mode),
+            ["Match"] = NormaliseConditionMatch(rule.Match),
+            ["StopProcessing"] = rule.StopProcessing,
+        };
+        if (!string.IsNullOrWhiteSpace(rule.Description)) node["Description"] = rule.Description;
+
+        var conditions = new JsonArray();
+        foreach (var c in rule.Conditions)
+        {
+            var entry = new JsonObject
+            {
+                ["Field"] = c.Field,
+                ["Operator"] = c.Operator,
+                ["Value"] = c.Value,
+            };
+            // Only the keys this condition actually uses — a file full of nulls is unreadable,
+            // and the binder's defaults cover everything omitted.
+            if (!string.IsNullOrWhiteSpace(c.HeaderName)) entry["HeaderName"] = c.HeaderName;
+            if (c.Negate) entry["Negate"] = true;
+            if (c.CaseSensitive) entry["CaseSensitive"] = true;
+            conditions.Add(entry);
+        }
+        node["Conditions"] = conditions;
+
+        var actions = new JsonArray();
+        foreach (var a in rule.Actions)
+        {
+            if (string.IsNullOrWhiteSpace(a.Type)) continue;
+            var entry = new JsonObject { ["Type"] = a.Type };
+
+            // Which properties belong to which action type is declared once in RuleActionSchema;
+            // writing only those keeps the file honest about what an action really carries.
+            var used = Enum.TryParse<Configuration.RuleActionType>(a.Type, ignoreCase: true, out var type)
+                ? Rules.RuleActionSchema.Used(type)
+                : RuleActionParamAll;
+
+            if (Has(used, Rules.RuleActionParam.Value) && !string.IsNullOrEmpty(a.Value)) entry["Value"] = a.Value;
+            if (Has(used, Rules.RuleActionParam.Html) && !string.IsNullOrWhiteSpace(a.Html)) entry["Html"] = a.Html;
+            if (Has(used, Rules.RuleActionParam.HeaderName) && !string.IsNullOrWhiteSpace(a.HeaderName)) entry["HeaderName"] = a.HeaderName;
+            if (Has(used, Rules.RuleActionParam.Recipient) && !string.IsNullOrWhiteSpace(a.Recipient)) entry["Recipient"] = a.Recipient;
+            if (Has(used, Rules.RuleActionParam.Match) && !string.IsNullOrWhiteSpace(a.Match)) entry["Match"] = a.Match;
+            if (Has(used, Rules.RuleActionParam.AttachmentMatch) && !string.IsNullOrWhiteSpace(a.AttachmentMatch)) entry["AttachmentMatch"] = a.AttachmentMatch;
+            if (Has(used, Rules.RuleActionParam.SmtpCode) && a.SmtpCode is { } code) entry["SmtpCode"] = code;
+
+            actions.Add(entry);
+        }
+        node["Actions"] = actions;
+
+        return node;
+    }
+
+    /// <summary>
+    /// Fallback for an action type this build does not know — write every value the entry
+    /// carries rather than dropping the ones a newer build put there.
+    /// </summary>
+    private const Rules.RuleActionParam RuleActionParamAll =
+        Rules.RuleActionParam.Value | Rules.RuleActionParam.Html | Rules.RuleActionParam.HeaderName
+        | Rules.RuleActionParam.Recipient | Rules.RuleActionParam.Match
+        | Rules.RuleActionParam.AttachmentMatch | Rules.RuleActionParam.SmtpCode;
+
+    private static bool Has(Rules.RuleActionParam used, Rules.RuleActionParam flag) => (used & flag) != 0;
 
     private ConfigDocument.BackupSection ReadBackup(JsonObject root)
     {

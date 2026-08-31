@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using Microsoft.Data.Sqlite;
 using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Infrastructure;
+using GraphMailer.Service.Configuration;
 using WpfShapes = System.Windows.Shapes;
 
 namespace GraphMailer.ConfigTool.Views;
@@ -516,6 +517,23 @@ public partial class MetricsPage : UserControl
             _ => "Flagged messages were rejected during the SMTP session; nothing was queued or stored.",
         };
 
+        // Message-rule hits for the same window, likewise from their own table.
+        var ruleHits = MessageRuleStatsReader.Read(conn, DateTime.UtcNow.AddDays(-_rangeDays));
+        RcRuleHitsGrid.ItemsSource = ruleHits;
+
+        var auditHits = ruleHits
+            .Where(r => r.Mode.Equals(nameof(MessageRuleMode.Audit), StringComparison.OrdinalIgnoreCase))
+            .Sum(r => r.Total);
+
+        RcRuleHitsHint.Text = ruleHits.Count == 0
+            ? "No rule matched a message in this period."
+            : auditHits > 0
+                // The whole point of audit mode: say plainly that these did nothing yet.
+                ? $"{Num(auditHits)} hit(s) came from rules in audit mode — those messages were "
+                  + "relayed unchanged. Switch a rule to Enforce on the Message Rules page to apply it."
+                : "\"No effect\" counts a rule that matched but whose actions could not run — for "
+                  + "example a body change on a signed message.";
+
         // Recipients / attachments hint line
         using (var cmd = conn.CreateCommand())
         {
@@ -549,6 +567,7 @@ public partial class MetricsPage : UserControl
     private static string ReasonLabel(string reason) => reason switch
     {
         "malware_detected" => "Malware detected",
+        "rule_rejected" => "Refused by a message rule",
         "ip_blacklist" => "IP blacklist match",
         "ip_not_whitelisted" => "IP not whitelisted",
         "ip_blocked" => "IP blocked (repeated failures)",

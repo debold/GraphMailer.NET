@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure.Metrics;
+using GraphMailer.Service.Infrastructure.Rules;
 using GraphMailer.Service.Infrastructure.Security;
 using GraphMailer.Service.Infrastructure.Security.Amsi;
 using GraphMailer.Service.Infrastructure.Smtp;
@@ -63,9 +64,16 @@ public sealed class SmtpMessageStoreTests : IDisposable
         public IReadOnlyList<AmsiProvider> Providers { get; } = [];
         public int ScanCount { get; private set; }
 
+        /// <summary>
+        /// The bytes handed to the last scan. Kept so a test can assert that the scanner saw the
+        /// message as the client sent it, before any rule touched it.
+        /// </summary>
+        public string LastScanned { get; private set; } = string.Empty;
+
         public Task<ScanResult> ScanAsync(ReadOnlyMemory<byte> eml, string messageId, CancellationToken ct = default)
         {
             ScanCount++;
+            LastScanned = Encoding.ASCII.GetString(eml.Span);
             return Task.FromResult(result);
         }
     }
@@ -73,20 +81,35 @@ public sealed class SmtpMessageStoreTests : IDisposable
     private static readonly IMailContentScanner NoScanner =
         new FakeScanner(ScanResult.Unavailable(), available: false);
 
-    private BlockedMessageRecorder CreateRecorder(MalwareScanOptions? scanOptions = null)
+    private BlockedMessageRecorder CreateRecorder(
+        MalwareScanOptions? scanOptions = null, MessageRulesOptions? ruleOptions = null)
         => new(Monitor(new MailQueueOptions { MailDir = _tempDir }),
                Monitor(scanOptions ?? new MalwareScanOptions()),
+               Monitor(ruleOptions ?? new MessageRulesOptions()),
                NullLogger<BlockedMessageRecorder>.Instance);
 
     private string BlockedDir => Path.Combine(_tempDir, "blocked");
     private string QueueDir => Path.Combine(_tempDir, "queue");
+
+    /// <summary>
+    /// Rule engine for the store. Defaults to switched off, so every pre-existing test keeps
+    /// exercising the unmodified path exactly as before.
+    /// </summary>
+    private MessageRuleProcessor CreateRuleProcessor(
+        MessageRulesOptions? ruleOptions = null, SmtpAccessOptions? access = null)
+        => new(Monitor(ruleOptions ?? new MessageRulesOptions()),
+               Monitor(new SmtpOptions()),
+               Monitor(access ?? new SmtpAccessOptions()),
+               NullLogger<MessageRuleProcessor>.Instance);
 
     private SmtpMessageStore CreateStore(
         IMetricsService? metrics = null,
         ILogger<SmtpMessageStore>? logger = null,
         IMailContentScanner? scanner = null,
         MalwareScanOptions? scanOptions = null,
-        IAdminNotificationService? notifications = null)
+        IAdminNotificationService? notifications = null,
+        MessageRulesOptions? ruleOptions = null,
+        SmtpAccessOptions? access = null)
     {
         var queue = new MailQueueWriter(
             Monitor(new MailQueueOptions { MailDir = _tempDir }),
@@ -99,12 +122,13 @@ public sealed class SmtpMessageStoreTests : IDisposable
         return new SmtpMessageStore(
             queue,
             ipBlocking,
-            Monitor(new SmtpAccessOptions()),
+            Monitor(access ?? new SmtpAccessOptions()),
             metrics ?? Substitute.For<IMetricsService>(),
             scanner ?? NoScanner,
             Monitor(scanOptions),
-            CreateRecorder(scanOptions),
+            CreateRecorder(scanOptions, ruleOptions),
             notifications ?? Substitute.For<IAdminNotificationService>(),
+            CreateRuleProcessor(ruleOptions, access),
             logger ?? NullLogger<SmtpMessageStore>.Instance);
     }
 
@@ -194,6 +218,7 @@ public sealed class SmtpMessageStoreTests : IDisposable
             queue, ipBlocking, Monitor(new SmtpAccessOptions()),
             Substitute.For<IMetricsService>(), NoScanner, Monitor(new MalwareScanOptions()),
             CreateRecorder(), Substitute.For<IAdminNotificationService>(),
+            CreateRuleProcessor(),
             NullLogger<SmtpMessageStore>.Instance);
         var (context, transaction, buffer) = CreateSaveArgs();
 
@@ -683,5 +708,256 @@ public sealed class SmtpMessageStoreTests : IDisposable
 
         scanner.ScanCount.Should().Be(1, "an unauthenticated session can never match a user bypass");
         ((int)response.ReplyCode).Should().Be(554);
+    }
+
+    // =========================================================================
+    // Message rules
+    // =========================================================================
+
+    private static MessageRulesOptions RuleSet(params MessageRule[] rules)
+        => new() { Enabled = true, Rules = [.. rules] };
+
+    private static MessageRule EnforcingRule(string name, params RuleAction[] actions)
+        => new() { Name = name, Mode = MessageRuleMode.Enforce, Actions = [.. actions] };
+
+    private MailMetadata ReadQueuedMeta()
+    {
+        var path = Directory.GetFiles(QueueDir, "*.meta.json").Should().ContainSingle().Subject;
+        return System.Text.Json.JsonSerializer.Deserialize(
+            File.ReadAllText(path), MailMetadataJsonContext.Default.MailMetadata)!;
+    }
+
+    private string ReadQueuedEml()
+        => File.ReadAllText(Directory.GetFiles(QueueDir, "*.eml").Should().ContainSingle().Subject);
+
+    [Fact]
+    public async Task SaveAsync_RulesDisabled_QueuesTheMessageUnchanged()
+    {
+        var sut = CreateStore();
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        var response = await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        response.ReplyCode.Should().Be(SmtpReplyCode.Ok);
+        ReadQueuedEml().Should().Contain("Subject: Test");
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuleRejects_ReturnsTheConfiguredCodeAndQueuesNothing()
+    {
+        var sut = CreateStore(ruleOptions: RuleSet(EnforcingRule("block",
+            new RuleAction { Type = RuleActionType.Reject, SmtpCode = 554, Value = "Not accepted" })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        var response = await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        ((int)response.ReplyCode).Should().Be(554);
+        Directory.GetFiles(QueueDir, "*.eml").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuleRejects_CountsARuleRejection()
+    {
+        var metrics = Substitute.For<IMetricsService>();
+        var sut = CreateStore(metrics: metrics, ruleOptions: RuleSet(EnforcingRule("block",
+            new RuleAction { Type = RuleActionType.Reject })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        await metrics.Received(1).RecordRejectionAsync(
+            RejectionReasons.RuleRejected, Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuleDiscards_Returns250AndQueuesNothing()
+    {
+        // The client is told the message was accepted, so the record under the blocked folder is
+        // the only trace that it ever existed.
+        var sut = CreateStore(ruleOptions: RuleSet(EnforcingRule("sink",
+            new RuleAction { Type = RuleActionType.Discard })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        var response = await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        response.ReplyCode.Should().Be(SmtpReplyCode.Ok);
+        Directory.GetFiles(QueueDir, "*.eml").Should().BeEmpty();
+
+        var record = Directory.GetFiles(BlockedDir, "*.meta.json").Should().ContainSingle().Subject;
+        var json = File.ReadAllText(record);
+        json.Should().Contain(BlockedMessageSources.MessageRule).And.Contain("sink");
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuleDiscards_StoresTheMessageOnlyWhenAskedTo()
+    {
+        var sut = CreateStore(ruleOptions: RuleSet(EnforcingRule("sink",
+            new RuleAction { Type = RuleActionType.Discard })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        Directory.GetFiles(BlockedDir, "*.eml").Should().BeEmpty(
+            "storing every discarded message is a deliberate choice, not a default");
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuleDiscards_WithStorageEnabled_KeepsTheMessage()
+    {
+        var options = new MessageRulesOptions
+        {
+            Enabled = true,
+            StoreDiscardedMessages = true,
+            Rules = [EnforcingRule("sink", new RuleAction { Type = RuleActionType.Discard })],
+        };
+        var sut = CreateStore(ruleOptions: options);
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        Directory.GetFiles(BlockedDir, "*.eml").Should().ContainSingle(
+            "a silent drop is otherwise impossible to debug");
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuleDiscards_DoesNotCountAsReceived()
+    {
+        // Consistent with the malware-Enforce path, which also returns before the received
+        // metric. A discarded message never entered the relay's mail flow.
+        var metrics = Substitute.For<IMetricsService>();
+        var sut = CreateStore(metrics: metrics, ruleOptions: RuleSet(EnforcingRule("sink",
+            new RuleAction { Type = RuleActionType.Discard })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        await metrics.DidNotReceive().RecordEmailReceivedAsync(
+            Arg.Any<ReceivedEmailEvent>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuleModifiesSubject_QueuesTheModifiedMessage()
+    {
+        var sut = CreateStore(ruleOptions: RuleSet(EnforcingRule("tag",
+            new RuleAction { Type = RuleActionType.PrefixSubject, Value = "[EXTERNAL] " })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        ReadQueuedEml().Should().Contain("[EXTERNAL] Test");
+        ReadQueuedMeta().Subject.Should().Be("[EXTERNAL] Test");
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuleAddsBccRecipient_QueuesTheNewEnvelope()
+    {
+        // The envelope is what decides delivery — the meta file has to carry the added address,
+        // and the message must not.
+        var sut = CreateStore(ruleOptions: RuleSet(EnforcingRule("archive",
+            new RuleAction
+            {
+                Type = RuleActionType.AddRecipient,
+                Recipient = RecipientKind.Bcc,
+                Value = "archive@example.com",
+            })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        ReadQueuedMeta().To.Should().BeEquivalentTo(["rcpt@example.com", "archive@example.com"]);
+        ReadQueuedEml().Should().NotContain("archive@example.com");
+    }
+
+    [Fact]
+    public async Task SaveAsync_RuleRemovesEveryRecipient_DiscardsRatherThanQueues()
+    {
+        var sut = CreateStore(ruleOptions: RuleSet(EnforcingRule("drop",
+            new RuleAction { Type = RuleActionType.RemoveRecipient, Match = "@example.com" })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        var response = await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        response.ReplyCode.Should().Be(SmtpReplyCode.Ok);
+        Directory.GetFiles(QueueDir, "*.eml").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SaveAsync_AuditRule_QueuesTheMessageUnchanged()
+    {
+        var options = new MessageRulesOptions
+        {
+            Enabled = true,
+            Rules =
+            [
+                new MessageRule
+                {
+                    Name = "watch",
+                    Mode = MessageRuleMode.Audit,
+                    Actions = [new RuleAction { Type = RuleActionType.PrefixSubject, Value = "[TAG] " }],
+                },
+            ],
+        };
+        var sut = CreateStore(ruleOptions: options);
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        ReadQueuedMeta().Subject.Should().Be("Test");
+    }
+
+    [Fact]
+    public async Task SaveAsync_MatchedRule_IsCounted()
+    {
+        var metrics = Substitute.For<IMetricsService>();
+        var sut = CreateStore(metrics: metrics, ruleOptions: RuleSet(EnforcingRule("tag",
+            new RuleAction { Type = RuleActionType.PrefixSubject, Value = "[T] " })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        await metrics.Received(1).RecordRuleHitAsync(
+            "tag", "Enforce", RuleOutcomes.Modified, Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SaveAsync_RulesRunAfterTheMalwareScan()
+    {
+        // Regression guard for an antivirus bypass: if a rule that strips attachments ran first,
+        // it would delete the very part the scan is meant to detect and record. The scanner must
+        // always see the message exactly as the client sent it.
+        var scanner = new FakeScanner(ScanResult.Clean());
+        var sut = CreateStore(
+            scanner: scanner,
+            scanOptions: new MalwareScanOptions { Mode = MalwareScanMode.Enforce },
+            ruleOptions: RuleSet(EnforcingRule("tag",
+                new RuleAction { Type = RuleActionType.PrefixSubject, Value = "[T] " })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        scanner.LastScanned.Should().Contain("Subject: Test")
+            .And.NotContain("[T] ", "the scan happened before any rule touched the message");
+        ReadQueuedMeta().Subject.Should().Be("[T] Test", "the rule still ran, just afterwards");
+    }
+
+    [Fact]
+    public async Task SaveAsync_MalwareRejection_PreventsRulesFromRunning()
+    {
+        // A malware verdict outranks a policy verdict — that path already writes evidence and
+        // notifies, and there is nothing left to manipulate.
+        var metrics = Substitute.For<IMetricsService>();
+        var sut = CreateStore(
+            metrics: metrics,
+            scanner: new FakeScanner(MalwareInAttachment()),
+            scanOptions: new MalwareScanOptions { Mode = MalwareScanMode.Enforce },
+            ruleOptions: RuleSet(EnforcingRule("tag",
+                new RuleAction { Type = RuleActionType.PrefixSubject, Value = "[T] " })));
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        var response = await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        ((int)response.ReplyCode).Should().Be(554);
+        await metrics.DidNotReceive().RecordRuleHitAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 }

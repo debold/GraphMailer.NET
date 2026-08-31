@@ -1004,4 +1004,231 @@ public sealed class ConfigSchemaBindingTests : IDisposable
         LoadServiceConfig()["AdminNotifications:NotificationTypes:MalwareScanFailure:Enabled"]
             .Should().Be("False");
     }
+
+    // =========================================================================
+    // MessageRules
+    // =========================================================================
+
+    [Fact]
+    public void Save_MessageRules_ScalarsBindToMessageRulesOptions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            MessageRules = new()
+            {
+                Enabled = true,
+                MaxBodyScanBytes = 2048,
+                RegexTimeoutMs = 250,
+                StoreDiscardedMessages = true,
+                DiscardRecordRetentionDays = 30,
+            },
+        });
+
+        var opts = Bind<MessageRulesOptions>(LoadServiceConfig(), MessageRulesOptions.SectionName);
+
+        opts.Enabled.Should().BeTrue();
+        opts.MaxBodyScanBytes.Should().Be(2048);
+        opts.RegexTimeoutMs.Should().Be(250);
+        opts.StoreDiscardedMessages.Should().BeTrue();
+        opts.DiscardRecordRetentionDays.Should().Be(30);
+    }
+
+    [Fact]
+    public void Save_MessageRules_RuleBindsWithConditionsAndActions()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            MessageRules = new()
+            {
+                Enabled = true,
+                Rules =
+                [
+                    new ConfigDocument.MessageRuleEntry
+                    {
+                        Name = "External disclaimer",
+                        Mode = "Enforce",
+                        Match = "Any",
+                        StopProcessing = true,
+                        Conditions =
+                        [
+                            new() { Field = "EnvelopeRecipient", Operator = "DomainIs", Value = "@partner.test", Negate = true },
+                            new() { Field = "Header", Operator = "Exists", HeaderName = "X-Internal" },
+                        ],
+                        Actions =
+                        [
+                            new() { Type = "PrependBody", Value = "EXTERNAL", Html = "<b>EXTERNAL</b>" },
+                            new() { Type = "AddRecipient", Recipient = "Bcc", Value = "archive@example.com" },
+                            new() { Type = "Reject", SmtpCode = 554, Value = "no" },
+                        ],
+                    },
+                ],
+            },
+        });
+
+        var rule = Bind<MessageRulesOptions>(LoadServiceConfig(), MessageRulesOptions.SectionName)
+            .Rules.Should().ContainSingle().Subject;
+
+        rule.Name.Should().Be("External disclaimer");
+        rule.Mode.Should().Be(MessageRuleMode.Enforce);
+        rule.Match.Should().Be(ConditionMatch.Any);
+        rule.StopProcessing.Should().BeTrue();
+
+        rule.Conditions.Should().HaveCount(2);
+        rule.Conditions[0].Field.Should().Be(RuleConditionField.EnvelopeRecipient);
+        rule.Conditions[0].Operator.Should().Be(RuleConditionOperator.DomainIs);
+        rule.Conditions[0].Negate.Should().BeTrue();
+        rule.Conditions[1].HeaderName.Should().Be("X-Internal");
+
+        rule.Actions.Should().HaveCount(3);
+        rule.Actions[0].Type.Should().Be(RuleActionType.PrependBody);
+        rule.Actions[0].Html.Should().Be("<b>EXTERNAL</b>");
+        rule.Actions[1].Recipient.Should().Be(RecipientKind.Bcc);
+        rule.Actions[2].SmtpCode.Should().Be(554);
+    }
+
+    [Fact]
+    public void Save_MessageRules_PreservesRuleOrderThroughBinding()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            MessageRules = new()
+            {
+                Rules =
+                [
+                    new() { Name = "zeta", Actions = [new() { Type = "Discard" }] },
+                    new() { Name = "alpha", Actions = [new() { Type = "Discard" }] },
+                    new() { Name = "mid", Actions = [new() { Type = "Discard" }] },
+                ],
+            },
+        });
+
+        Bind<MessageRulesOptions>(LoadServiceConfig(), MessageRulesOptions.SectionName)
+            .Rules.Select(r => r.Name).Should().Equal("zeta", "alpha", "mid");
+    }
+
+    [Fact]
+    public void Save_MessageRules_EmptyRuleList_BindsToAnEmptyList()
+    {
+        // The array-merge guard: a default rule in appsettings.json would leak into a shorter
+        // user list by index, because IConfiguration merges arrays element by element.
+        _sut.Save(new ConfigDocument { MessageRules = new() { Enabled = true } });
+
+        Bind<MessageRulesOptions>(LoadServiceConfig(), MessageRulesOptions.SectionName)
+            .Rules.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Save_MessageRules_WritesOnlyThePropertiesAnActionUses()
+    {
+        // RuleAction is one wide class; writing every null would make the file unreadable and
+        // would suggest an action carries values it never looks at.
+        _sut.Save(new ConfigDocument
+        {
+            MessageRules = new()
+            {
+                Rules =
+                [
+                    new()
+                    {
+                        Name = "r",
+                        Actions =
+                        [
+                            new() { Type = "PrefixSubject", Value = "[TAG] ", HeaderName = "X-Ignored", SmtpCode = 550 },
+                        ],
+                    },
+                ],
+            },
+        });
+
+        var config = LoadServiceConfig();
+        config["MessageRules:Rules:0:Actions:0:Value"].Should().Be("[TAG] ");
+        config["MessageRules:Rules:0:Actions:0:HeaderName"].Should().BeNull("PrefixSubject has no header name");
+        config["MessageRules:Rules:0:Actions:0:SmtpCode"].Should().BeNull("PrefixSubject has no reply code");
+    }
+
+    [Fact]
+    public void Save_MessageRules_SubjectPrefixKeepsItsTrailingSpace()
+    {
+        // The reported defect: a prefix of "[EXTERNAL] " trimmed on the way to disk produces
+        // "[EXTERNAL]Quarterly report" at the recipient. The space is part of the text.
+        _sut.Save(new ConfigDocument
+        {
+            MessageRules = new()
+            {
+                Rules =
+                [
+                    new()
+                    {
+                        Name = "tag",
+                        Actions = [new() { Type = "PrefixSubject", Value = "[EXTERNAL] " }],
+                    },
+                ],
+            },
+        });
+
+        LoadServiceConfig()["MessageRules:Rules:0:Actions:0:Value"].Should().Be("[EXTERNAL] ");
+
+        _sut.Load().MessageRules.Rules[0].Actions[0].Value.Should().Be("[EXTERNAL] ");
+
+        Bind<MessageRulesOptions>(LoadServiceConfig(), MessageRulesOptions.SectionName)
+            .Rules[0].Actions[0].Value.Should().Be("[EXTERNAL] ");
+    }
+
+    [Fact]
+    public void Save_MessageRules_BodyTextKeepsItsWhitespace()
+    {
+        _sut.Save(new ConfigDocument
+        {
+            MessageRules = new()
+            {
+                Rules =
+                [
+                    new()
+                    {
+                        Name = "disclaimer",
+                        Actions = [new() { Type = "AppendBody", Value = "\n\n  -- sent via the relay\n" }],
+                    },
+                ],
+            },
+        });
+
+        _sut.Load().MessageRules.Rules[0].Actions[0].Value
+            .Should().Be("\n\n  -- sent via the relay\n", "indentation and blank lines carry the layout");
+    }
+
+    [Fact]
+    public void Save_MessageRules_RoundTripsThroughLoad()
+    {
+        var original = new ConfigDocument
+        {
+            MessageRules = new()
+            {
+                Enabled = true,
+                Rules =
+                [
+                    new()
+                    {
+                        Name = "round trip",
+                        Mode = "Enforce",
+                        Match = "Any",
+                        Description = "keeps its shape",
+                        Conditions = [new() { Field = "Subject", Operator = "Contains", Value = "x", Negate = true }],
+                        Actions = [new() { Type = "SetHeader", HeaderName = "X-Tag", Value = "y" }],
+                    },
+                ],
+            },
+        };
+
+        _sut.Save(original);
+        var reloaded = _sut.Load().MessageRules;
+
+        reloaded.Enabled.Should().BeTrue();
+        var rule = reloaded.Rules.Should().ContainSingle().Subject;
+        rule.Name.Should().Be("round trip");
+        rule.Mode.Should().Be("Enforce");
+        rule.Match.Should().Be("Any");
+        rule.Description.Should().Be("keeps its shape");
+        rule.Conditions.Should().ContainSingle().Which.Negate.Should().BeTrue();
+        rule.Actions.Should().ContainSingle().Which.HeaderName.Should().Be("X-Tag");
+    }
 }

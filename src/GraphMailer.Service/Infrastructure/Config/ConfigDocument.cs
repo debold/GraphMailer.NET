@@ -25,6 +25,7 @@ internal sealed class ConfigDocument
     public NdrSection Ndr { get; set; } = new();
     public SenderValidationSection SenderValidation { get; set; } = new();
     public MalwareScanSection MalwareScan { get; set; } = new();
+    public MessageRulesSection MessageRules { get; set; } = new();
     public LoggingSection Logging { get; set; } = new();
     public BackupSection Backup { get; set; } = new();
     public RecommendationsSection Recommendations { get; set; } = new();
@@ -233,6 +234,60 @@ internal sealed class ConfigDocument
         /// source exempt" is exactly what nobody remembers a year later.
         /// </summary>
         public Dictionary<string, string> BypassIpComments { get; set; } = new();
+    }
+
+    /// <summary>One condition of a rule; mirrors <c>Configuration.RuleCondition</c>.</summary>
+    internal sealed class RuleConditionEntry
+    {
+        /// <summary>Enum token, e.g. "EnvelopeRecipient". Kept as a string so an unknown value
+        /// from a newer build survives a round-trip instead of being silently reset.</summary>
+        public string Field { get; set; } = "Subject";
+        public string Operator { get; set; } = "Contains";
+        public string Value { get; set; } = string.Empty;
+        public string? HeaderName { get; set; }
+        public bool Negate { get; set; }
+        public bool CaseSensitive { get; set; }
+    }
+
+    /// <summary>One action of a rule; mirrors <c>Configuration.RuleAction</c>.</summary>
+    internal sealed class RuleActionEntry
+    {
+        public string Type { get; set; } = "PrefixSubject";
+        public string? Value { get; set; }
+        public string? Html { get; set; }
+        public string? HeaderName { get; set; }
+        public string? Recipient { get; set; }
+        public string? Match { get; set; }
+        public string? AttachmentMatch { get; set; }
+        public int? SmtpCode { get; set; }
+    }
+
+    /// <summary>One rule; mirrors <c>Configuration.MessageRule</c>. List order is rule order.</summary>
+    internal sealed class MessageRuleEntry
+    {
+        public bool Enabled { get; set; } = true;
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        /// <summary>"Audit" or "Enforce". Audit is the default — see MessageRule.Mode.</summary>
+        public string Mode { get; set; } = "Audit";
+        /// <summary>"All" or "Any".</summary>
+        public string Match { get; set; } = "All";
+        public bool StopProcessing { get; set; }
+        public List<RuleConditionEntry> Conditions { get; set; } = [];
+        public List<RuleActionEntry> Actions { get; set; } = [];
+    }
+
+    internal sealed class MessageRulesSection
+    {
+        /// <summary>Off by default so an upgrade never starts rewriting mail — see MessageRulesOptions.</summary>
+        public bool Enabled { get; set; }
+        public long MaxBodyScanBytes { get; set; } = 1_048_576;
+        public int RegexTimeoutMs { get; set; } = 100;
+        public bool StoreDiscardedMessages { get; set; }
+        public int DiscardRecordRetentionDays { get; set; } = 60;
+
+        /// <summary>Ordered. The list order <i>is</i> the evaluation order.</summary>
+        public List<MessageRuleEntry> Rules { get; set; } = [];
     }
 
     internal sealed class BackupSection

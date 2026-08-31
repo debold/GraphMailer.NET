@@ -704,4 +704,52 @@
                 </Setter>
         </Style>
 
+
+        <!-- ── Flat tab strip, shared by the statistics page and the rule tester ── -->
+                <Style x:Key="FlatTabItem"
+                       TargetType="TabItem">
+                        <Setter Property="Template">
+                                <Setter.Value>
+                                        <ControlTemplate TargetType="TabItem">
+                                                <Border x:Name="Bd"
+                                                        Background="Transparent"
+                                                        BorderThickness="0,0,0,2.5"
+                                                        BorderBrush="Transparent"
+                                                        Padding="16,8,16,9"
+                                                        Margin="0,0,2,0">
+                                                        <TextBlock x:Name="Txt"
+                                                                   Text="{TemplateBinding Header}"
+                                                                   FontSize="13.5"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsSelected"
+                                                                 Value="True">
+                                                                <Setter TargetName="Bd"
+                                                                        Property="BorderBrush"
+                                                                        Value="{StaticResource AccentBrush}"/>
+                                                                <Setter TargetName="Txt"
+                                                                        Property="Foreground"
+                                                                        Value="{StaticResource AccentBrush}"/>
+                                                                <Setter TargetName="Txt"
+                                                                        Property="FontWeight"
+                                                                        Value="SemiBold"/>
+                                                        </Trigger>
+                                                        <MultiTrigger>
+                                                                <MultiTrigger.Conditions>
+                                                                        <Condition Property="IsMouseOver"
+                                                                                   Value="True"/>
+                                                                        <Condition Property="IsSelected"
+                                                                                   Value="False"/>
+                                                                </MultiTrigger.Conditions>
+                                                                <Setter TargetName="Txt"
+                                                                        Property="Foreground"
+                                                                        Value="{StaticResource TextBrush}"/>
+                                                        </MultiTrigger>
+                                                </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                </Setter.Value>
+                        </Setter>
+                </Style>
+
 </ResourceDictionary>

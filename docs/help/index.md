@@ -25,6 +25,7 @@ One page per screen in the ConfigTool, in the same order as the app's sidebar:
 - [Access Control](configuration/access-control.md) — SMTP users and authentication
 - [IP Filtering](configuration/ip-filtering.md) — allowed networks and automatic blocking
 - [Malware Scan](configuration/malware-scan.md) — AMSI scanning of incoming mail, false-positive handling
+- [Message Rules](configuration/message-rules.md) — rules that change or refuse incoming mail
 - [Graph API](configuration/graph-api.md) — Microsoft 365 connection and certificate
 - [Mail Queue](configuration/mail-queue.md) — delivery, retries, archiving
 - [Monitoring](configuration/monitoring.md) — self-check thresholds, metrics recording, log level
