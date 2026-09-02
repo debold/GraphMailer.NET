@@ -138,8 +138,18 @@ internal sealed class GraphApiMonitoringService : BackgroundService
             ("Mail.Send", "mail delivery"),
             ("Mail.ReadWrite", "attachments ≥ 3 MB"),
         };
-        if (_senderValidation.CurrentValue.Enabled)
+        var senderValidation = _senderValidation.CurrentValue;
+        if (senderValidation.Enabled)
+        {
             required.Add(("User.Read.All", "sender validation"));
+
+            // Needed whenever validation runs, not only for the opt-in below: the tenant's mail
+            // domains decide which of a mailbox's synced addresses can actually send.
+            required.Add(("Domain.Read.All", "recognising the tenant's mail domains"));
+
+            if (senderValidation.AcceptMailboxlessSenders)
+                required.Add(("Group.Read.All", "groups as senders"));
+        }
 
         var missing = required
             .Where(r => !granted.Contains(r.Role, StringComparer.OrdinalIgnoreCase))

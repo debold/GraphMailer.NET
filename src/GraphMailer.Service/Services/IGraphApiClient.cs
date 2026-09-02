@@ -7,7 +7,11 @@ internal sealed record GraphInlineImage(string ContentId, string ContentType, by
 /// <param name="Variant">"sendMail" (single request) or "draftUpload" (draft + upload session).</param>
 /// <param name="AttachmentCount">Total attachments (small + large).</param>
 /// <param name="AttachmentBytes">Total attachment payload bytes (decoded).</param>
-internal sealed record GraphDeliveryResult(string Variant, int AttachmentCount, long AttachmentBytes)
+/// <param name="Relayed">
+/// True when the message went out through the relay mailbox because the sender has no
+/// mailbox of its own (distribution group, mail-enabled public folder, mail user).
+/// </param>
+internal sealed record GraphDeliveryResult(string Variant, int AttachmentCount, long AttachmentBytes, bool Relayed = false)
 {
     public const string VariantSendMail = "sendMail";
     public const string VariantDraftUpload = "draftUpload";
@@ -30,9 +34,21 @@ internal interface IGraphApiClient
     /// <param name="saveToSentItems">Keep a copy in the sender's Sent Items folder. <see langword="true"/> for
     /// mail relayed from an SMTP client (the sender expects to find it there), <see langword="false"/> for
     /// service-generated mail (NDRs, admin notifications) that would only clutter the mailbox.</param>
+    /// <param name="relayMailbox">
+    /// Mailbox to retry through when <paramref name="senderAddress"/> turns out to have no Exchange
+    /// Online mailbox — the case for distribution groups, mail-enabled public folders and mail users.
+    /// The retry keeps the original From, which Exchange authorises via the relay mailbox's SendAs
+    /// permission. <see langword="null"/> disables the fallback.
+    /// </param>
+    /// <param name="sendingAsRelay">
+    /// <see langword="true"/> when <paramref name="senderAddress"/> is already the relay mailbox
+    /// because the router recognised the sender as one without a mailbox of its own. There is then
+    /// no fallback left to try, so a SendAs rejection can only mean the missing Exchange
+    /// permission and is reported as such instead of being mistaken for a header problem.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Delivery statistics (variant, attachment counts) for the metrics store.</returns>
-    Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, bool saveToSentItems, CancellationToken ct = default);
+    Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, bool saveToSentItems, string? relayMailbox = null, bool sendingAsRelay = false, CancellationToken ct = default);
 
     /// <summary>
     /// Sends an HTML notification email (admin notifications, the periodic operations report)

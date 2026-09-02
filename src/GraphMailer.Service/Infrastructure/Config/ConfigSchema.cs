@@ -17,7 +17,7 @@ namespace GraphMailer.Service.Infrastructure.Config;
 internal static class ConfigSchema
 {
     /// <summary>Config schema version understood by this build.</summary>
-    internal const int Current = 11;
+    internal const int Current = 12;
 
     internal const string VersionKey = "SchemaVersion";
 
@@ -46,7 +46,8 @@ internal static class ConfigSchema
         if (from < 9) MigrateTo9(root);
         if (from < 10) MigrateTo10(root);
         if (from < 11) MigrateTo11(root);
-        // if (from < 12) MigrateTo12(root);   // future steps go here, in order
+        if (from < 12) MigrateTo12(root);
+        // if (from < 13) MigrateTo13(root);   // future steps go here, in order
 
         root[VersionKey] = Current;
         return true;
@@ -230,6 +231,18 @@ internal static class ConfigSchema
     /// policy the operator never configured. The version bump records which shape wrote the file.
     /// </summary>
     private static void MigrateTo11(JsonObject root)
+    {
+        // Intentionally empty: purely additive schema change.
+        _ = root;
+    }
+
+    /// <summary>
+    /// v11 → v12: adds the <c>SenderRouting</c> section (sending as distribution groups,
+    /// mail-enabled public folders and mail users through a relay mailbox) plus the two new
+    /// <c>SenderValidation</c> flags. Purely additive — every new key defaults to the previous
+    /// behaviour, so an existing installation keeps working unchanged until the operator opts in.
+    /// </summary>
+    private static void MigrateTo12(JsonObject root)
     {
         // Intentionally empty: purely additive schema change.
         _ = root;

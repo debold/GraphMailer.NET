@@ -48,7 +48,7 @@ internal static class SetupSteps
         "Generate self-signed certificate",
         "Create app registration",
         "Create service principal",
-        "Grant Graph permissions (Mail.Send, Mail.ReadWrite, User.Read.All)",
+        "Grant Graph permissions (Mail.Send, Mail.ReadWrite, User/Group/Domain.Read.All)",
         "Apply configuration",
     ];
 }
@@ -93,11 +93,22 @@ internal static class EntraSetupService
     // User.Read.All (application) — required by the optional tenant sender validation
     private const string UserReadAllRoleId = "df021288-bdef-4463-88db-98f22de89214";
 
+    // Group.Read.All (application) — sender validation with SenderValidation.AcceptMailboxlessSenders,
+    // so distribution groups are accepted as senders.
+    private const string GroupReadAllRoleId = "5b567255-7703-4780-807c-7be8301ae99b";
+    // Domain.Read.All (application) — the verified tenant mail domains, which decide whether a
+    // mail-enabled public folder or dynamic distribution group is accepted as a sender.
+    private const string DomainReadAllRoleId = "dbb9058a-0e50-45d7-ae91-66909b5d4664";
+
+    // Granted together so the matching ConfigTool option works without a second trip to the Entra
+    // portal. Both directory-read roles stay unused until that option is switched on.
     private static readonly (string RoleId, string Name)[] RequiredAppRoles =
     [
         (MailSendRoleId, "Mail.Send"),
         (MailReadWriteRoleId, "Mail.ReadWrite"),
         (UserReadAllRoleId, "User.Read.All"),
+        (GroupReadAllRoleId, "Group.Read.All"),
+        (DomainReadAllRoleId, "Domain.Read.All"),
     ];
     internal const int SignInTimeoutMinutes = 3;
     internal const int CertExpiryWarningDays = 30;

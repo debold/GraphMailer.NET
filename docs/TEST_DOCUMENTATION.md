@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1766 tests** (1680 unit · 86 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-09-02
+**Total: 1931 tests** (1841 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-09-02
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -63,9 +63,6 @@
 | `SecondInstance_HolderReleasesWithinTheWait_BecomesPrimary` | Holder releases 300 ms into a 10 s wait | Primary — the restart case: the outgoing process holds the lock past the point where Windows reports the service stopped, and without the wait that start is silently lost |
 
 ---
-
-### IpBlockingService (`Infrastructure/Security/IpBlockingServiceTests.cs`)
-
 
 ### IpBlockingService (`Infrastructure/Security/IpBlockingServiceTests.cs`)
 
@@ -720,6 +717,8 @@ Backs the ConfigTool's **Test scanner** button. The vector now lives in `AmsiSel
 | `ProcessMessage_EmlMissing_SendsNdrAndNotifiesAdmin` | Meta readable, `.eml` missing | Admin notification AND NDR to the known sender |
 | `ProcessBatch_DeliversMessagesInArrivalOrder_NotFilenameOrder` | "zzz" queued before "aaa" (creation times set) | Delivered in arrival order (FIFO), not GUID-filename order |
 | `ProcessMessage_RelayedMail_IsSavedToSentItems` | Ordinary queued message (`IsNotification = false`) | `SendAsync` called with `saveToSentItems: true` — the sender finds the mail in their Exchange Online "Sent Items" |
+| `ProcessMessage_RelayRoute_TellsTheGraphClientItIsAlreadyRelaying` | Router returns a relay route | The relay flag reaches the Graph client — regression: without it a SendAs rejection was mistaken for a header problem and the Error naming the permission never appeared |
+| `ProcessMessage_DirectRoute_DoesNotClaimToBeRelaying` | Ordinary passthrough route | Flag stays false, so a rejected `Sender` header still degrades instead of being reported as a missing permission |
 | `ProcessMessage_NotificationMail_IsNotSavedToSentItems` | Queued message with `IsNotification = true` (NDR / admin notification) | `SendAsync` called with `saveToSentItems: false` — service mail must not clutter the mailbox |
 | `CleanupFailedEmails_ExpiredFile_DeletesBothFiles` | `mtime` older than `FailedEmailRetentionDays` | `.eml` + `.meta.json` deleted from `mail/failed/` |
 | `CleanupFailedEmails_FileWithinRetention_IsKept` | `mtime` within retention window | File remains in `mail/failed/` |
@@ -774,6 +773,37 @@ Backs the ConfigTool's **Test scanner** button. The vector now lives in `AmsiSel
 | `CollectAttachments_MultipleUnnamedParts_GetDistinctNames` | Two unnamed `application/octet-stream` attachments | Distinct names — two attachments must not look like one |
 | `FallbackFileName_KnownMediaType_GetsMatchingExtension` | `text/calendar`, `image/png` | `invite-1.ics`, `attachment-2.png` |
 | `CollectAttachments_SecondTextPartInMixed_IsAttachedNotDropped` | Two unnamed text/plain parts in multipart/mixed (digest-style) | First becomes the body, second becomes an attachment — content outside multipart/alternative is never discarded |
+| `IsMailboxUnavailable_SenderHasNoMailbox_ReturnsTrue` (Theory) | `MailboxNotEnabledForRESTAPI`, `ErrorInvalidUser`, `ErrorNonExistentMailbox`, `ResourceNotFound`, `Request_ResourceNotFound`, bare HTTP 404, lowercased code | `true` — the sender is a valid recipient without a mailbox, so the message is retried through the relay mailbox |
+| `IsMailboxUnavailable_OtherRejections_ReturnsFalse` (Theory) | `ErrorSendAsDenied`, `ErrorMessageSizeExceeded`, 429, 500, header rejection | `false` — these are not "no mailbox" and must not trigger a relay |
+| `IsMailboxUnavailable_NoErrorCode_FallsBackToTheHttpStatus` | Null code with 404 / 500 | `true` / `false` |
+| `IsSendAsRejection_SendAsCodes_ReturnsTrue` (Theory) | `ErrorSendAsDenied`, `ErrorInvalidSender`, lowercased | `true` |
+| `IsSendAsRejection_OtherCodes_ReturnsFalse` (Theory) | Header rejection, `ErrorInvalidUser`, `null` | `false` |
+| `IsSendAsRejection_IsASubsetOfTheOptionalPropertyRejections` | Both SendAs codes | Also classified as optional-property rejections — the direct path degrades, the relay path reports a missing Exchange permission |
+| `IsPermanentRejection_SendAsDenied_StaysTransient_SoThePermissionCanStillBeGranted` | HTTP 403 `ErrorSendAsDenied` | `false` — Exchange takes up to an hour to replicate a new SendAs grant |
+
+---
+
+### GraphDirectoryGateway — user mapping (`Services/GraphDirectoryGatewayTests.cs`)
+
+Turning a Graph user object into a directory entry. The guest rule is security-relevant: a B2B
+guest carries its home organisation's address, and letting that through would put a foreign domain
+into the derived mail-domain set — which the MAIL FROM check then treats as one of ours.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `MapUser_Guest_IsDropped` | `userType = "Guest"`, external mail + `#EXT#` UPN | `null` — no mailbox here, and its domain must not reach the derived set |
+| `MapUser_Member_IsKept` | Ordinary member | Mapped |
+| `MapUser_GuestFlag_IsCaseInsensitive` | `userType = "guest"` | `null` |
+| `MapUser_UserTypeAbsent_IsKept` | No `userType` (shared mailboxes, synced accounts) | Mapped — absence must not exclude real senders |
+| `MapUser_FlattensMailAndSmtpProxyAddresses` | mail, `SMTP:`/`smtp:`/`sip:` proxies | Both SMTP addresses, `sip:` ignored |
+| `MapUser_UpnInANonMailDomain_IsNotASenderAddress` | UPN `user1@ad.corp.com`, mail `user1@corp.com` | Only the mail address; the on-prem AD sign-in suffix is no sender address |
+| `MapUser_PrimaryAddressIsMail_NotTheUpn` | Same shape | `PrimaryOrFirstAddress()` reports the mail address |
+| `MapUser_CarriesDisplayNameAndKind` | Ordinary member | Display name kept, `Kind = Mailbox` |
+| `MapUser_WithoutId_IsDropped` | No object id | `null` |
+| `MapUser_NoMailAndNoProxyAddresses_IsDropped` | Admin account / licence placeholder | `null` — not mail-enabled by any measure, so it can never be a sender |
+| `MapUser_MailButNoProxyAddresses_IsKept` | Only `mail` set | Kept |
+| `MapUser_ProxyAddressesButNoMail_IsKept` | Shared/room mailbox shape | Kept, with both proxy addresses |
+| `MapUser_OnlyNonSmtpProxyAddresses_IsDropped` | Only `sip:` / `x500:` proxies | `null` — neither is a mail address |
 
 ---
 
@@ -863,11 +893,147 @@ Backs the ConfigTool's **Test scanner** button. The vector now lives in `AmsiSel
 | `ValidateAsync_UnknownSender_NegativeCached` | Graph confirms address does not exist | `Unknown` twice, second answer from negative cache (1 gateway call) |
 | `ValidateAsync_GraphNotConfigured_Indeterminate_NoGatewayCall` | Graph credentials missing | `Indeterminate` without Graph call |
 | `ValidateAsync_GatewayThrows_Indeterminate_SingleAdminNotification` | Graph throws on two consecutive lookups | `Indeterminate` both times, exactly 1 admin notification per outage |
+| `RefreshAsync_AcceptMailboxlessDisabled_DoesNotQueryGroups` | `AcceptMailboxlessSenders = false` | The group endpoint is never called — no Group.Read.All needed |
+| `RefreshAsync_AcceptMailboxlessEnabled_GroupAddressesValidate` | Group with primary + alias address | Both addresses validate as `Valid` |
+| `RefreshAsync_AcceptMailboxlessEnabled_ReportsGroupCount` | 1 user (2 addresses) + 1 group (2 addresses) | `GroupCount = 1`, `AddressCount = 4` |
+| `TryResolveGraphUserKey_GroupSender_ReturnsFalse` | Address belongs to a mail-enabled group | `false` — a group object id is not a valid sendMail user key |
+| `TryResolveSender_GroupSender_ReportsTheGroupKind` | Same address | `true`, id returned, `Kind = Group` so the caller can relay |
+| `RefreshAsync_AddressOnBothAUserAndAGroup_KeepsTheMailbox` | Same address on a user and a group | The mailbox wins — only it has a usable sendMail user key |
+| `ValidateAsync_UnknownAddress_QueriesGroupsOnlyWhenAcceptMailboxlessIsOn` | On-demand lookup, `AcceptMailboxlessSenders = false` | Group lookup is not attempted |
+| `ValidateAsync_UserMiss_FallsBackToTheGroupLookup` | On-demand lookup misses users, hits groups | `Valid` |
+| `ToDomainSuffixes_AddsTheLeadingAt` | Two verified domains | Stored as `@domain`, so matching is the same exact-domain suffix compare as an allow-list entry |
+| `ToDomainSuffixes_KeepsTheCoexistenceDomain` | `contoso.mail.onmicrosoft.com` | Kept — the domain that matters most in a hybrid tenant, and the one no sign-in name ever carries |
+| `ToDomainSuffixes_IgnoresBlanksAndDeduplicates` | Blank entries and a case variant | One entry |
+| `RefreshAsync_AcceptMailboxlessDisabled_StillQueriesDomains` | Option off | The domains endpoint is called anyway — the list shapes the directory, not just the opt-in |
+| `PruneToMailDomains_DropsAddressesOutsideTheMailDomains` | Mailbox with an on-prem AD address alongside real ones | Only the addresses in tenant mail domains survive |
+| `PruneToMailDomains_SubdomainIsNotTheParentDomain` | `@corp.com` vs. `user1@ad.corp.com` | The subdomain is not matched — same semantics as an `@domain` filter entry |
+| `PruneToMailDomains_RecipientLeftWithNoAddress_IsDropped` | Object whose every address is on-prem | Recipient removed entirely |
+| `PruneToMailDomains_NoDomainsKnown_PrunesNothing` | Empty domain list (missing permission) | Nothing pruned — filtering against an empty list would empty the directory |
+| `PruneToMailDomains_MatchIsCaseInsensitive` | `y@CORP.com` vs. `@corp.com` | Kept |
+| `RefreshAsync_OnPremAddress_IsNotAValidSender` | Sync of that mailbox | Real address `Valid`, on-prem address `Unknown` |
+| `ValidateAsync_OnDemandHitOutsideTheMailDomains_IsNotAccepted` | Graph finds the object by its on-prem proxy address | `Unknown` — the lookup agrees with the sync instead of re-admitting it |
+| `ValidateAsync_OnDemandHit_CachesOnlyTheUsableAddresses` | On-demand hit on a mixed-address mailbox | Only the usable address enters the cache |
+| `RefreshAsync_DomainPermissionMissing_KeepsThePreviousDomainList` | Domains synced once, permission gone on the next sync | List kept and the warning names `Domain.Read.All` — dropping it would start rejecting public-folder senders |
+| `ValidateAsync_UnknownAddressInAVerifiedDomain_ReturnsKnownDomain` | Unknown address at a verified tenant domain | `KnownDomain` — what a mail-enabled public folder looks like |
+| `ValidateAsync_UnknownAddressInAForeignDomain_StaysUnknown` | Unknown address at an external domain | `Unknown` — external spoofing stays blocked |
+| `ValidateAsync_SubdomainOfAVerifiedDomain_StaysUnknown` | `spoof@sub.corp.com` with `corp.com` verified | `Unknown` — exact domain match only |
+| `ValidateAsync_NegativeCachedAddressInAVerifiedDomain_StillReportsKnownDomain` | Second call served from the negative cache | `KnownDomain` again, with only one Graph lookup |
+| `RefreshAsync_GroupPermissionMissing_StillSyncsTheUserDirectory` | `AcceptMailboxlessSenders` on, group call returns 403 | Sync still succeeds and users validate — a missing add-on permission must not take sender validation down |
+| `RefreshAsync_GroupPermissionMissing_ReportsTheMissingPermission` | Same | `Warning` names `Group.Read.All` and points at re-running the Entra setup |
+| `RefreshAsync_GroupPermissionMissing_LogsErrorNamingThePermission` | Same, with `FakeLogger` | `Error` entry containing `Group.Read.All` — the operator's only signal for a grant only they can make |
+| `RefreshAsync_GroupPermissionMissing_KeepsPreviouslyKnownGroups` | Groups synced once, permission gone on the next sync | Known groups are carried over and keep validating |
+| `RefreshAsync_UserPermissionMissing_StillFailsTheWholeSync` | `User.Read.All` denied | `Success = false` — without the user directory there is nothing to validate against |
+| `RefreshAsync_AllPermissionsPresent_ReportsNoWarning` | All three permissions granted | `Warning` is null |
+| `Recipients_ListsEachRecipientOnce_NotOncePerAlias` | Two mailboxes, one with two addresses | 2 rows — the address-keyed cache is collapsed by object identity |
+| `Recipients_IncludesGroupsWithTheirKind` | Users + one group synced | A row with `Kind = Group` |
+| `Recipients_BeforeTheFirstSync_IsEmpty` | Directory never synced | Empty |
 | `ValidateAsync_GraphRecoversAfterOutage_NotifiesAgainOnNextOutage` | Outage → recovery → second outage | 2 notifications total (flag reset on success) |
 | `TryResolveGraphUserKey_Alias_ReturnsObjectId` | Alias of cached user | Returns the Graph object id |
 | `TryResolveGraphUserKey_FeatureDisabled_ReturnsFalse` | Feature toggle off | `false` — send path unchanged |
 | `RefreshAsync_Success_ReportsCounts` | Sync with 2 users / 3 addresses | Result has `Success=true`, counts for the status display |
 | `RefreshAsync_GatewayThrows_ReportsFailureWithError` | Gateway throws | `Success=false`, error message in result |
+
+---
+
+### SenderRouter — which mailbox a message is sent through (`Services/SenderRouterTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Resolve_RoutingDisabled_SendsDirectlyAsEnvelopeSender` | Feature off | Envelope sender used as Graph user key, no relay, no fallback |
+| `Resolve_RoutingDisabled_IgnoresConfiguredRoutes` | Feature off, route configured | Route ignored — the toggle wins |
+| `Resolve_ExplicitRoute_ExactAddress_RelaysThroughConfiguredMailbox` | Route `pf@corp.com` → `pfrelay@corp.com` | Relayed through that mailbox, no further fallback |
+| `Resolve_ExplicitRoute_DomainWildcard_RelaysThroughConfiguredMailbox` | Route `@pf.corp.com` | Any address at that domain is relayed |
+| `Resolve_ExplicitRoute_DoesNotMatchSubdomain` | Route `@corp.com`, sender `spoof@evil.corp.com` | No match — same exact-domain semantics as the allow lists |
+| `Resolve_ExplicitRoute_IncompleteEntry_IsIgnored` | Route with a blank mailbox | Ignored — it has nowhere to send |
+| `Resolve_KnownMailbox_SendsDirectlyAsObjectId` | Address resolves to a tenant mailbox | Direct send with the object id, relay carried as fallback |
+| `Resolve_KnownGroup_IsRelayed_NeverUsesTheGroupObjectId` | Address resolves to a mail-enabled group | Relayed — `/users/{groupId}/sendMail` answers "Group Shard is used in non-Groups URI" |
+| `Resolve_KnownGroup_WithoutRelayMailbox_FallsBackToEnvelopeSender` | Group sender, no relay configured | Previous behaviour, no relay claimed |
+| `Resolve_UnknownSender_CarriesRelayAsFallback` | Unresolved sender | Direct attempt with the relay mailbox as safety net |
+| `MarkMailboxUnavailable_NextResolve_RelaysWithoutTryingDirectlyAgain` | Sender learned to have no mailbox | Next message goes straight to the relay |
+| `MarkMailboxUnavailable_IsCaseInsensitive` | Marked as `PF@corp.com`, resolved as `pf@CORP.com` | Still relayed |
+| `MarkMailboxUnavailable_AfterTtlExpires_SendsDirectlyAgain` | `RelayCacheMinutes = 30`, clock advanced 31 min | Direct attempt again — the sender may have been given a mailbox |
+| `MarkMailboxUnavailable_RoutingDisabled_RemembersNothing` | Feature off | Nothing is learned |
+| `HasExplicitRoute_MatchingRoute_IsTrue` | Route `@pf.corp.com` | `true` for a covered address, `false` otherwise |
+| `HasExplicitRoute_RoutingDisabled_IsFalse` | Feature off, route configured | `false` |
+
+---
+
+### SenderDirectorySyncService — startup config guard (`Services/SenderDirectorySyncServiceTests.cs`)
+
+Guards a combination the ConfigTool prevents but a hand-edited `graphmailer.json` can still hold:
+accepting senders that own no mailbox while no relay mailbox exists to deliver them. Those senders
+pass MAIL FROM and are then bounced by Graph — a delayed NDR where a clean 550 during the SMTP
+session was available. The log is the only place this surfaces.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Warn_AcceptsMailboxlessSendersWithoutARelayMailbox_LogsWarning` | `AcceptMailboxlessSenders` on, routing off | `Warning` naming the option and the missing relay mailbox |
+| `Warn_RoutingOnButMailboxBlank_LogsWarning` | Option on, routing on but the mailbox is blank | `Warning` naming the missing relay mailbox |
+| `Warn_RelayMailboxConfigured_StaysSilent` | Option on, relay mailbox configured | No log entry — the combination is sound |
+| `Warn_OptionNotSet_StaysSilent` | Plain sender validation | No log entry |
+| `Warn_ValidationDisabled_StaysSilent` | Validation off, option on | No log entry — nothing is rejected at MAIL FROM anyway |
+
+---
+
+### SenderDirectorySnapshot (`Services/SenderDirectorySnapshotTests.cs`)
+
+The file the service writes after every sync so the ConfigTool — a separate process — can show
+what was recognised. Informational only: it must never disturb the sync, and a half-written or
+corrupt file has to read back as "nothing yet".
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `From_CarriesKindNameAddressesAndAliases` | Mailbox with one alias | Kind, display name, primary address and both addresses survive |
+| `From_GroupsAreLabelledAsSuch` | A synced group | `Kind == "Group"` |
+| `From_StampsTheGenerationTime` | Fixed clock | Timestamp round-trips |
+| `From_SortsMailboxesBeforeGroupsThenByName` | Mixed, unordered input | Mailboxes first, then groups, each alphabetically — a stable view between syncs |
+| `From_NotTruncated_ForAnOrdinaryTenant` | One recipient | `Truncated == false` |
+| `SaveAndLoad_RoundTripsEveryField` | Mailbox + group written and read back | Every field, including the alias list |
+| `TryLoad_MissingFile_ReturnsNull` | No file | `null` — the viewer shows "no sync yet" |
+| `TryLoad_CorruptFile_ReturnsNullInsteadOfThrowing` | Truncated JSON (mid-write) | `null`, no exception |
+| `Save_CreatesTheDirectoryWhenMissing` | Nested target path | File written |
+| `From_CarriesTheDerivedMailDomains_Sorted` | Two domains, unordered | Carried, alphabetically — a stable view between syncs |
+| `SaveAndLoad_RoundTripsTheDomains` | Snapshot with two domains | Both come back |
+| `From_NoDomains_LeavesTheListEmptyRatherThanNull` | No domains | Empty list, not null |
+
+---
+
+### Service control exit codes — ConfigTool (`ConfigTool/ServiceControlExitCodeTests.cs`)
+
+Which `sc.exe` exit codes count as "the command did what we wanted". The Restart button used to
+discard these entirely and always report success, so a service that stopped and never came back
+looked fine in the UI.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `IsStopAccepted_Success` | Exit 0 | Accepted |
+| `IsStopAccepted_AlreadyStopped_IsFine` | 1062 `ERROR_SERVICE_NOT_ACTIVE` | Accepted — restarting a service that was already down is no error |
+| `IsStopAccepted_RealFailures_AreRejected` (Theory) | Access denied, no such service, marked for deletion | Rejected |
+| `IsStartAccepted_Success` | Exit 0 | Accepted |
+| `IsStartAccepted_RequestTimeout_IsFine` | 1053 `ERROR_SERVICE_REQUEST_TIMEOUT` | Accepted — a slow start is settled by polling the state |
+| `IsStartAccepted_AlreadyRunning_IsFine` | 1056 `ERROR_SERVICE_ALREADY_RUNNING` | Accepted — the SCM can still hold the previous process right after a stop |
+| `IsStartAccepted_RealFailures_AreRejected` (Theory) | Access denied, no such service, logon failure | Rejected |
+| `StopAndStart_DoNotShareTheirTolerances` | Each code against the other command | Rejected both ways — either would hide one half of a failed restart |
+
+---
+
+### Sender directory search — ConfigTool (`ConfigTool/SenderDirectorySearchTests.cs`)
+
+Filter predicate of the read-only directory viewer. The grid holds up to 20,000 rows, so a filter
+that silently misses a match defeats the point: the operator would conclude an address is not
+synced when it is.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Matches_EmptyQuery_KeepsEveryRow` (Theory) | Empty, whitespace, null | Every row stays |
+| `Matches_DisplayName_IsFound` | Query matches the display name | Visible |
+| `Matches_PrimaryAddress_IsFound` | Query matches the primary address | Visible |
+| `Matches_Alias_IsFound` | Query matches only an alias | Visible — the alias is what the operator comes here to check |
+| `Matches_IsCaseInsensitive` | Upper-case query | Visible |
+| `Matches_SurroundingWhitespace_IsIgnored` | Query padded with spaces | Visible |
+| `Matches_NoOccurrence_FiltersTheRowOut` | No field contains the query | Hidden |
+| `Matches_NullFields_DoNotThrow` | All fields null | Hidden, no exception |
+| `Matches_OnlyAliasesSet_StillSearchesThem` | Name and primary null, alias matches | Visible |
 
 ---
 
@@ -1037,6 +1203,41 @@ silently. Windows-only. (3 tests)
 | `KeyRingUnavailableException_PreservesMessageAndInnerCause` | Construct the exception with a message + inner cause | Both survive, so the ConfigTool message and the service log stay actionable |
 
 ---
+### SendAs script generator — ConfigTool (`ConfigTool/SendAsScriptGeneratorTests.cs`)
+
+The Exchange Online PowerShell script the ConfigTool hands to the admin. Graph can neither grant
+nor read SendAs, so this script is the only way the permission gets set — it has to be correct on
+its own, because it is copied out of the tool and run by hand against a live tenant.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Generate_SetsTheRelayMailboxAsTheTrustee` | Relay `svc-relay@corp.com` | `$Relay = 'svc-relay@corp.com'` |
+| `Generate_GrantsSendAsAndNothingElse` | Any variant | `-AccessRights SendAs`, never `FullAccess` — SendAs alone suffices when sending via `/users/{relay}` |
+| `Generate_ChecksTheExistingPermissionFirst_SoItStaysReRunnable` | Any variant | `Get-RecipientPermission` guard before `Add-RecipientPermission`, which errors out on a repeat |
+| `Generate_SkipsRecipientsOutsideTheAcceptedDomains` | Any variant | Fetches `Get-AcceptedDomain` up front and skips recipients outside it with one readable line — Exchange refuses those per object, and most mail users are in that group |
+| `Generate_ChecksTheExternalAddressToo_NotJustThePrimaryOne` | Any variant | Both addresses are checked — a mail user's primary address can be accepted while the external one it forwards to is not, and Exchange rejects the grant over that second one |
+| `Generate_StripsTheProxyAddressPrefixBeforeReadingTheDomain` | Any variant | `ExternalEmailAddress` comes back as `SMTP:user@example.com` |
+| `Generate_SilencesExchangesOwnWarnings` | Any variant | `-WarningAction SilentlyContinue` on the cmdlets — Exchange repeats its consistency complaint verbatim next to the failure the script already reports |
+| `Generate_SurvivesOneInconsistentObject` | Any variant | A per-object `catch`: a group Exchange reports as corrupt must not stop the remaining ones |
+| `Generate_SurvivesARecipientTypeThatCannotBeListed` | Any variant | A per-type `catch` — `Get-MailPublicFolder` fails outright where public folders live on-premises |
+| `Generate_SuppressesTheCmdletOutput_SoTheReadbackIsTheOnlyTable` | Any variant | `Add-RecipientPermission … \| Out-Null` |
+| `Generate_ReportsASummary` | Any variant | Granted / already in place / skipped / failed counts |
+| `Generate_EndsWithAReadbackOfWhatIsActuallyGranted` | Any variant | Closes with `Get-RecipientPermission -Trustee $Relay` — the only confirmation Graph cannot give |
+| `Generate_MentionsTheReplicationDelay` | Any variant | Header warns about the up-to-one-hour Exchange replication delay |
+| `Generate_StampsVersionAndTimestamp` | Fixed clock + version | Both appear in the header |
+| `GenerateForAllObjects_CoversAllThreeSenderTypes` | All-objects variant | `Get-DistributionGroup`, `Get-MailPublicFolder`, `Get-MailUser` loops |
+| `GenerateForAllObjects_CoversEveryGroupTypeExchangeSplitsApart` | Any variant | `Get-UnifiedGroup` and `Get-DynamicDistributionGroup` are enumerated too — `Get-DistributionGroup` returns neither, and a Microsoft 365 group is what a Team is |
+| `GenerateForAllObjects_HasNoHardCodedObjectList` | All-objects variant | No `$Objects` array — later objects are picked up on a re-run |
+| `GenerateForObjects_ListsExactlyTheGivenObjects` | Two addresses | Both appear in `$Objects`, iterated by `Grant-SendAs` |
+| `GenerateForObjects_ResolvesEachEntryAndReportsUnknownOnes` | Selected variant | `Get-Recipient` per entry, a warning for one that does not exist |
+| `Generate_BracesAndParenthesesAreBalanced` (Theory) | Both variants | Balanced — the script is run by hand, so a syntax error would only surface at the admin's prompt |
+| `GenerateForObjects_DoesNotEnumerateTheWholeTenant` | Selected variant | No `Get-DistributionGroup` |
+| `GenerateForObjects_TrimsBlankAndDuplicateEntries` | Blanks + a case-variant duplicate | One entry, no empty literals |
+| `GenerateForObjects_EscapesQuotesInAnAddress` | `o'brien@corp.com` | `'o''brien@corp.com'` — a quote must not break out of the PowerShell literal |
+| `GenerateForAllObjects_EscapesQuotesInTheRelayMailbox` | `o'relay@corp.com` | `$Relay = 'o''relay@corp.com'` |
+
+---
+
 
 ### DecryptionFailureMap — ConfigTool (`ConfigTool/DecryptionFailureMapTests.cs`)
 
@@ -1553,6 +1754,7 @@ thing to find, so each case has to yield what it does hold rather than being ref
 | `SensitivityAndReplyTo_SurviveExchangeProcessing` | Send with `Sensitivity: Private` + `Reply-To`, then poll the sender's Sent Items and read the message back | `Reply-To` and MAPI `0x0036` = 2 still on the stored message. Reads back from Sent Items rather than the recipient: the configured `RecipientAddress` is typically outside the test tenant. Graph echoes the id normalised (`Integer 0x36`), so both spellings are accepted |
 | `UnknownSender_IsRejected_ByGraph` | Nonexistent sender mailbox | `GraphDeliveryException` with 404/ErrorInvalidUser and `IsPermanent == true` (fail-fast classification verified against real Graph) |
 | `AliasSender_IsDelivered_WhenResolvedToUserId` | Alias as From, resolved object id as user key (requires `LiveTests:SenderAlias`) | Resolves and delivers |
+| `MailboxlessSender_IsDelivered_ViaRelayMailbox` | Distribution group / public folder / mail user as From, sent through the relay mailbox (requires `LiveTests:RelayMailbox` + `LiveTests:MailboxlessSenderAddress` and a SendAs grant between them) | Direct attempt falls back to the relay and delivers with the original From |
 
 ### Graph Connectivity (`GraphConnectivityLiveTests.cs`)
 
@@ -1716,6 +1918,10 @@ comes from actual `RCPT TO` commands rather than a literal in the test. No tenan
 | `IndeterminateValidation_FailOpen_Accepts` | `Indeterminate`, `FailClosed=false` | Message accepted (fail-open) |
 | `IndeterminateValidation_FailClosed_Rejects` | `Indeterminate`, `FailClosed=true` | `SmtpCommandException` at MAIL FROM |
 | `ValidationDisabled_UnknownSender_IsAccepted` | Feature off, directory would reject | Message accepted — toggle wins |
+| `KnownDomainSender_AcceptMailboxlessEnabled_IsAccepted` | `KnownDomain`, option on | Accepted — mail-enabled public folders have no Graph representation, only their domain |
+| `KnownDomainSender_AcceptMailboxlessDisabled_IsRejected` | `KnownDomain`, option off (default) | `SmtpCommandException` — without the opt-in a directory miss stays a rejection |
+| `SenderWithAnExplicitRoute_IsAccepted_EvenWhenTheDirectoryRejects` | Directory says `Unknown`, an explicit route covers the address | Accepted — the route is a deliberate statement that the sender exists |
+| `SenderWithoutARoute_IsStillRejected_WhenTheDirectoryRejects` | Directory says `Unknown`, route covers a different address | `SmtpCommandException` — the exemption applies only where it is configured |
 
 ---
 
@@ -2007,26 +2213,6 @@ counter next to their search box must never let a capped list read as a complete
 
 ---
 
-### Service control exit codes — ConfigTool (`ConfigTool/ServiceControlExitCodeTests.cs`)
-
-Which `sc.exe` exit codes count as "the command did what we wanted". The Restart button used to
-discard these entirely and always report success, so a service that stopped and never came back
-looked fine in the UI.
-
-| Test | Scenario | Expected result |
-|---|---|---|
-| `IsStopAccepted_Success` | Exit 0 | Accepted |
-| `IsStopAccepted_AlreadyStopped_IsFine` | 1062 `ERROR_SERVICE_NOT_ACTIVE` | Accepted — restarting a service that was already down is no error |
-| `IsStopAccepted_RealFailures_AreRejected` (Theory) | Access denied, no such service, marked for deletion | Rejected |
-| `IsStartAccepted_Success` | Exit 0 | Accepted |
-| `IsStartAccepted_RequestTimeout_IsFine` | 1053 `ERROR_SERVICE_REQUEST_TIMEOUT` | Accepted — a slow start is settled by polling the state |
-| `IsStartAccepted_AlreadyRunning_IsFine` | 1056 `ERROR_SERVICE_ALREADY_RUNNING` | Accepted — the SCM can still hold the previous process right after a stop |
-| `IsStartAccepted_RealFailures_AreRejected` (Theory) | Access denied, no such service, logon failure | Rejected |
-| `StopAndStart_DoNotShareTheirTolerances` | Each code against the other command | Rejected both ways — either would hide one half of a failed restart |
-
----
-
-
 ### UpdateCheckService (`Services/UpdateCheck/UpdateCheckServiceTests.cs`)
 
 Weekly opt-in check scheduler: persists the cadence in `data\update-status.json`, honours the ConfigTool "check now" request file, and mails the admin once per new version.
@@ -2124,6 +2310,8 @@ Daily opt-in heartbeat scheduler: persists cadence + install id + counter waterm
 | `Migrate_V8_ToV9_RecoveryTogglesLeftAtDefault_DoesNotWriteGlobalSwitch` | v8 doc with both recovery toggles at `true` | `SendRecoveryNotification` stays absent (binder default = on) |
 | `Migrate_V8_ToV9_AddsNoKeys_RepeatSettingsFallBackToDefaults` | v8 doc with only `SubjectPrefix` | `RenotifyMinutes` stays absent (binder default = 1440); prefix untouched |
 | `Migrate_V8_ToV9_NoAdminNotificationsSection_IsLeftAlone` | v8 doc without `AdminNotifications` | Section not created; version stamped to current |
+| `Migrate_V11_ToV12_IsAdditiveOnly_ContentUnchangedExceptVersion` | v11 doc with `SenderValidation.Enabled` | Version stamped, existing content untouched, `SenderRouting` section not created (binder default = routing off) |
+| `Migrate_V11_ToV12_LeavesTheNewSenderValidationFlagAbsent_SoItDefaultsToOff` | v11 doc with `SenderValidation.Enabled` | `AcceptMailboxlessSenders` stays absent — it needs an extra Graph permission, so an upgrade must never turn it on |
 | `Migrate_AlreadyCurrent_IsNoOp` | Doc already at current version | `false` (no change) |
 | `Migrate_Idempotent` | Migrate twice | First `true`, second `false` |
 | `Migrate_NewerThanBuild_LeavesFileAlone` | `SchemaVersion = Current + 1` | `false`; version left untouched |
@@ -2225,6 +2413,18 @@ Verifies that every JSON key written by the service (`graphmailer.json`) is corr
 | `Load_MessageRules_ActionWithoutType_IsDropped` | Action object with no `Type` | Dropped; the valid action survives |
 | `Load_MessageRules_RuleWithoutConditions_KeepsAnEmptyList` | Rule with no conditions | Empty list kept — a deliberate "apply to all"; `Enabled` defaults to true |
 
+| `Load_SenderRouting_Enabled_AppearsInDocSrEnabled` | `SenderRouting.Enabled = true` | `doc.SenderRouting.SrEnabled == true` |
+| `Load_SenderRouting_RelayMailbox_AppearsInDocSrRelayMailbox` | `RelayMailbox = "relay@corp.com"` | Value round-trips into the document |
+| `Load_SenderRouting_RelayCacheMinutes_AppearsInDocSrRelayCacheMinutes` | `RelayCacheMinutes = 15` | `15` |
+| `Load_SenderRouting_Routes_AppearInDocSrRoutes` | Two routes, exact address + `@domain` | Both read back in order with sender and mailbox |
+| `Load_SenderRouting_RouteWithoutMailbox_IsDropped` | Routes missing `Sender` or `Mailbox` | Only the complete route survives — a half-filled route looks configured but does nothing |
+| `Load_SenderValidation_AcceptMailboxlessSenders_AppearsInDocSvAcceptMailboxless` | `AcceptMailboxlessSenders = true` | `true` |
+| `Load_SenderValidation_LegacySplitKeys_TurnTheMergedOptionOn` | Pre-release file with `IncludeGroups: true` | Merged option on — renaming a key must not silently switch a feature off |
+| `Load_SenderValidation_LegacyAcceptTenantDomains_TurnsTheMergedOptionOn` | Pre-release file with `AcceptTenantDomains: true` | Merged option on |
+| `Load_SenderValidation_LegacyKeyWins_UntilTheFileIsSavedOnce` | Merged key false (the appsettings default) next to a legacy true | On, and still on after a save — the ambiguity lasts one load |
+| `Load_SenderValidation_NoLegacyKeys_HonoursAnExplicitOff` | Only the merged key, false | Off |
+| `Save_SenderValidation_DropsTheLegacyKeys` | Pre-release file saved once | `IncludeGroups` / `AcceptTenantDomains` gone, merged key written |
+| `Save_SenderRouting_DropsTheLegacyAutoFallbackKey` | Pre-release file with `AutoFallback` | Key gone — relaying is unconditional now |
 ---
 
 ### ConfigSchemaBindingTests (`Infrastructure/Config/ConfigSchemaBindingTests.cs`)
@@ -2300,3 +2500,7 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `Save_MessageRules_SubjectPrefixKeepsItsTrailingSpace` | Prefix `"[EXTERNAL] "` saved | The space survives the config file, a reload and the options binder |
 | `Save_MessageRules_BodyTextKeepsItsWhitespace` | Body text with blank lines and indentation | Preserved through save and load |
 | `Save_MessageRules_RoundTripsThroughLoad` | Rule saved and loaded again | Every field comes back unchanged |
+| `Save_SenderRouting_BindsToSenderRoutingOptions` | Document with all four scalars set | `SenderRoutingOptions` binds every one |
+| `Save_SenderRoutingRoutes_BindToSenderRouteOptions` | Two routes | Both bind to `SenderRouteOptions` in order |
+| `Save_SenderRoutingWithoutRoutes_WritesAnEmptyArray` | Routing on, no routes | Empty — array defaults must never live in `appsettings.json` (index merge would leak trailing entries) |
+| `Save_SenderValidationGroupAndDomainFlags_BindToSenderValidationOptions` | The new flag on | `AcceptMailboxlessSenders` binds |

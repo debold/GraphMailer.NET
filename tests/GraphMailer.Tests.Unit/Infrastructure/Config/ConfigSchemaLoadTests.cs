@@ -1067,4 +1067,146 @@ public sealed class ConfigSchemaLoadTests : IDisposable
         rule.Conditions.Should().BeEmpty();
         rule.Enabled.Should().BeTrue("a rule is enabled unless it says otherwise");
     }
+
+    // =========================================================================
+    // SenderRouting  (SectionName = "SenderRouting")
+    // Maps to ConfigDocument.SenderRoutingSection
+    // =========================================================================
+
+    [Fact]
+    public void Load_SenderRouting_Enabled_AppearsInDocSrEnabled()
+    {
+        WriteJson("""{ "SenderRouting": { "Enabled": true } }""");
+
+        _sut.Load().SenderRouting.SrEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Load_SenderRouting_RelayMailbox_AppearsInDocSrRelayMailbox()
+    {
+        WriteJson("""{ "SenderRouting": { "RelayMailbox": "relay@corp.com" } }""");
+
+        _sut.Load().SenderRouting.SrRelayMailbox.Should().Be("relay@corp.com");
+    }
+
+    [Fact]
+    public void Load_SenderRouting_RelayCacheMinutes_AppearsInDocSrRelayCacheMinutes()
+    {
+        WriteJson("""{ "SenderRouting": { "RelayCacheMinutes": 15 } }""");
+
+        _sut.Load().SenderRouting.SrRelayCacheMinutes.Should().Be(15);
+    }
+
+    [Fact]
+    public void Load_SenderRouting_Routes_AppearInDocSrRoutes()
+    {
+        WriteJson("""
+            { "SenderRouting": { "Routes": [
+                { "Sender": "pf@corp.com", "Mailbox": "relay@corp.com" },
+                { "Sender": "@lists.corp.com", "Mailbox": "listrelay@corp.com" }
+            ] } }
+            """);
+
+        var routes = _sut.Load().SenderRouting.SrRoutes;
+
+        routes.Should().HaveCount(2);
+        routes[0].Sender.Should().Be("pf@corp.com");
+        routes[0].Mailbox.Should().Be("relay@corp.com");
+        routes[1].Sender.Should().Be("@lists.corp.com");
+    }
+
+    [Fact]
+    public void Load_SenderRouting_RouteWithoutMailbox_IsDropped()
+    {
+        // A half-filled route has nowhere to send — keeping it would look configured but do nothing.
+        WriteJson("""
+            { "SenderRouting": { "Routes": [
+                { "Sender": "pf@corp.com" },
+                { "Mailbox": "relay@corp.com" },
+                { "Sender": "ok@corp.com", "Mailbox": "relay@corp.com" }
+            ] } }
+            """);
+
+        _sut.Load().SenderRouting.SrRoutes.Should().ContainSingle()
+            .Which.Sender.Should().Be("ok@corp.com");
+    }
+
+    [Fact]
+    public void Load_SenderValidation_AcceptMailboxlessSenders_AppearsInDocSvAcceptMailboxless()
+    {
+        WriteJson("""{ "SenderValidation": { "AcceptMailboxlessSenders": true } }""");
+
+        _sut.Load().SenderValidation.SvAcceptMailboxless.Should().BeTrue();
+    }
+
+
+    [Fact]
+    public void Load_SenderValidation_LegacySplitKeys_TurnTheMergedOptionOn()
+    {
+        // Regression: renaming IncludeGroups + AcceptTenantDomains into one key silently switched
+        // the feature off for anyone who had it enabled in a pre-release 1.5 build.
+        WriteJson("""{ "SenderValidation": { "IncludeGroups": true } }""");
+
+        _sut.Load().SenderValidation.SvAcceptMailboxless.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Load_SenderValidation_LegacyAcceptTenantDomains_TurnsTheMergedOptionOn()
+    {
+        WriteJson("""{ "SenderValidation": { "AcceptTenantDomains": true } }""");
+
+        _sut.Load().SenderValidation.SvAcceptMailboxless.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Load_SenderValidation_LegacyKeyWins_UntilTheFileIsSavedOnce()
+    {
+        // The merged key cannot be told apart from the appsettings default here — Load() overlays
+        // the bundled defaults, so it always reads as present. A legacy key still standing at true
+        // is the stronger signal. The ambiguity lasts exactly one load: saving drops the old keys.
+        WriteJson("""
+            { "SenderValidation": { "AcceptMailboxlessSenders": false, "IncludeGroups": true } }
+            """);
+
+        var doc = _sut.Load();
+        doc.SenderValidation.SvAcceptMailboxless.Should().BeTrue();
+
+        _sut.Save(doc);
+        _sut.Load().SenderValidation.SvAcceptMailboxless.Should().BeTrue(
+            "the saved file now carries only the merged key");
+    }
+
+    [Fact]
+    public void Load_SenderValidation_NoLegacyKeys_HonoursAnExplicitOff()
+    {
+        WriteJson("""{ "SenderValidation": { "AcceptMailboxlessSenders": false } }""");
+
+        _sut.Load().SenderValidation.SvAcceptMailboxless.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Save_SenderValidation_DropsTheLegacyKeys()
+    {
+        WriteJson("""
+            { "SenderValidation": { "IncludeGroups": true, "AcceptTenantDomains": true } }
+            """);
+
+        var doc = _sut.Load();
+        _sut.Save(doc);
+
+        var json = File.ReadAllText(_filePath);
+        json.Should().NotContain("IncludeGroups");
+        json.Should().NotContain("AcceptTenantDomains");
+        json.Should().Contain("AcceptMailboxlessSenders");
+    }
+
+    [Fact]
+    public void Save_SenderRouting_DropsTheLegacyAutoFallbackKey()
+    {
+        WriteJson("""{ "SenderRouting": { "Enabled": true, "AutoFallback": false } }""");
+
+        _sut.Save(_sut.Load());
+
+        File.ReadAllText(_filePath).Should().NotContain("AutoFallback");
+    }
 }

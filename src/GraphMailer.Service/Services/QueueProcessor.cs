@@ -32,7 +32,7 @@ internal sealed class QueueProcessor : BackgroundService
     private readonly IOptionsMonitor<MailQueueOptions> _options;
     private readonly IOptionsMonitor<GraphApiOptions> _graphOptions;
     private readonly IGraphApiClient _graphClient;
-    private readonly ITenantSenderDirectory _senderDirectory;
+    private readonly ISenderRouter _senderRouter;
     private readonly IMetricsService _metrics;
     private readonly IAdminNotificationService _notify;
     private readonly BlockedMessageRecorder _blockedRecorder;
@@ -46,7 +46,7 @@ internal sealed class QueueProcessor : BackgroundService
         IOptionsMonitor<MailQueueOptions> options,
         IOptionsMonitor<GraphApiOptions> graphOptions,
         IGraphApiClient graphClient,
-        ITenantSenderDirectory senderDirectory,
+        ISenderRouter senderRouter,
         IMetricsService metrics,
         IAdminNotificationService notify,
         BlockedMessageRecorder blockedRecorder,
@@ -55,7 +55,7 @@ internal sealed class QueueProcessor : BackgroundService
         _options = options;
         _graphOptions = graphOptions;
         _graphClient = graphClient;
-        _senderDirectory = senderDirectory;
+        _senderRouter = senderRouter;
         _metrics = metrics;
         _notify = notify;
         _blockedRecorder = blockedRecorder;
@@ -277,17 +277,19 @@ internal sealed class QueueProcessor : BackgroundService
             return true;
         }
 
+        // Graph's /users/{key}/sendMail accepts only a real mailbox as user key. The router
+        // turns the envelope sender into one: the resolved object id for a tenant mailbox
+        // (so secondary proxyAddresses work as senders), or the relay mailbox for senders
+        // that own no mailbox at all — groups, public folders, mail users.
+        // Resolved outside the try so the failure path can classify by how we routed.
+        var route = _senderRouter.Resolve(meta.From);
+
         try
         {
-            // Graph's /users/{key}/sendMail accepts only UPN or object id as user key.
-            // When the sender directory knows the address (incl. aliases), send as the
-            // resolved object id so secondary proxyAddresses work as senders.
-            var sendAs = _senderDirectory.TryResolveGraphUserKey(meta.From, out var userKey)
-                ? userKey
-                : meta.From;
-            if (sendAs != meta.From)
-                _logger.LogDebug("[QueueProcessor] {MessageId}: sender {From} resolved to Graph user {UserKey}",
-                    meta.MessageId, meta.From, sendAs);
+            if (route.GraphUserKey != meta.From)
+                _logger.LogDebug(
+                    "[QueueProcessor] {MessageId}: sender {From} sent through {UserKey} ({Reason})",
+                    meta.MessageId, meta.From, route.GraphUserKey, route.Reason);
 
             var sw = Stopwatch.StartNew();
             using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -296,9 +298,12 @@ internal sealed class QueueProcessor : BackgroundService
             try
             {
                 // Relayed SMTP mail gets a Sent Items copy so the sender finds it in their
-                // mailbox; service-generated mail (NDRs, admin notifications) does not.
+                // mailbox; service-generated mail (NDRs, admin notifications) does not — and
+                // neither does a send through the relay mailbox, which is not the sender's.
                 delivery = await _graphClient.SendAsync(
-                    emlBytes, sendAs, meta.To, meta.MessageId, !meta.IsNotification, sendCts.Token);
+                    emlBytes, route.GraphUserKey, meta.To, meta.MessageId,
+                    !meta.IsNotification && !route.IsRelay,
+                    route.FallbackRelayMailbox, route.IsRelay, sendCts.Token);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -308,6 +313,11 @@ internal sealed class QueueProcessor : BackgroundService
                     $"Graph send timed out after {SendTimeout.TotalMinutes:0} minutes");
             }
             sw.Stop();
+
+            // The direct attempt found no mailbox and the relay saved it — remember that, so
+            // the next message from this sender skips the doomed first request.
+            if (delivery.Relayed && !route.IsRelay)
+                _senderRouter.MarkMailboxUnavailable(meta.From);
 
             // Delivered: record when, and drop the retry schedule left over from
             // earlier failed attempts (LastAttemptAt/LastError stay as history).
@@ -377,7 +387,8 @@ internal sealed class QueueProcessor : BackgroundService
             // retry — fail fast so the sender gets the NDR now, not after the expiration
             // window. Everything else follows the time-based give-up: retried until
             // MessageExpirationHours have elapsed since receipt (Exchange-style).
-            var permanentRejection = ex is GraphDeliveryException { IsPermanent: true };
+            var permanentRejection = ex is GraphDeliveryException { IsPermanent: true }
+                                     || IsHopelessSendAs(ex, route);
 
             if (permanentRejection || RetrySchedule.HasExpired(meta.ReceivedAt, now, opts.MessageExpirationHours))
             {
@@ -412,6 +423,19 @@ internal sealed class QueueProcessor : BackgroundService
 
     /// <summary>
     /// Removes a delivered message from the queue (or archives it to mail/sent/).
+    /// <summary>
+    /// A SendAs denial normally stays retryable: it usually means the operator has just granted
+    /// the permission and Exchange has not replicated it yet, which takes up to an hour. That
+    /// reasoning only holds for a sender something vouched for — one the directory knows, one a
+    /// route names, or one sender validation let through. When nothing did, the relay mailbox was
+    /// a guess at an address no part of the tenant recognises, and no amount of waiting will make
+    /// Exchange allow it. Failing now beats occupying the queue for a day.
+    /// </summary>
+    private static bool IsHopelessSendAs(Exception ex, SenderRoute route)
+        => route.RelayUnvouched
+           && ex is GraphDeliveryException gde
+           && GraphApiClient.IsSendAsRejection(gde.ErrorCode);
+
     /// Runs in the post-delivery commit phase, so it is deliberately not cancellable
     /// and re-entrant: an earlier interrupted commit may already have moved the .eml.
     /// </summary>

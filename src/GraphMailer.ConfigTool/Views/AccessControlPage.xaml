@@ -287,9 +287,10 @@
                                        ToolTip="Default off (fail-open): when Graph is unreachable or the permission is missing, senders are accepted unvalidated and an admin notification is sent.&#x0a;Enable to reject with 550 instead — note that an Entra outage then stops mail acceptance."
                                        Margin="10,0,0,0"
                                        VerticalAlignment="Center"/>
+
                         </Grid>
 
-                        <TextBlock Text="Rejects MAIL FROM addresses that are not known in the tenant (users, shared mailboxes, aliases) with an immediate 550 instead of failing later at Graph delivery. Aliases are resolved to the mailbox owner for sending. Requires the User.Read.All application permission on the Entra app registration."
+                        <TextBlock Text="Rejects MAIL FROM addresses that are not known in the tenant (users, shared mailboxes, aliases) with an immediate 550 instead of failing later at Graph delivery. Aliases are resolved to the mailbox owner for sending. Requires the User.Read.All application permission on the Entra app registration. Senders without a mailbox of their own — distribution groups, public folders, mail users — are covered by Sender Routing below."
                                    Style="{StaticResource HintText}"
                                    TextWrapping="Wrap"
                                    Margin="0,8,0,12"/>
@@ -317,14 +318,199 @@
                                     ToolTip="Asks the running service to re-sync the tenant directory immediately&#x0a;(picked up within a few seconds).&#x0a;Available while validation is enabled and the service is running."
                                     Margin="0,0,12,0"
                                     Click="SvSyncNow_Click"/>
+                            <Button x:Name="SvShowDirectory"
+                                    Content="Show synchronised senders"
+                                    Style="{StaticResource SmallButton}"
+                                    ToolTip="Opens a read-only list of every mailbox and group the last sync recognised,&#x0a;with their aliases — so you can check what is actually known before wondering&#x0a;why a sender is rejected."
+                                    Margin="0,0,12,0"
+                                    Click="SvShowDirectory_Click"/>
                             <TextBlock x:Name="SvSyncStatus"
                                        Style="{StaticResource HintText}"
                                        VerticalAlignment="Center"/>
                         </StackPanel>
+
+                        <TextBlock x:Name="SvSyncWarning"
+                                   Style="{StaticResource HintText}"
+                                   Foreground="{StaticResource DangerBrush}"
+                                   TextWrapping="Wrap"
+                                   Visibility="Collapsed"
+                                   Margin="0,8,0,0"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
 
+
+            <!-- Sender Routing card -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,16">
+                <StackPanel>
+                    <Border Style="{StaticResource CardHeader}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Sender Routing"
+                                           Style="{StaticResource SectionHeader}"/>
+                                <TextBlock Text="Send as distribution groups, public folders and mail users."
+                                           Style="{StaticResource HintText}"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    x:Name="SrGenerateScript"
+                                    Content="Generate SendAs script"
+                                    Style="{StaticResource SmallButton}"
+                                    ToolTip="Builds the Exchange Online PowerShell script that grants the relay mailbox SendAs&#x0a;on the objects it has to send for. Graph can neither set nor read that permission."
+                                    Click="SrGenerateScript_Click"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel Margin="16,12,16,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="34"/>
+                            </Grid.RowDefinitions>
+
+                            <CheckBox Grid.Row="0"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="SrEnabled"
+                                      Checked="SrField_Changed"
+                                      Unchecked="SrField_Changed"/>
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="1"
+                                       Text="Send as recipients that have no mailbox of their own"
+                                       Style="{StaticResource BodyText}"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <TextBlock Text="Microsoft 365 only accepts a real mailbox as the sending account. Mail from distribution groups, mail-enabled public folders and mail users is therefore sent through the relay mailbox below, keeping the original address in the From header. Exchange authorises that pairing via the SendAs permission, which has to be granted on each object to the relay mailbox — use the button above to generate the script. A shared mailbox works as the relay and needs no licence; it keeps no copy of relayed mail."
+                                   Style="{StaticResource HintText}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,12"/>
+
+                        <StackPanel HorizontalAlignment="Left"
+                                    IsEnabled="{Binding IsChecked, ElementName=SrEnabled}">
+                            <TextBlock Text="Relay mailbox"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="SrRelayMailbox"
+                                     Width="320"
+                                     ToolTip="UPN or primary SMTP address of an existing mailbox, e.g. relay@contoso.com."
+                                     TextChanged="SrText_Changed"/>
+                            <TextBlock x:Name="SrRelayMailboxError"
+                                       Style="{StaticResource HintText}"
+                                       Foreground="#FFC42B1C"
+                                       Visibility="Collapsed"
+                                       Margin="0,4,0,0"/>
+                        </StackPanel>
+
+                        <TextBlock Text="Recognising these senders"
+                                   Style="{StaticResource LabelText}"
+                                   Margin="0,18,0,2"/>
+                        <TextBlock Text="Only relevant while Microsoft 365 sender validation is on: without this, a group or public folder is rejected at MAIL FROM before routing ever sees it. Needs one more Graph permission — if the app registration predates it, run the Entra setup again on the Graph API page; it keeps the registration and certificate and only adds what is missing."
+                                   Style="{StaticResource HintText}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,6"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="34"/>
+                            </Grid.RowDefinitions>
+
+                            <CheckBox Grid.Row="0"
+                                      Grid.Column="0"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      x:Name="SvAcceptMailboxless"
+                                      Checked="SrField_Changed"
+                                      Unchecked="SrField_Changed"/>
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="1"
+                                       Text="Accept groups, public folders and mail users as senders (needs Group.Read.All)"
+                                       Style="{StaticResource BodyText}"
+                                       ToolTip="Syncs distribution groups, mail-enabled security groups and Microsoft 365 groups into the directory, so they pass MAIL FROM.&#x0a;Mail-enabled public folders and dynamic distribution groups do not exist in Graph at all — for those, an address is accepted when its domain is one the tenant's own mailboxes and groups use.&#x0a;That last part is weaker than an address-exact check: a made-up address in an own domain passes too. Every external sender is still rejected.&#x0a;Requires the Group.Read.All application permission."
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <TextBlock x:Name="SrValidationHint"
+                                   Style="{StaticResource HintText}"
+                                   TextWrapping="Wrap"
+                                   Visibility="Collapsed"
+                                   Margin="0,6,0,0"/>
+                    </StackPanel>
+
+                    <Border Style="{StaticResource CardHeader}"
+                            BorderThickness="0,1,0,1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Routes (optional)"
+                                           Style="{StaticResource SectionHeader}"/>
+                                <TextBlock Text="Only needed to pin a sender to a specific mailbox, or for senders Microsoft 365 cannot report."
+                                           Style="{StaticResource HintText}"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="+ Add"
+                                    Style="{StaticResource SmallPrimaryButton}"
+                                    IsEnabled="{Binding IsChecked, ElementName=SrEnabled}"
+                                    Click="AddRoute_Click"/>
+                        </Grid>
+                    </Border>
+                    <DataGrid x:Name="RoutesGrid"
+                              Margin="0"
+                              MinHeight="40"
+                              MaxHeight="200"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              IsEnabled="{Binding IsChecked, ElementName=SrEnabled}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Sender address / Pattern"
+                                                Binding="{Binding Sender}"
+                                                Width="*"/>
+                            <DataGridTextColumn Header="Send through mailbox"
+                                                Binding="{Binding Mailbox}"
+                                                Width="*"/>
+                            <DataGridTemplateColumn Header=""
+                                                    Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center">
+                                            <Button Content="&#x270E;"
+                                                    Style="{StaticResource SmallButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Margin="0,0,4,0"
+                                                    Click="EditRoute_Click"/>
+                                            <Button Content="&#x2715;"
+                                                    Style="{StaticResource SmallDangerButton}"
+                                                    Padding="6,2"
+                                                    Height="22"
+                                                    Click="RemoveRoute_Click"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
             <!-- Allowed Recipients card -->
             <Border Style="{StaticResource Card}"
                     Margin="0,0,0,16">

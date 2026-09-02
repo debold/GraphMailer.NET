@@ -765,4 +765,70 @@ public sealed class GraphApiClientTests
         GraphApiClient.FallbackFileName("text/calendar", 1).Should().Be("invite-1.ics");
         GraphApiClient.FallbackFileName("image/png", 2).Should().Be("attachment-2.png");
     }
+
+    // =========================================================================
+    // IsMailboxUnavailable — the senders that need the relay mailbox
+    // =========================================================================
+
+    [Theory]
+    [InlineData(404, "MailboxNotEnabledForRESTAPI")]   // hybrid / on-prem hosted mailbox
+    [InlineData(404, "ErrorInvalidUser")]              // distribution group, public folder
+    [InlineData(400, "ErrorNonExistentMailbox")]
+    [InlineData(400, "ResourceNotFound")]
+    [InlineData(400, "Request_ResourceNotFound")]      // mail user without a mailbox
+    [InlineData(404, "ErrorItemNotFound")]             // status alone is enough
+    [InlineData(200, "mailboxnotenabledforrestapi")]   // codes are compared case-insensitively
+    public void IsMailboxUnavailable_SenderHasNoMailbox_ReturnsTrue(int status, string code)
+        => GraphApiClient.IsMailboxUnavailable(status, code).Should().BeTrue();
+
+    [Theory]
+    [InlineData(403, "ErrorSendAsDenied")]             // mailbox exists, permission missing
+    [InlineData(413, "ErrorMessageSizeExceeded")]
+    [InlineData(429, "TooManyRequests")]
+    [InlineData(500, "InternalServerError")]
+    [InlineData(400, "InvalidInternetMessageHeaderCollection")]
+    public void IsMailboxUnavailable_OtherRejections_ReturnsFalse(int status, string code)
+        => GraphApiClient.IsMailboxUnavailable(status, code).Should().BeFalse();
+
+    [Fact]
+    public void IsMailboxUnavailable_NoErrorCode_FallsBackToTheHttpStatus()
+    {
+        GraphApiClient.IsMailboxUnavailable(404, null).Should().BeTrue();
+        GraphApiClient.IsMailboxUnavailable(500, null).Should().BeFalse();
+    }
+
+    // =========================================================================
+    // IsSendAsRejection — the relay mailbox lacks SendAs on the sender
+    // =========================================================================
+
+    [Theory]
+    [InlineData("ErrorSendAsDenied")]
+    [InlineData("ErrorInvalidSender")]
+    [InlineData("errorsendasdenied")]
+    public void IsSendAsRejection_SendAsCodes_ReturnsTrue(string code)
+        => GraphApiClient.IsSendAsRejection(code).Should().BeTrue();
+
+    [Theory]
+    [InlineData("InvalidInternetMessageHeaderCollection")]
+    [InlineData("ErrorInvalidUser")]
+    [InlineData(null)]
+    public void IsSendAsRejection_OtherCodes_ReturnsFalse(string? code)
+        => GraphApiClient.IsSendAsRejection(code).Should().BeFalse();
+
+    [Fact]
+    public void IsSendAsRejection_IsASubsetOfTheOptionalPropertyRejections()
+    {
+        // The direct path degrades on a rejected From by dropping the optional extras;
+        // the relay path treats the same code as a missing Exchange permission instead.
+        GraphApiClient.IsOptionalPropertyRejection("ErrorSendAsDenied").Should().BeTrue();
+        GraphApiClient.IsOptionalPropertyRejection("ErrorInvalidSender").Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsPermanentRejection_SendAsDenied_StaysTransient_SoThePermissionCanStillBeGranted()
+    {
+        // Exchange takes up to an hour to replicate a new SendAs grant — NDR-ing immediately
+        // would throw away mail the operator is in the middle of fixing.
+        GraphApiClient.IsPermanentRejection(403, "ErrorSendAsDenied").Should().BeFalse();
+    }
 }

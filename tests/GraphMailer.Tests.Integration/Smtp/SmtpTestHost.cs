@@ -85,7 +85,9 @@ internal sealed class SmtpTestHost : IAsyncDisposable
         long? maxSizeBytes = null,
         bool senderValidationEnabled = false,
         bool senderValidationFailClosed = false,
+        bool senderValidationAcceptMailboxless = false,
         ITenantSenderDirectory? senderDirectory = null,
+        ISenderRouter? senderRouter = null,
         IMailContentScanner? malwareScanner = null,
         string malwareScanMode = "Off",
         IEnumerable<MessageRule>? messageRules = null,
@@ -116,6 +118,7 @@ internal sealed class SmtpTestHost : IAsyncDisposable
             ["IpBlockingProtection:BlockDurationSeconds"] = ipBlockingDurationSeconds.ToString(),
             ["SenderValidation:Enabled"] = senderValidationEnabled ? "true" : "false",
             ["SenderValidation:FailClosed"] = senderValidationFailClosed ? "true" : "false",
+            ["SenderValidation:AcceptMailboxlessSenders"] = senderValidationAcceptMailboxless ? "true" : "false",
             // Off unless a test opts in, so the scan never interferes with the other suites.
             ["MalwareScan:Mode"] = malwareScanMode,
             // Off unless a test supplies rules, so the engine never touches the other suites.
@@ -203,6 +206,7 @@ internal sealed class SmtpTestHost : IAsyncDisposable
                 // Permissive by default; tests can inject a scripted directory to
                 // exercise tenant sender validation end-to-end.
                 services.AddSingleton(senderDirectory ?? new PermissiveSenderDirectory());
+                services.AddSingleton(senderRouter ?? new PassthroughSenderRouter());
                 services.AddSingleton<IUserAuthenticator, SmtpUserAuthenticator>();
                 services.AddSingleton<IMailboxFilter, SmtpMailboxFilter>();
                 services.AddSingleton<IMessageStore, SmtpMessageStore>();
@@ -400,7 +404,29 @@ internal sealed class SmtpTestHost : IAsyncDisposable
             return false;
         }
 
+        public bool TryResolveSender(string address, out string graphUserKey, out TenantRecipientKind kind)
+        {
+            graphUserKey = string.Empty;
+            kind = TenantRecipientKind.Mailbox;
+            return false;
+        }
+
+        public IReadOnlyList<TenantUser> Recipients() => [];
+
+        public IReadOnlyList<string> MailDomains() => [];
+
         public Task<SenderDirectoryRefreshResult> RefreshAsync(CancellationToken ct = default)
             => Task.FromResult(new SenderDirectoryRefreshResult(true, 0, 0, null));
+    }
+
+    /// <summary>Default ISenderRouter: sends every message directly, no relay configured.</summary>
+    private sealed class PassthroughSenderRouter : ISenderRouter
+    {
+        public SenderRoute Resolve(string envelopeFrom)
+            => new(envelopeFrom, false, null, false, "test passthrough");
+
+        public void MarkMailboxUnavailable(string envelopeFrom) { }
+
+        public bool HasExplicitRoute(string envelopeFrom) => false;
     }
 }

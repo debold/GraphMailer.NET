@@ -13,9 +13,17 @@ internal sealed class GraphDeliveryException : Exception
 {
     public bool IsPermanent { get; }
 
-    public GraphDeliveryException(string message, bool isPermanent, Exception? innerException = null)
+    /// <summary>
+    /// Graph's error code, when the failure came from an API response. Lets the queue processor
+    /// refine the classification without parsing <see cref="Exception.Message"/>.
+    /// </summary>
+    public string? ErrorCode { get; }
+
+    public GraphDeliveryException(
+        string message, bool isPermanent, Exception? innerException = null, string? errorCode = null)
         : base(message, innerException)
     {
         IsPermanent = isPermanent;
+        ErrorCode = errorCode;
     }
 }

@@ -15,7 +15,15 @@ public sealed class SenderDirectoryStatus
     public bool LastSyncSuccess { get; set; }
     public int UserCount { get; set; }
     public int AddressCount { get; set; }
+    public int GroupCount { get; set; }
+    public int DomainCount { get; set; }
     public string? LastError { get; set; }
+
+    /// <summary>
+    /// The sync worked, but an opt-in part of it did not — typically a Graph permission that was
+    /// never granted after the matching option was switched on.
+    /// </summary>
+    public string? LastWarning { get; set; }
     public DateTime? NextSyncUtc { get; set; }
 
     public static string StatusFilePath => Path.Combine(AppPaths.DataDir, "sender-directory-status.json");

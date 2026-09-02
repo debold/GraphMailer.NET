@@ -6,6 +6,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using GraphMailer.ConfigTool.Helpers;
+using GraphMailer.ConfigTool.Services;
+using GraphMailer.Service.Infrastructure;
 using GraphMailer.Service.Infrastructure.Config;
 using GraphMailer.Service.Services;
 using GraphMailer.Service.Services.Advisor;
@@ -22,6 +24,7 @@ public partial class AccessControlPage : UserControl
     private readonly ObservableCollection<PatternRow> _blockedSenders = [];
     private readonly ObservableCollection<PatternRow> _recipients = [];
     private readonly ObservableCollection<PatternRow> _blockedRecipients = [];
+    private readonly ObservableCollection<RouteRow> _routes = [];
 
     internal AccessControlPage(
         Action markDirty,
@@ -37,6 +40,7 @@ public partial class AccessControlPage : UserControl
         BlockedSendersGrid.ItemsSource = _blockedSenders;
         RecipientsGrid.ItemsSource = _recipients;
         BlockedRecipientsGrid.ItemsSource = _blockedRecipients;
+        RoutesGrid.ItemsSource = _routes;
 
         // Directory sync status comes from a file the service maintains —
         // poll it only while the page is visible (pattern of Status/Metrics pages)
@@ -81,7 +85,8 @@ public partial class AccessControlPage : UserControl
             text = "No directory sync yet (service must be running with validation enabled).";
         else if (status.LastSyncSuccess)
             text = $"Last sync {status.LastSyncUtc.Value.ToLocalTime():HH:mm:ss}: " +
-                   $"{status.UserCount} users, {status.AddressCount} sender addresses" +
+                   $"{status.UserCount} users, {status.GroupCount} groups, " +
+                   $"{status.AddressCount} sender addresses, {status.DomainCount} mail domains" +
                    (status.NextSyncUtc is { } next ? $" · next sync {next.ToLocalTime():HH:mm:ss}" : "");
         else
             text = $"Sync at {status.LastSyncUtc.Value.ToLocalTime():HH:mm:ss} failed: {status.LastError}";
@@ -92,6 +97,14 @@ public partial class AccessControlPage : UserControl
             text += "  — sync requested…";
 
         SvSyncStatus.Text = text;
+
+        // A part of the sync was skipped for lack of a permission — almost always an option that
+        // was switched on without re-running the Entra setup. Say so where the option lives.
+        var warning = status?.LastWarning;
+        SvSyncWarning.Text = warning ?? "";
+        SvSyncWarning.Visibility = string.IsNullOrWhiteSpace(warning)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void SvSyncNow_Click(object sender, RoutedEventArgs e)
@@ -109,6 +122,9 @@ public partial class AccessControlPage : UserControl
         }
     }
 
+    private void SvShowDirectory_Click(object sender, RoutedEventArgs e)
+        => new SenderDirectoryWindow { Owner = Window.GetWindow(this) }.ShowDialog();
+
     /// <summary>True when at least one user has CaptureNextPassword active.</summary>
     internal bool HasPendingCaptures => _users.Any(u => u.CaptureNextPassword);
 
@@ -121,7 +137,34 @@ public partial class AccessControlPage : UserControl
         foreach (var u in _users) u.PasswordUndecryptable = false;
     }
 
+    /// <summary>
+    /// Fills the page from a config document.
+    ///
+    /// Guarded, because every assignment below raises the control's change event, and those
+    /// handlers re-evaluate the routing card. Mid-load that state is half-written: ticking
+    /// "sender routing enabled" fires before the relay mailbox field has been filled, the card
+    /// concludes there is no relay mailbox, and clears the "accept mailbox-less senders" flag the
+    /// line above had just restored — so a saved, enabled option came back switched off. The
+    /// evaluation therefore runs once, at the end, when every field is in place.
+    /// </summary>
     internal void LoadFrom(ConfigDocument doc)
+    {
+        _loading = true;
+        try
+        {
+            LoadFieldsFrom(doc);
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        UpdateRoutingAvailability(fromUser: false);
+    }
+
+    private bool _loading;
+
+    private void LoadFieldsFrom(ConfigDocument doc)
     {
         _users.Clear();
         foreach (var u in doc.Access.Users)
@@ -152,6 +195,14 @@ public partial class AccessControlPage : UserControl
         SvEnabled.IsChecked = doc.SenderValidation.SvEnabled;
         SvRefreshInterval.Text = doc.SenderValidation.SvRefreshIntervalMinutes.ToString();
         SvFailClosed.IsChecked = doc.SenderValidation.SvFailClosed;
+        SvAcceptMailboxless.IsChecked = doc.SenderValidation.SvAcceptMailboxless;
+
+        SrEnabled.IsChecked = doc.SenderRouting.SrEnabled;
+        SrRelayMailbox.Text = doc.SenderRouting.SrRelayMailbox;
+
+        _routes.Clear();
+        foreach (var route in doc.SenderRouting.SrRoutes)
+            _routes.Add(new RouteRow { Sender = route.Sender, Mailbox = route.Mailbox });
     }
 
     /// <summary>
@@ -187,14 +238,162 @@ public partial class AccessControlPage : UserControl
         if (int.TryParse(SvRefreshInterval.Text, out var refreshMinutes))
             doc.SenderValidation.SvRefreshIntervalMinutes = refreshMinutes;
         doc.SenderValidation.SvFailClosed = SvFailClosed.IsChecked == true;
+        doc.SenderValidation.SvAcceptMailboxless = SvAcceptMailboxless.IsChecked == true;
+
+        doc.SenderRouting.SrEnabled = SrEnabled.IsChecked == true;
+        doc.SenderRouting.SrRelayMailbox = SrRelayMailbox.Text.Trim();
+        doc.SenderRouting.SrRoutes = _routes
+            .Select(r => new ConfigDocument.SenderRouteEntry { Sender = r.Sender, Mailbox = r.Mailbox })
+            .ToList();
     }
 
     private void SvField_Changed(object sender, RoutedEventArgs e)
     {
         _markDirty();
-        UpdateSyncStatus();   // toggling validation enables/disables "Sync now" immediately
+        UpdateSyncStatus();             // toggling validation enables/disables "Sync now" immediately
+        UpdateRoutingAvailability(fromUser: true);   // …and decides whether the routing options bite
     }
     private void SvText_Changed(object sender, TextChangedEventArgs e) => _markDirty();
+
+    // ── Sender routing ───────────────────────────────────────────────────────
+
+    private void SrField_Changed(object sender, RoutedEventArgs e)
+    {
+        _markDirty();
+        UpdateRoutingAvailability(fromUser: true);
+    }
+
+    private void SrText_Changed(object sender, TextChangedEventArgs e)
+    {
+        _markDirty();
+        UpdateRoutingAvailability(fromUser: true);
+    }
+
+    /// <summary>
+    /// Keeps the routing card honest about what it can actually do.
+    ///
+    /// Routing without a relay mailbox silently does nothing, and the two recognition options are
+    /// worse than useless on their own: they let a group or public folder through MAIL FROM, and
+    /// without a relay to deliver it the message is then bounced by Graph with a 404 — an NDR
+    /// where the operator would otherwise have got a clean 550. So both are gated on a usable
+    /// relay mailbox and cleared when that goes away.
+    /// </summary>
+    /// <param name="fromUser">
+    /// False while loading a document — clearing a stale flag then must not raise the
+    /// "unsaved changes" badge on a page the user has not touched.
+    /// </param>
+    private void UpdateRoutingAvailability(bool fromUser)
+    {
+        if (SrRelayMailboxError is null) return;   // during InitializeComponent
+        if (_loading) return;                      // half-filled page — LoadFrom calls this at the end
+
+        var address = SrRelayMailbox.Text.Trim();
+        var routingOn = SrEnabled.IsChecked == true;
+
+        string? error = null;
+        if (routingOn)
+        {
+            if (address.Length == 0)
+                error = "Required — without a relay mailbox nothing can be sent as a group or public folder.";
+            else if (!EmailValidation.IsValidRecipient(address))
+                error = "Enter a valid mailbox address, e.g. relay@contoso.com.";
+        }
+
+        SrRelayMailboxError.Text = error ?? "";
+        SrRelayMailboxError.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
+
+        var canRelay = routingOn && error is null;
+        SvAcceptMailboxless.IsEnabled = canRelay;
+
+        if (!canRelay)
+        {
+            var cleared = SvAcceptMailboxless.IsChecked == true;
+            SvAcceptMailboxless.IsChecked = false;
+            if (cleared && fromUser) _markDirty();
+        }
+
+        // It only takes effect through sender validation; without it every sender is accepted
+        // anyway and the option does nothing.
+        var validationOff = canRelay && SvEnabled.IsChecked != true;
+        SrValidationHint.Text = validationOff
+            ? "Microsoft 365 sender validation is off, so this option has no effect — every sender is accepted regardless. Routing itself works either way."
+            : "";
+        SrValidationHint.Visibility = validationOff ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void AddRoute_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new SenderRouteDialog("Add Route", "", "", ValidateRoute)
+        { Owner = Window.GetWindow(this) };
+
+        if (dlg.ShowDialog() == true)
+        {
+            _routes.Add(new RouteRow { Sender = dlg.Sender, Mailbox = dlg.Mailbox });
+            _markDirty();
+        }
+    }
+
+    private void EditRoute_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.DataContext is not RouteRow row) return;
+
+        var dlg = new SenderRouteDialog(
+            "Edit Route", row.Sender, row.Mailbox,
+            (s, m) => ValidateRoute(s, m, ignore: row))
+        { Owner = Window.GetWindow(this) };
+
+        if (dlg.ShowDialog() == true)
+        {
+            row.Sender = dlg.Sender;
+            row.Mailbox = dlg.Mailbox;
+            _markDirty();
+        }
+    }
+
+    private void RemoveRoute_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.DataContext is not RouteRow row) return;
+        _routes.Remove(row);
+        _markDirty();
+    }
+
+    private string? ValidateRoute(string senderPattern, string mailbox) => ValidateRoute(senderPattern, mailbox, null);
+
+    private string? ValidateRoute(string senderPattern, string mailbox, RouteRow? ignore)
+    {
+        // The sender side accepts the same exact-address / @domain patterns as the allow lists.
+        var patternError = AddressPatternValidator.Validate(
+            senderPattern,
+            [.. _routes.Where(r => r != ignore).Select(r => r.Sender)],
+            null,
+            isAllowList: true);
+        if (patternError is not null) return patternError;
+
+        if (mailbox.Length == 0)
+            return "Enter the mailbox the message should be sent through.";
+        if (!EmailValidation.IsValidRecipient(mailbox))
+            return "The mailbox must be a valid address, e.g. relay@contoso.com.";
+
+        return null;
+    }
+
+    private void SrGenerateScript_Click(object sender, RoutedEventArgs e)
+    {
+        var relay = SrRelayMailbox.Text.Trim();
+        if (relay.Length == 0)
+        {
+            MessageBox.Show(
+                Window.GetWindow(this),
+                "Enter the relay mailbox first — the script grants SendAs to that mailbox.",
+                "Relay mailbox missing",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        new SendAsScriptDialog(relay, BuildInfo.FileVersion, _liveConfig)
+        { Owner = Window.GetWindow(this) }.ShowDialog();
+    }
 
     /// <summary>
     /// Called when the config file changes on disk (e.g. service captured a password).
@@ -513,6 +712,29 @@ public class PatternRow : INotifyPropertyChanged
     {
         get => _pattern;
         set { _pattern = value; OnPropChanged(); }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropChanged([System.Runtime.CompilerServices.CallerMemberName] string? p = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
+}
+
+/// <summary>One sender-routing override: which sender goes out through which mailbox.</summary>
+public class RouteRow : INotifyPropertyChanged
+{
+    private string _sender = "";
+    private string _mailbox = "";
+
+    public string Sender
+    {
+        get => _sender;
+        set { _sender = value; OnPropChanged(); }
+    }
+
+    public string Mailbox
+    {
+        get => _mailbox;
+        set { _mailbox = value; OnPropChanged(); }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

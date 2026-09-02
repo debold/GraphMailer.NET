@@ -22,7 +22,8 @@ namespace GraphMailer.Tests.Unit.Services;
 /// </summary>
 public sealed class GraphApiMonitoringServiceTests
 {
-    private static readonly string[] AllRoles = ["Mail.Send", "Mail.ReadWrite", "User.Read.All"];
+    private static readonly string[] AllRoles =
+        ["Mail.Send", "Mail.ReadWrite", "User.Read.All", "Domain.Read.All"];
 
     private static IOptionsMonitor<T> Monitor<T>(T value)
     {
@@ -212,10 +213,10 @@ public sealed class GraphApiMonitoringServiceTests
         // A widened gap is a different role set, so the alert store sees a changed condition and
         // reports it immediately instead of waiting out the repeat interval.
         await notify.Received(1).NotifyGraphPermissionsMissingAsync(
-            Arg.Is<IReadOnlyList<string>>(r => r != null && r.Count == 2),
+            Arg.Is<IReadOnlyList<string>>(r => r != null && r.Count == 3),
             Arg.Any<string>(), Arg.Any<CancellationToken>());
         await notify.Received(1).NotifyGraphPermissionsMissingAsync(
-            Arg.Is<IReadOnlyList<string>>(r => r != null && r.Count == 3),
+            Arg.Is<IReadOnlyList<string>>(r => r != null && r.Count == 4),
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 }

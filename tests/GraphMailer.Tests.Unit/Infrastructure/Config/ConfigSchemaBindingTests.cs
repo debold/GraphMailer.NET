@@ -1231,4 +1231,72 @@ public sealed class ConfigSchemaBindingTests : IDisposable
         rule.Conditions.Should().ContainSingle().Which.Negate.Should().BeTrue();
         rule.Actions.Should().ContainSingle().Which.HeaderName.Should().Be("X-Tag");
     }
+
+    // =========================================================================
+    // SenderRouting
+    // =========================================================================
+
+    [Fact]
+    public void Save_SenderRouting_BindsToSenderRoutingOptions()
+    {
+        var doc = new ConfigDocument();
+        doc.SenderRouting.SrEnabled = true;
+        doc.SenderRouting.SrRelayMailbox = "relay@corp.com";
+        doc.SenderRouting.SrRelayCacheMinutes = 15;
+
+        _sut.Save(doc);
+        var opts = Bind<SenderRoutingOptions>(LoadServiceConfig(), SenderRoutingOptions.SectionName);
+
+        opts.Enabled.Should().BeTrue();
+        opts.RelayMailbox.Should().Be("relay@corp.com");
+        opts.RelayCacheMinutes.Should().Be(15);
+    }
+
+    [Fact]
+    public void Save_SenderRoutingRoutes_BindToSenderRouteOptions()
+    {
+        var doc = new ConfigDocument();
+        doc.SenderRouting.SrEnabled = true;
+        doc.SenderRouting.SrRoutes =
+        [
+            new ConfigDocument.SenderRouteEntry { Sender = "pf@corp.com", Mailbox = "relay@corp.com" },
+            new ConfigDocument.SenderRouteEntry { Sender = "@lists.corp.com", Mailbox = "listrelay@corp.com" },
+        ];
+
+        _sut.Save(doc);
+        var opts = Bind<SenderRoutingOptions>(LoadServiceConfig(), SenderRoutingOptions.SectionName);
+
+        opts.Routes.Should().HaveCount(2);
+        opts.Routes[0].Sender.Should().Be("pf@corp.com");
+        opts.Routes[0].Mailbox.Should().Be("relay@corp.com");
+        opts.Routes[1].Sender.Should().Be("@lists.corp.com");
+        opts.Routes[1].Mailbox.Should().Be("listrelay@corp.com");
+    }
+
+    [Fact]
+    public void Save_SenderRoutingWithoutRoutes_WritesAnEmptyArray()
+    {
+        // Array defaults must never live in appsettings.json: IConfiguration merges arrays by
+        // index, so a shorter user list would inherit trailing default entries.
+        var doc = new ConfigDocument();
+        doc.SenderRouting.SrEnabled = true;
+
+        _sut.Save(doc);
+        var opts = Bind<SenderRoutingOptions>(LoadServiceConfig(), SenderRoutingOptions.SectionName);
+
+        opts.Routes.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Save_SenderValidationGroupAndDomainFlags_BindToSenderValidationOptions()
+    {
+        var doc = new ConfigDocument();
+        doc.SenderValidation.SvEnabled = true;
+        doc.SenderValidation.SvAcceptMailboxless = true;
+
+        _sut.Save(doc);
+        var opts = Bind<SenderValidationOptions>(LoadServiceConfig(), SenderValidationOptions.SectionName);
+
+        opts.AcceptMailboxlessSenders.Should().BeTrue();
+    }
 }

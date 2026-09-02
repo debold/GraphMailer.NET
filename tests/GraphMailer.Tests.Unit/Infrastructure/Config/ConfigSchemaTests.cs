@@ -550,4 +550,35 @@ public sealed class ConfigMigratorTests : IDisposable
 
         ConfigSchema.Migrate(root).Should().BeFalse("a file already at the current version needs no migration");
     }
+
+    [Fact]
+    public void Migrate_V11_ToV12_IsAdditiveOnly_ContentUnchangedExceptVersion()
+    {
+        // v12 introduced the SenderRouting section plus SenderValidation.AcceptMailboxlessSenders.
+        // Every new key defaults to the previous behaviour, so an existing
+        // installation keeps working unchanged until the operator opts in.
+        var root = JsonNode.Parse(
+            """{ "SchemaVersion": 11, "SenderValidation": { "Enabled": true } }""")!.AsObject();
+
+        var changed = ConfigSchema.Migrate(root);
+
+        changed.Should().BeTrue();
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+        root["SenderValidation"]!.AsObject()["Enabled"]!.GetValue<bool>().Should().BeTrue();
+        root.ContainsKey("SenderRouting").Should().BeFalse(
+            "the absent section is valid — the options binder falls back to routing disabled");
+    }
+
+    [Fact]
+    public void Migrate_V11_ToV12_LeavesTheNewSenderValidationFlagAbsent_SoItDefaultsToOff()
+    {
+        // The new flag needs an extra Graph permission, so an upgrade must never turn it on.
+        var root = JsonNode.Parse(
+            """{ "SchemaVersion": 11, "SenderValidation": { "Enabled": true } }""")!.AsObject();
+
+        ConfigSchema.Migrate(root);
+
+        var section = root["SenderValidation"]!.AsObject();
+        section.ContainsKey("AcceptMailboxlessSenders").Should().BeFalse();
+    }
 }

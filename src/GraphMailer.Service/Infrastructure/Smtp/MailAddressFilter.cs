@@ -60,19 +60,24 @@ internal static class MailAddressFilter
     {
         foreach (var entry in list)
         {
-            if (entry.StartsWith('@'))
-            {
-                // Domain wildcard: the address must end with exactly "@domain",
-                // which naturally prevents both subdomain and suffix spoofing.
-                if (address.EndsWith(entry, StringComparison.OrdinalIgnoreCase))
-                    return entry;
-            }
-            else if (address.Equals(entry, StringComparison.OrdinalIgnoreCase))
-            {
+            if (Matches(address, entry))
                 return entry;
-            }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Matches one address against a single pattern. Shared with sender routing
+    /// (SenderRouter) so the exact-address / @domain semantics exist exactly once.
+    /// </summary>
+    internal static bool Matches(string address, string pattern)
+    {
+        // Domain wildcard: the address must end with exactly "@domain",
+        // which naturally prevents both subdomain and suffix spoofing.
+        if (pattern.StartsWith('@'))
+            return address.EndsWith(pattern, StringComparison.OrdinalIgnoreCase);
+
+        return address.Equals(pattern, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

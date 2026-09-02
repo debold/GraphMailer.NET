@@ -73,7 +73,7 @@ internal sealed class GraphApiClient : IGraphApiClient
     // Public API
     // -------------------------------------------------------------------------
 
-    public async Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, bool saveToSentItems, CancellationToken ct = default)
+    public async Task<GraphDeliveryResult> SendAsync(byte[] emlContent, string senderAddress, IReadOnlyList<string> envelopeRecipients, string messageId, bool saveToSentItems, string? relayMailbox = null, bool sendingAsRelay = false, CancellationToken ct = default)
     {
         var opts = _options.CurrentValue;
         if (!opts.IsConfigured)
@@ -127,11 +127,11 @@ internal sealed class GraphApiClient : IGraphApiClient
 
         try
         {
-            var variant = await DeliverWithFallbacksAsync(
+            var (variant, relayed) = await DeliverWithFallbacksAsync(
                 client, sendAs, mime, smallAttachments, largeAttachments,
-                envelopeRecipients, messageId, saveToSentItems, ct);
+                envelopeRecipients, messageId, saveToSentItems, relayMailbox, sendingAsRelay, ct);
 
-            return new GraphDeliveryResult(variant, attachmentCount, attachmentBytes);
+            return new GraphDeliveryResult(variant, attachmentCount, attachmentBytes, relayed || sendingAsRelay);
         }
         catch (ODataError ex)
         {
@@ -149,7 +149,7 @@ internal sealed class GraphApiClient : IGraphApiClient
                 messageId, status, code, msg, reqId, isPermanent);
 
             throw new GraphDeliveryException(
-                $"HTTP {status} {code}: \"{msg}\" (RequestId: {reqId})", isPermanent, ex);
+                $"HTTP {status} {code}: \"{msg}\" (RequestId: {reqId})", isPermanent, ex, code);
         }
         catch (AuthenticationFailedException ex)
         {
@@ -174,10 +174,14 @@ internal sealed class GraphApiClient : IGraphApiClient
     ///   2. Request too large on the direct path — resent through the draft + upload
     ///      session, which moves the attachment bytes out of the request body. Only a
     ///      message whose *body* alone busts the cap is genuinely undeliverable.
+    ///   3. The sender has no mailbox at all (distribution group, mail-enabled public
+    ///      folder, mail user) — resent through the relay mailbox, keeping the original
+    ///      From. Exchange authorises that pairing via the relay mailbox's SendAs right.
     ///
-    /// Returns the <see cref="GraphDeliveryResult"/> variant that actually delivered.
+    /// Returns the <see cref="GraphDeliveryResult"/> variant that actually delivered, and
+    /// whether it went out through the relay mailbox.
     /// </summary>
-    private async Task<string> DeliverWithFallbacksAsync(
+    private async Task<(string Variant, bool Relayed)> DeliverWithFallbacksAsync(
         GraphServiceClient client,
         string sendAs,
         MimeMessage mime,
@@ -186,13 +190,43 @@ internal sealed class GraphApiClient : IGraphApiClient
         IReadOnlyList<string> envelopeRecipients,
         string messageId,
         bool saveToSentItems,
+        string? relayMailbox,
+        bool sendingAsRelay,
         CancellationToken ct)
     {
         try
         {
-            return await DeliverAsync(
+            return (await DeliverAsync(
                 client, sendAs, mime, smallAttachments, largeAttachments,
-                envelopeRecipients, messageId, saveToSentItems, MessageFidelity.Full, ct);
+                envelopeRecipients, messageId, saveToSentItems, MessageFidelity.Full, ct), false);
+        }
+        catch (ODataError ex) when (sendingAsRelay && IsSendAsRejection(ex.Error?.Code))
+        {
+            // This send already goes through the relay mailbox — the router recognised the sender
+            // as one without a mailbox and picked the relay up front, so there is no fallback left
+            // to try. A SendAs rejection here means exactly one thing: the relay mailbox has not
+            // been granted the permission on this sender. Without this branch the rejection fell
+            // through to the header-fidelity handler below, which resent the message identically,
+            // logged a misleading warning about headers, and — the part that matters — never told
+            // the operator which permission to grant.
+            LogSendAsDenied(messageId, sendAs, mime, ex);
+            throw;
+        }
+        catch (ODataError ex) when (relayMailbox is not null
+                                    && IsMailboxUnavailable(ex.ResponseStatusCode, ex.Error?.Code))
+        {
+            // The sender is a real tenant recipient but owns no Exchange Online mailbox, so it
+            // can never be the user key of a sendMail call. Send through the relay mailbox
+            // instead — the message keeps its From, which is exactly the pairing Exchange
+            // evaluates against the relay mailbox's SendAs permission.
+            _logger.LogWarning(
+                "[GraphApi] {MessageId}: sender {SendAs} has no Exchange Online mailbox ({ErrorCode}) — " +
+                "resending through relay mailbox {Relay} with the original From preserved",
+                messageId, sendAs, ex.Error?.Code, relayMailbox);
+
+            return (await DeliverViaRelayAsync(
+                client, relayMailbox, mime, smallAttachments, largeAttachments,
+                envelopeRecipients, messageId, ct), true);
         }
         catch (ODataError ex) when (IsOptionalPropertyRejection(ex.Error?.Code))
         {
@@ -204,9 +238,9 @@ internal sealed class GraphApiClient : IGraphApiClient
                 "resending without custom headers and the Sender header so the message still arrives",
                 messageId, ex.Error?.Code);
 
-            return await DeliverAsync(
+            return (await DeliverAsync(
                 client, sendAs, mime, smallAttachments, largeAttachments,
-                envelopeRecipients, messageId, saveToSentItems, MessageFidelity.WithoutOptionalExtras, ct);
+                envelopeRecipients, messageId, saveToSentItems, MessageFidelity.WithoutOptionalExtras, ct), false);
         }
         catch (ODataError ex) when (IsRequestTooLarge(ex) && smallAttachments.Count > 0)
         {
@@ -227,10 +261,71 @@ internal sealed class GraphApiClient : IGraphApiClient
                     attachment.IsInline ?? false));
             smallAttachments.Clear();
 
-            return await DeliverAsync(
+            return (await DeliverAsync(
                 client, sendAs, mime, smallAttachments, largeAttachments,
-                envelopeRecipients, messageId, saveToSentItems, MessageFidelity.Full, ct);
+                envelopeRecipients, messageId, saveToSentItems, MessageFidelity.Full, ct), false);
         }
+    }
+
+    /// <summary>
+    /// Sends through the relay mailbox on behalf of a sender that has no mailbox of its own.
+    ///
+    /// Never saves to Sent Items: the copy would land in the relay mailbox rather than with the
+    /// actual sender — a distribution group, public folder or mail user has no Sent Items at all —
+    /// and would fill the relay mailbox up over time. (The draft + upload path used for
+    /// attachments ≥ 3 MB still leaves a copy; /send has no way to suppress it.)
+    /// </summary>
+    private async Task<string> DeliverViaRelayAsync(
+        GraphServiceClient client,
+        string relayMailbox,
+        MimeMessage mime,
+        List<FileAttachment> smallAttachments,
+        List<LargeAttachment> largeAttachments,
+        IReadOnlyList<string> envelopeRecipients,
+        string messageId,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await DeliverAsync(
+                client, relayMailbox, mime, smallAttachments, largeAttachments,
+                envelopeRecipients, messageId, saveToSentItems: false, MessageFidelity.Full, ct);
+        }
+        catch (ODataError ex) when (IsSendAsRejection(ex.Error?.Code))
+        {
+            LogSendAsDenied(messageId, relayMailbox, mime, ex);
+            throw;
+        }
+        catch (ODataError ex) when (IsOptionalPropertyRejection(ex.Error?.Code))
+        {
+            _logger.LogWarning(
+                "[GraphApi] {MessageId}: Graph rejected the preserved headers on the relay path ({ErrorCode}) — " +
+                "resending without custom headers and the Sender header",
+                messageId, ex.Error?.Code);
+
+            return await DeliverAsync(
+                client, relayMailbox, mime, smallAttachments, largeAttachments,
+                envelopeRecipients, messageId, saveToSentItems: false,
+                MessageFidelity.WithoutOptionalExtras, ct);
+        }
+    }
+
+    /// <summary>
+    /// The operator's only notification channel for a missing Exchange permission — nothing else
+    /// surfaces it, so it goes out at Error level with the exact command to run. The rejection
+    /// stays transient (see IsPermanentRejection), which leaves the whole retry window to grant
+    /// the right; Exchange takes up to an hour to replicate it, and the message goes out by
+    /// itself once it is live.
+    /// </summary>
+    private void LogSendAsDenied(string messageId, string relayMailbox, MimeMessage mime, ODataError ex)
+    {
+        var from = mime.From.Mailboxes.FirstOrDefault()?.Address ?? "?";
+
+        _logger.LogError(
+            "[GraphApi] {MessageId}: relay mailbox {Relay} may not send as {From} ({ErrorCode}) — " +
+            "grant the permission in Exchange Online PowerShell: " +
+            "Add-RecipientPermission -Identity \"{From}\" -Trustee \"{Relay}\" -AccessRights SendAs",
+            messageId, relayMailbox, from, ex.Error?.Code, from, relayMailbox);
     }
 
     private async Task<string> DeliverAsync(
@@ -265,8 +360,33 @@ internal sealed class GraphApiClient : IGraphApiClient
     internal static bool IsOptionalPropertyRejection(string? code) =>
         code is not null
         && (code.Equals("InvalidInternetMessageHeaderCollection", StringComparison.OrdinalIgnoreCase)
-            || code.Equals("ErrorSendAsDenied", StringComparison.OrdinalIgnoreCase)
+            || IsSendAsRejection(code));
+
+    /// <summary>
+    /// Graph refused the From we asked for. On the direct path that is one of the optional
+    /// fidelity extras; on the relay path it means the relay mailbox lacks SendAs on the
+    /// sender object, which only an Exchange admin can fix.
+    /// </summary>
+    internal static bool IsSendAsRejection(string? code) =>
+        code is not null
+        && (code.Equals("ErrorSendAsDenied", StringComparison.OrdinalIgnoreCase)
             || code.Equals("ErrorInvalidSender", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// The sender key does not resolve to an Exchange Online mailbox. Distribution groups,
+    /// mail-enabled public folders and mail users all land here — they are valid tenant
+    /// recipients but own no mailbox, so sendMail can never address them directly.
+    /// Recoverable by relaying through a mailbox that holds SendAs on them.
+    /// </summary>
+    internal static bool IsMailboxUnavailable(int status, string? code) =>
+        (code is not null
+         && (code.Equals("MailboxNotEnabledForRESTAPI", StringComparison.OrdinalIgnoreCase)
+             || code.Equals("MailboxNotSupportedForRESTAPI", StringComparison.OrdinalIgnoreCase)
+             || code.Equals("ErrorInvalidUser", StringComparison.OrdinalIgnoreCase)
+             || code.Equals("ErrorNonExistentMailbox", StringComparison.OrdinalIgnoreCase)
+             || code.Equals("ResourceNotFound", StringComparison.OrdinalIgnoreCase)
+             || code.Equals("Request_ResourceNotFound", StringComparison.OrdinalIgnoreCase)))
+        || status == 404;
 
     /// <summary>
     /// Fails fast when a message carries more envelope recipients than the sender mailbox

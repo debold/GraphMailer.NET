@@ -44,7 +44,7 @@ public sealed class QueueProcessorTests : IDisposable
     {
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(SendOk);
         return client;
     }
@@ -54,7 +54,8 @@ public sealed class QueueProcessorTests : IDisposable
         GraphApiOptions? graphOpts = null,
         IGraphApiClient? graphClient = null,
         IMetricsService? metrics = null,
-        IAdminNotificationService? notify = null)
+        IAdminNotificationService? notify = null,
+        ISenderRouter? router = null)
     {
         var opts = queueOpts ?? new MailQueueOptions { MailDir = _tempDir };
         // Ensure MailDir is set when caller provides opts without it
@@ -79,11 +80,21 @@ public sealed class QueueProcessorTests : IDisposable
             ClientSecret = "s3cr3t"
         };
 
+        // Passthrough routing by default: every sender is its own Graph user key, no relay.
+        // Only stubbed when the caller brought no router of its own — stubbing over theirs
+        // would quietly replace the routing decision the test is about.
+        if (router is null)
+        {
+            router = Substitute.For<ISenderRouter>();
+            router.Resolve(Arg.Any<string>())
+                  .Returns(ci => new SenderRoute(ci.Arg<string>(), false, null, false, "test passthrough"));
+        }
+
         return new QueueProcessor(
             Monitor(opts),
             Monitor(gOpts),
             graphClient ?? SucceedingClient(),
-            Substitute.For<ITenantSenderDirectory>(),
+            router,
             metrics ?? Substitute.For<IMetricsService>(),
             notify ?? Substitute.For<IAdminNotificationService>(),
             new BlockedMessageRecorder(
@@ -165,13 +176,13 @@ public sealed class QueueProcessorTests : IDisposable
         await sut.ProcessBatchAsync();
 
         await client.DidNotReceive().SendAsync(
-            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task ProcessMessage_DeliverySucceeds_DeletesBothFiles()
     {
-        var client = Substitute.For<IGraphApiClient>();
+        var client = SucceedingClient();
         var sut = CreateProcessor(graphClient: client);
         await EnqueueMessageAsync("msg-delete");
 
@@ -188,7 +199,7 @@ public sealed class QueueProcessorTests : IDisposable
         // block later, ready messages. Enumeration is by GUID filename, so the back-off
         // entries ("aaa…") sort before the eligible one ("zzz…"); the old Take(BatchSize)
         // logic only ever looked at the back-off prefix and never delivered the ready mail.
-        var client = Substitute.For<IGraphApiClient>();
+        var client = SucceedingClient();
         var sut = CreateProcessor(
             queueOpts: new MailQueueOptions { MailDir = _tempDir, BatchSize = 10 },
             graphClient: client);
@@ -203,11 +214,11 @@ public sealed class QueueProcessorTests : IDisposable
         var queueDir = Path.Combine(_tempDir, "queue");
         File.Exists(Path.Combine(queueDir, "zzz-ready.meta.json")).Should().BeFalse();
         await client.Received(1).SendAsync(
-            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), "zzz-ready", Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), "zzz-ready", Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         // … while the back-off messages were skipped, not attempted.
         await client.DidNotReceive().SendAsync(
             Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-            Arg.Is<string>(id => id != null && id.StartsWith("aaa-backoff")), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            Arg.Is<string>(id => id != null && id.StartsWith("aaa-backoff")), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     // =========================================================================
@@ -227,7 +238,7 @@ public sealed class QueueProcessorTests : IDisposable
         await sut.ProcessBatchAsync();
 
         await client.DidNotReceive().SendAsync(
-            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         Directory.GetFiles(Path.Combine(_tempDir, "queue"), "*").Should().BeEmpty();
     }
 
@@ -246,7 +257,7 @@ public sealed class QueueProcessorTests : IDisposable
         await sut.ProcessBatchAsync();
 
         await client.DidNotReceive().SendAsync(
-            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         File.Exists(Path.Combine(_tempDir, "sent", "msg-resume.meta.json")).Should().BeTrue();
         Directory.GetFiles(Path.Combine(_tempDir, "queue"), "*").Should().BeEmpty();
     }
@@ -260,7 +271,7 @@ public sealed class QueueProcessorTests : IDisposable
         using var cts = new CancellationTokenSource();
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 cts.Cancel();   // shutdown begins while the send is in flight
@@ -290,7 +301,7 @@ public sealed class QueueProcessorTests : IDisposable
         await sut.ProcessBatchAsync();
 
         await client.Received(1).SendAsync(
-            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         Directory.GetFiles(Path.Combine(_tempDir, "queue"), "*").Should().BeEmpty();
     }
 
@@ -303,7 +314,7 @@ public sealed class QueueProcessorTests : IDisposable
     {
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("HTTP 404 ErrorInvalidUser: mailbox not found"));
         var sut = CreateProcessor(graphClient: client);
         var metaPath = await EnqueueMessageAsync("msg-lasterror");
@@ -323,7 +334,7 @@ public sealed class QueueProcessorTests : IDisposable
     {
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("permanent boom"));
         // MessageExpirationHours = 0 → a message is given up on its first failure
         var sut = CreateProcessor(
@@ -385,7 +396,7 @@ public sealed class QueueProcessorTests : IDisposable
     [Fact]
     public async Task ProcessMessage_DeliverySucceeds_ArchivesFilesWhenEnabled()
     {
-        var client = Substitute.For<IGraphApiClient>();
+        var client = SucceedingClient();
         var opts = new MailQueueOptions { ArchiveSentEmails = true };
         var sut = CreateProcessor(queueOpts: opts, graphClient: client);
         await EnqueueMessageAsync("msg-archive");
@@ -408,7 +419,7 @@ public sealed class QueueProcessorTests : IDisposable
     public async Task ProcessMessage_FirstDeliveryFails_IncrementsRetryCountAndSetsBackoff()
     {
         var client = Substitute.For<IGraphApiClient>();
-        client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
               .ThrowsAsync(new InvalidOperationException("Simulated failure"));
 
         var sut = CreateProcessor(graphClient: client);
@@ -431,7 +442,7 @@ public sealed class QueueProcessorTests : IDisposable
     public async Task ProcessMessage_ExpirationReached_MovesToFailed()
     {
         var client = Substitute.For<IGraphApiClient>();
-        client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
               .ThrowsAsync(new InvalidOperationException("Simulated failure"));
 
         // 24 h expiration; received 25 h ago → the next failure is past the budget → failed
@@ -453,7 +464,7 @@ public sealed class QueueProcessorTests : IDisposable
     {
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("still down"));
         // RetryCount 7 (beyond the 6 transient retries) → next gap is the steady interval (900 s)
         var sut = CreateProcessor(
@@ -480,7 +491,7 @@ public sealed class QueueProcessorTests : IDisposable
     {
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("transient"));
         var sut = CreateProcessor(
             queueOpts: new MailQueueOptions
@@ -510,7 +521,7 @@ public sealed class QueueProcessorTests : IDisposable
         // through the 24 h retry window — the sender gets the NDR right away.
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new GraphDeliveryException(
                 "HTTP 404 ErrorInvalidUser: mailbox not found", isPermanent: true,
                 new InvalidOperationException("inner")));
@@ -532,7 +543,7 @@ public sealed class QueueProcessorTests : IDisposable
     {
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new GraphDeliveryException(
                 "HTTP 503 ServiceUnavailable", isPermanent: false,
                 new InvalidOperationException("inner")));
@@ -556,7 +567,7 @@ public sealed class QueueProcessorTests : IDisposable
         // but the admin delivery-failure notification still fires.
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("still down"));
         var notify = Substitute.For<IAdminNotificationService>();
         var sut = CreateProcessor(
@@ -587,7 +598,7 @@ public sealed class QueueProcessorTests : IDisposable
         await sut.ProcessBatchAsync();
 
         await client.DidNotReceive().SendAsync(
-            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     // =========================================================================
@@ -747,7 +758,7 @@ public sealed class QueueProcessorTests : IDisposable
         var deliveredOrder = new List<string>();
         var client = Substitute.For<IGraphApiClient>();
         client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(ci => { deliveredOrder.Add(ci.ArgAt<string>(3)); return Task.FromResult(SendOk); });
         var sut = CreateProcessor(graphClient: client);
 
@@ -777,7 +788,47 @@ public sealed class QueueProcessorTests : IDisposable
 
         await client.Received(1).SendAsync(
             Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), "msg-relayed",
-            true, Arg.Any<CancellationToken>());
+            Arg.Is(true), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ProcessMessage_RelayRoute_TellsTheGraphClientItIsAlreadyRelaying()
+    {
+        // Regression: the flag was never passed, so the client could not tell a relay send from a
+        // direct one. A SendAs rejection then looked like a header-fidelity problem — the message
+        // was resent identically, and the Error log naming the permission to grant never appeared,
+        // which is the operator's only notification channel for it.
+        var client = SucceedingClient();
+        var router = Substitute.For<ISenderRouter>();
+        router.Resolve(Arg.Any<string>())
+              .Returns(new SenderRoute("relay@corp.com", true, null, false, "sender is a mail-enabled group"));
+        var sut = CreateProcessor(graphClient: client, router: router);
+        await EnqueueMessageAsync("msg-group");
+
+        await sut.ProcessBatchAsync();
+
+        await client.Received(1).SendAsync(
+            Arg.Any<byte[]>(), "relay@corp.com", Arg.Any<IReadOnlyList<string>>(), "msg-group",
+            Arg.Any<bool>(), Arg.Any<string?>(), Arg.Is(true), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ProcessMessage_DirectRoute_DoesNotClaimToBeRelaying()
+        // Otherwise a rejected Sender header on an ordinary mailbox would stop degrading to a
+        // send without it, and be misreported as a missing Exchange permission instead.
+        => await AssertDirectSendNotFlaggedAsRelayAsync();
+
+    private async Task AssertDirectSendNotFlaggedAsRelayAsync()
+    {
+        var client = SucceedingClient();
+        var sut = CreateProcessor(graphClient: client);
+        await EnqueueMessageAsync("msg-direct");
+
+        await sut.ProcessBatchAsync();
+
+        await client.Received(1).SendAsync(
+            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), "msg-direct",
+            Arg.Any<bool>(), Arg.Any<string?>(), Arg.Is(false), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -793,7 +844,7 @@ public sealed class QueueProcessorTests : IDisposable
 
         await client.Received(1).SendAsync(
             Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), "msg-ndr",
-            false, Arg.Any<CancellationToken>());
+            Arg.Is(false), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     // =========================================================================

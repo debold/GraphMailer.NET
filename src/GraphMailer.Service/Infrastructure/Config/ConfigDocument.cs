@@ -24,6 +24,7 @@ internal sealed class ConfigDocument
     public NotificationSection Notification { get; set; } = new();
     public NdrSection Ndr { get; set; } = new();
     public SenderValidationSection SenderValidation { get; set; } = new();
+    public SenderRoutingSection SenderRouting { get; set; } = new();
     public MalwareScanSection MalwareScan { get; set; } = new();
     public MessageRulesSection MessageRules { get; set; } = new();
     public LoggingSection Logging { get; set; } = new();
@@ -184,6 +185,25 @@ internal sealed class ConfigDocument
         public bool SvEnabled { get; set; } = false;
         public int SvRefreshIntervalMinutes { get; set; } = 60;
         public bool SvFailClosed { get; set; } = false;
+        public bool SvAcceptMailboxless { get; set; } = false;
+    }
+
+    /// <summary>
+    /// Sending as recipients without a mailbox of their own — distribution groups,
+    /// mail-enabled public folders, mail users.
+    /// </summary>
+    internal sealed class SenderRoutingSection
+    {
+        public bool SrEnabled { get; set; } = false;
+        public string SrRelayMailbox { get; set; } = "";
+        public int SrRelayCacheMinutes { get; set; } = 60;
+        public List<SenderRouteEntry> SrRoutes { get; set; } = [];
+    }
+
+    internal sealed class SenderRouteEntry
+    {
+        public string Sender { get; set; } = "";
+        public string Mailbox { get; set; } = "";
     }
 
     internal sealed class LoggingSection

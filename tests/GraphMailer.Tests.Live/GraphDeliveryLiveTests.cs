@@ -302,4 +302,23 @@ public class GraphDeliveryLiveTests
 
         await act.Should().NotThrowAsync("sending as the resolved object id must work for aliases");
     }
+
+    [LiveFact(RequireRelaySender = true)]
+    public async Task MailboxlessSender_IsDelivered_ViaRelayMailbox()
+    {
+        // The whole point of sender routing: a distribution group, mail-enabled public folder or
+        // mail user owns no mailbox, so /users/{sender}/sendMail can never address it. The message
+        // goes out through the relay mailbox instead and keeps the original From — which Exchange
+        // authorises via the relay mailbox's SendAs right on that object.
+        var s = LiveTestSettings.Current;
+        var eml = BuildEml(s.MailboxlessSenderAddress!, s.RecipientAddress!,
+            $"[LiveTest] relayed sender {DateTime.UtcNow:HH:mm:ss}");
+
+        var act = () => BuildClient().SendAsync(
+            eml, s.MailboxlessSenderAddress!, [s.RecipientAddress!], Guid.NewGuid().ToString("N"),
+            saveToSentItems: false, relayMailbox: s.RelayMailbox);
+
+        await act.Should().NotThrowAsync(
+            "the direct attempt must fall back to the relay mailbox instead of failing");
+    }
 }

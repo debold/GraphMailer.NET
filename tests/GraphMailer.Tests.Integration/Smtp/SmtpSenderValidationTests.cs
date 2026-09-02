@@ -25,8 +25,31 @@ public class SmtpSenderValidationTests
             return false;
         }
 
+        public bool TryResolveSender(string address, out string graphUserKey, out TenantRecipientKind kind)
+        {
+            graphUserKey = string.Empty;
+            kind = TenantRecipientKind.Mailbox;
+            return false;
+        }
+
+        public IReadOnlyList<TenantUser> Recipients() => [];
+
+        public IReadOnlyList<string> MailDomains() => [];
+
         public Task<SenderDirectoryRefreshResult> RefreshAsync(CancellationToken ct = default)
             => Task.FromResult(new SenderDirectoryRefreshResult(true, 0, 0, null));
+    }
+
+    /// <summary>Router stub reporting an explicit route for one address only.</summary>
+    private sealed class RoutedSenderRouter(string routedAddress) : ISenderRouter
+    {
+        public SenderRoute Resolve(string envelopeFrom)
+            => new(envelopeFrom, false, null, false, "test");
+
+        public void MarkMailboxUnavailable(string envelopeFrom) { }
+
+        public bool HasExplicitRoute(string envelopeFrom)
+            => envelopeFrom.Equals(routedAddress, StringComparison.OrdinalIgnoreCase);
     }
 
     private static MimeMessage BuildMessage(string from = "sender@corp.com")
@@ -127,6 +150,87 @@ public class SmtpSenderValidationTests
         var act = () => client.SendAsync(BuildMessage("ghost@corp.com"));
         await act.Should().NotThrowAsync(
             "with validation disabled the behavior must be unchanged");
+
+        await client.DisconnectAsync(quit: true);
+    }
+
+    // =========================================================================
+    // Senders Graph cannot enumerate: mail-enabled public folders,
+    // dynamic distribution groups
+    // =========================================================================
+
+    [Fact]
+    public async Task KnownDomainSender_AcceptMailboxlessEnabled_IsAccepted()
+    {
+        // A mail-enabled public folder is a real recipient with no Graph representation at all.
+        // The only signal left is that its address sits in one of our own verified domains.
+        await using var host = await SmtpTestHost.StartAsync(
+            senderValidationEnabled: true,
+            senderValidationAcceptMailboxless: true,
+            senderDirectory: new ScriptedDirectory(SenderLookupResult.KnownDomain));
+
+        using var client = new SmtpClient();
+        await client.ConnectAsync("127.0.0.1", host.Port, SecureSocketOptions.None);
+
+        var act = () => client.SendAsync(BuildMessage("archive-pf@corp.com"));
+        await act.Should().NotThrowAsync(
+            "an address in a verified tenant domain must pass when the option is enabled");
+
+        await client.DisconnectAsync(quit: true);
+    }
+
+    [Fact]
+    public async Task KnownDomainSender_AcceptMailboxlessDisabled_IsRejected()
+    {
+        // Default off: without the opt-in, only addresses the directory actually knows pass.
+        await using var host = await SmtpTestHost.StartAsync(
+            senderValidationEnabled: true,
+            senderValidationAcceptMailboxless: false,
+            senderDirectory: new ScriptedDirectory(SenderLookupResult.KnownDomain));
+
+        using var client = new SmtpClient();
+        await client.ConnectAsync("127.0.0.1", host.Port, SecureSocketOptions.None);
+
+        var act = () => client.SendAsync(BuildMessage("archive-pf@corp.com"));
+        await act.Should().ThrowAsync<SmtpCommandException>(
+            "without the opt-in a directory miss stays a rejection");
+
+        await client.DisconnectAsync(quit: true);
+    }
+
+    [Fact]
+    public async Task SenderWithAnExplicitRoute_IsAccepted_EvenWhenTheDirectoryRejects()
+    {
+        // An explicit route is a deliberate statement that this sender exists and how it is
+        // delivered — it must not be second-guessed by a directory that cannot see it.
+        await using var host = await SmtpTestHost.StartAsync(
+            senderValidationEnabled: true,
+            senderDirectory: new ScriptedDirectory(SenderLookupResult.Unknown),
+            senderRouter: new RoutedSenderRouter("routed-pf@corp.com"));
+
+        using var client = new SmtpClient();
+        await client.ConnectAsync("127.0.0.1", host.Port, SecureSocketOptions.None);
+
+        var act = () => client.SendAsync(BuildMessage("routed-pf@corp.com"));
+        await act.Should().NotThrowAsync("a sender covered by an explicit route must be accepted");
+
+        await client.DisconnectAsync(quit: true);
+    }
+
+    [Fact]
+    public async Task SenderWithoutARoute_IsStillRejected_WhenTheDirectoryRejects()
+    {
+        await using var host = await SmtpTestHost.StartAsync(
+            senderValidationEnabled: true,
+            senderDirectory: new ScriptedDirectory(SenderLookupResult.Unknown),
+            senderRouter: new RoutedSenderRouter("routed-pf@corp.com"));
+
+        using var client = new SmtpClient();
+        await client.ConnectAsync("127.0.0.1", host.Port, SecureSocketOptions.None);
+
+        var act = () => client.SendAsync(BuildMessage("ghost@corp.com"));
+        await act.Should().ThrowAsync<SmtpCommandException>(
+            "the route exemption must apply only to the addresses it covers");
 
         await client.DisconnectAsync(quit: true);
     }

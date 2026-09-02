@@ -26,9 +26,49 @@ The message sits in the queue, or eventually lands in **failed**.
 The sender passes validation but delivery fails with this error.
 
 > [!NOTE]
-> This means the **From** mailbox has no Exchange Online mailbox — typically an on-premises user in a
-> hybrid tenant. Graph cannot send on its behalf. This is a known Microsoft 365 limitation, not a
+> This means the **From** address has no Exchange Online mailbox — typically an on-premises user in a
+> hybrid tenant. Microsoft 365 cannot send on its behalf. This is a Microsoft 365 limitation, not a
 > GraphMailer defect. Use a sender address that has an Exchange Online mailbox.
+
+If the sender is a **distribution list, a mail-enabled public folder or a mail user**, this is
+expected — none of them owns a mailbox. Turn on **Sender Routing** on
+[Access Control](../configuration/access-control.md) to send their mail through a relay mailbox
+while keeping the original From.
+
+## A sender validation option seems to do nothing
+
+You switched on *Accept groups, public folders and mail users as senders*, but they are still
+rejected.
+
+First check that a **relay mailbox** is set under *Sender Routing* — the option stays disabled
+without one, because accepting a sender you cannot deliver only turns a clean `550` into a
+delayed NDR.
+
+Otherwise: the option needs two Graph permissions that an app registration created before it does not
+have.
+Run the **Entra ID setup** again on the [Graph API page](../configuration/graph-api.md) — it keeps
+the existing registration and certificate and only adds what is missing. The sync status line on
+[Access Control](../configuration/access-control.md) names the missing permission, and the service
+log records it as an error.
+
+Nothing else is affected while the permission is missing: users and aliases keep validating, and
+anything the directory already knew keeps working.
+
+## Mail from a distribution list or public folder is not sent
+
+Depending on where it fails:
+
+- **Rejected at `MAIL FROM` with `550`** — sender validation does not recognise the address. Enable
+  *Accept groups, public folders and mail users as senders*, or add a **route** naming the address;
+  both are on [Access Control](../configuration/access-control.md). Use **Show synchronised senders**
+  there to see what the last sync actually recognised.
+- **Accepted, then stuck in the queue with `ErrorSendAsDenied`** — the relay mailbox is not allowed
+  to send as that object. The log names the exact `Add-RecipientPermission` command; the **Generate
+  SendAs script** button produces it too. Exchange needs **up to an hour** to replicate the grant,
+  after which the queued mail goes out on its own.
+- **Accepted, then failed with `554 5.2.252 SendAsDenied`** — the From address is outside your
+  accepted domains (typical for a mail user pointing at an external address). No permission can
+  authorise that; it is spoofing protection.
 
 ## Mail from a sender is rejected at submission
 

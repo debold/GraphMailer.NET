@@ -25,6 +25,13 @@ param(
     # (Get-Mailbox <sender> | Select -Expand EmailAddresses) — NOT the address
     # of a different user; the alias test sends as the resolved mailbox owner.
     [string] $SenderAlias,
+    # A real mailbox that holds SendAs on -MailboxlessSender, and an address that has
+    # no mailbox of its own (distribution group, mail-enabled public folder, mail user).
+    # Grant the permission first:
+    #   Add-RecipientPermission -Identity <MailboxlessSender> -Trustee <RelayMailbox> -AccessRights SendAs
+    # Exchange takes up to an hour to replicate it.
+    [string] $RelayMailbox,
+    [string] $MailboxlessSender,
     [string] $ConfigPath = 'C:\ProgramData\GraphMailer\config\graphmailer.json'
 )
 
@@ -57,6 +64,8 @@ Set-Secret 'LiveTests:CertificateSubjectName' $graphApi.ClientCertificateSubject
 Set-Secret 'LiveTests:SenderAddress'          $SenderAddress
 Set-Secret 'LiveTests:RecipientAddress'       $RecipientAddress
 Set-Secret 'LiveTests:SenderAlias'            $SenderAlias
+Set-Secret 'LiveTests:RelayMailbox'           $RelayMailbox
+Set-Secret 'LiveTests:MailboxlessSenderAddress' $MailboxlessSender
 
 Write-Host ''
 Write-Host 'Done. Run the live tests with:'

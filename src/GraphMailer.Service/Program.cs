@@ -159,6 +159,7 @@ try
     builder.Services.Configure<AdminNotificationsOptions>(builder.Configuration.GetSection(AdminNotificationsOptions.SectionName));
     builder.Services.Configure<NdrOptions>(builder.Configuration.GetSection(NdrOptions.SectionName));
     builder.Services.Configure<SenderValidationOptions>(builder.Configuration.GetSection(SenderValidationOptions.SectionName));
+    builder.Services.Configure<SenderRoutingOptions>(builder.Configuration.GetSection(SenderRoutingOptions.SectionName));
     builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection(BackupOptions.SectionName));
     builder.Services.Configure<RecommendationOptions>(builder.Configuration.GetSection(RecommendationOptions.SectionName));
     builder.Services.Configure<MalwareScanOptions>(builder.Configuration.GetSection(MalwareScanOptions.SectionName));
@@ -221,6 +222,7 @@ try
     // Phase 3 – Tenant sender validation (MAIL FROM against tenant directory)
     builder.Services.AddSingleton<IGraphDirectoryGateway, GraphDirectoryGateway>();
     builder.Services.AddSingleton<ITenantSenderDirectory, TenantSenderDirectory>();
+    builder.Services.AddSingleton<ISenderRouter, SenderRouter>();
     builder.Services.AddHostedService<SenderDirectorySyncService>();
 
     // Phase 4 – Metrics (concrete type also registered for MetricsCollectorService)

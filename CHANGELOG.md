@@ -2,8 +2,85 @@
 
 ## Unreleased
 
+### Added
+
+- **Mail can now be sent as distribution lists, mail-enabled public folders and mail users.**
+  None of these owns an Exchange Online mailbox, and Microsoft 365 accepts only a real mailbox as
+  the sending account — so until now they were validated as legitimate senders and then rejected at
+  delivery. A new *Sender Routing* section on the **Access Control** page sends their mail through a
+  **relay mailbox** instead, keeping the original address in the `From` header. Recipients see the
+  group or public folder as the sender; there is no "on behalf of" note.
+
+  Nothing beyond the relay mailbox has to be configured: a sender that turns out to have no mailbox
+  is retried through it **within the same delivery attempt**, so the message still goes out on its
+  first try, and the result is remembered so later mail from the same address skips the failing
+  request. The optional **routes** list only exists to pin a sender to a different mailbox, or to
+  name senders Microsoft 365 cannot report at all.
+
+  A shared mailbox works as the relay and needs no licence. Relayed mail leaves no copy in its Sent
+  Items — the copy would not belong to the actual sender, and a group or public folder has no Sent
+  Items to begin with.
+
+- **A button that writes the Exchange permission script for you.** Exchange authorises this kind of
+  sending via the **SendAs** permission, which Microsoft 365's API can neither grant nor even read.
+  *Generate SendAs script* builds the Exchange Online PowerShell for it — either for every
+  mail-enabled object in the tenant (re-runnable, and the only variant that reaches public folders,
+  which cannot be listed) or for objects you pick from your groups. The script skips objects that
+  are already granted, so running it again is harmless, and it ends with a read-back of what is
+  actually in place plus a granted/skipped/failed summary. Copy it or save it as a `.ps1`.
+
+  It is built for a real tenant rather than a clean one: recipients whose address lies outside the
+  accepted domains — most mail users, every guest — are skipped with one readable line instead of an
+  error each, since Exchange refuses those no matter what; a single object Exchange reports as
+  inconsistent does not stop the rest; and a recipient type that cannot be listed at all is reported
+  and skipped, which is what happens to public folders in tenants that keep them on-premises.
+
+- **Sender validation can now recognise these senders too.** One option in the same *Sender Routing*
+  section — *Accept groups, public folders and mail users as senders* — covers the whole class in two
+  steps: distribution groups, mail-enabled security groups and Microsoft 365 groups are synced into
+  the directory and matched by address, while mail-enabled public folders and dynamic distribution
+  lists, which do not exist in Microsoft 365's API at all, are accepted when their domain is one of
+  your tenant's verified mail domains — a list Microsoft 365 is asked for directly, so it includes
+  the `<tenant>.mail.onmicrosoft.com` coexistence domain that hybrid setups depend on. Needs
+  `Group.Read.All` and `Domain.Read.All`.
+
+  The option is off by default and stays disabled until a relay mailbox is configured: accepting a
+  sender you have no way to deliver would only replace a clean `550` during the SMTP session with a
+  delayed NDR. A hand-edited config that sets it anyway is called out with a warning at service
+  start. The domain step is deliberately weaker than an address-exact check and says so on the page;
+  a route remains the way to name such senders explicitly.
+
+- **A read-only list of everything the sync recognised.** *Show synchronised senders* on the Access
+  Control page opens every mailbox and group from the last tenant sync with its display name,
+  primary address and all aliases, one address per line — sortable by column, and filterable across
+  names, primary addresses and aliases at once. The derived tenant mail domains are listed alongside
+  them, since they are what lets a public folder or dynamic distribution group through and nothing
+  else makes them visible. It answers "is this alias actually known?" without guessing from a
+  rejection. The service writes the list to `data\sender-directory.json` after each sync; the window
+  only reads it.
+
 ### Fixed
 
+- **A missing SendAs permission was not reported for senders the directory already knew.** When the
+  sender was recognised as a group up front, the message went straight through the relay mailbox —
+  and a SendAs rejection on that path was mistaken for a message-format problem: the mail was
+  resent unchanged, the log blamed the preserved headers, and the Error entry naming the exact
+  `Add-RecipientPermission` command never appeared. That entry is the only notification for a
+  permission only an Exchange administrator can grant, so the cause was invisible in the one case
+  it matters most. Delivery behaviour is unchanged — such mail was always kept queued and retried.
+- **The SendAs script skipped Microsoft 365 groups — the kind behind every Team.** Microsoft 365
+  reports every mail-enabled group in one place, so sender validation recognised them all, but
+  Exchange splits them across separate commands and the script only walked ordinary distribution
+  groups. Such a group was therefore accepted as a sender and then could not be delivered, because
+  the SendAs permission it needs was never granted. Microsoft 365 groups and dynamic distribution
+  groups are now covered as well. **Re-generate and re-run the script** if you have either kind.
+- **Switching *Accept groups, public folders and mail users as senders* on did not survive
+  reopening the Configuration Tool.** Filling the page raised each field's change event as it went,
+  and the routing card re-evaluated itself while the page was still half-loaded: it saw the relay
+  mailbox field before it had been filled, concluded there was no relay mailbox, and cleared the
+  option that had just been restored. The saved setting was intact — the page showed it switched
+  off, and saving from there would have written that back. The card is now evaluated once the whole
+  page is loaded.
 - **A restart could leave the service down.** The outgoing process holds a machine-wide
   single-instance lock until it exits, which is a moment *after* Windows reports the service as
   stopped — long enough to finish the "service stopping" admin mail. An incoming instance started
@@ -26,6 +103,59 @@
   service still reports in the moment between accepting the stop and beginning to shut down; and
   starting while the previous process was still exiting is rejected by Windows with "service is
   already running". Both are now waited through, the latter with one retry.
+
+### Changed
+
+- **Accounts that are not mail-enabled are no longer synced into the sender directory.** Admin
+  accounts, licence placeholders and the like carry no mail address and no proxy addresses, own no
+  mailbox, and could never be a sender — they only made the directory harder to read. A sender like
+  that is now rejected with a clean `550` instead of being accepted and failing at delivery.
+- **Addresses outside the tenant's mail domains are no longer synced as senders.** In a hybrid
+  setup, directory synchronisation copies the on-premises address list into Microsoft 365 as it
+  stands, so a mailbox routinely carries an address in the internal AD namespace
+  (`user@ad.corp.com`) next to its real ones. Those domains carry no mail — Exchange will not send
+  from them and refuses even a SendAs grant over one — yet such an address was accepted at MAIL FROM
+  and then failed at delivery. The directory now keeps only addresses in the tenant's own mail
+  domains, and an object left with none of them drops out entirely. The on-demand lookup that runs
+  between syncs applies the same rule, so it cannot re-admit what the sync leaves out.
+
+  The tenant's mail domains are therefore read on every sync now, not only when *Accept groups,
+  public folders and mail users as senders* is on, which makes **`Domain.Read.All` a permission
+  sender validation itself needs**. Without it nothing breaks: validation keeps working exactly as
+  before, the addresses simply cannot be filtered, and the sync status line names the permission to
+  grant. The Entra setup wizard grants it — on an existing installation, run it once more.
+- **An account's sign-in name is no longer treated as one of its sender addresses.** The user
+  principal name is only *supposed* to match the primary address — an account synced from
+  on-premises Active Directory typically keeps the internal AD suffix (`user@ad.corp.com`), a
+  domain that carries no mail at all. Such an address was accepted at MAIL FROM and then rejected
+  by Microsoft 365 at delivery. Only a mailbox's real addresses, primary and aliases, are now
+  synced, matched and shown as the primary address in the sender list. Where the sign-in name does
+  match a mail address — the common case — nothing changes, because that address is in the mailbox's
+  own address list anyway.
+- **B2B guests are no longer synced into the sender directory.** They have no mailbox in the tenant
+  and could never be a sender, so they only inflated the list — and their address is their home
+  organisation's (`name_partner.com#EXT#@tenant.onmicrosoft.com` alongside the real
+  `name@partner.com`), which would have put a foreign domain into the set of domains the MAIL FROM
+  check treats as your own.
+- The Entra setup wizard now also grants `Group.Read.All` and `Domain.Read.All`, so the new
+  validation option works without a second trip to the Entra portal. Both stay unused until that
+  option is switched on. **On an existing installation the wizard has to be run once more** — it
+  keeps the app registration and its certificate and only adds the missing permissions.
+- A SendAs denial is normally kept retryable, because it usually means Exchange has not replicated a
+  freshly granted permission yet. That no longer applies when nothing vouched for the sender at all
+  — not the directory, not a route, not sender validation. Such a message now fails immediately
+  instead of occupying the queue for a day.
+- **A missing permission no longer takes sender validation down with it.** Group and domain lookups
+  are optional add-ons, and each one now fails on its own: users and aliases keep syncing, groups
+  and domains that were already known are carried over, and the sync status line on the Access
+  Control page names the permission to grant. Previously — switching an option on without the
+  matching permission would have failed the entire directory sync.
+- A missing SendAs permission is now logged at **Error** with the exact `Add-RecipientPermission`
+  command, and the affected mail stays queued instead of bouncing — Exchange takes up to an hour to
+  replicate such a grant, and the message goes out by itself once it is live.
+- Config schema version 12: adds the `SenderRouting` section and `SenderValidation.AcceptMailboxlessSenders`.
+  Purely additive — every new key defaults to the previous behaviour, so an existing installation
+  keeps working unchanged until the options are switched on.
 
 
 ## 1.5.0.1085 — 2026-08-25

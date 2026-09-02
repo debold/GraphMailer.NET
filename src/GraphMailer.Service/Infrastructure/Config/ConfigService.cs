@@ -128,6 +128,7 @@ internal sealed class ConfigService
             Notification = ReadNotifications(merged, root),
             Ndr = ReadNdr(merged),
             SenderValidation = ReadSenderValidation(merged),
+            SenderRouting = ReadSenderRouting(merged),
             MalwareScan = ReadMalwareScan(merged),
             MessageRules = ReadMessageRules(merged),
             Logging = ReadLogging(merged),
@@ -253,6 +254,7 @@ internal sealed class ConfigService
         WriteNotifications(root, doc.Notification);
         WriteNdr(root, doc.Ndr);
         WriteSenderValidation(root, doc.SenderValidation);
+        WriteSenderRouting(root, doc.SenderRouting);
         WriteMalwareScan(root, doc.MalwareScan);
         WriteMessageRules(root, doc.MessageRules);
         WriteLogging(root, doc.Logging);
@@ -688,6 +690,14 @@ internal sealed class ConfigService
             SvEnabled = o["Enabled"]?.GetValue<bool>() ?? false,
             SvRefreshIntervalMinutes = o["RefreshIntervalMinutes"]?.GetValue<int>() ?? 60,
             SvFailClosed = o["FailClosed"]?.GetValue<bool>() ?? false,
+            // Pre-release 1.5 builds split this across IncludeGroups and AcceptTenantDomains.
+            // Either of those still standing at true means someone had the feature switched on,
+            // and the merged key is only false because it inherited the appsettings default —
+            // the user file never carried it. Honouring them keeps the option from silently
+            // turning itself off. One-shot: WriteSenderValidation drops the old keys on save.
+            SvAcceptMailboxless = (o["AcceptMailboxlessSenders"]?.GetValue<bool>() ?? false)
+                || (o["IncludeGroups"]?.GetValue<bool>() ?? false)
+                || (o["AcceptTenantDomains"]?.GetValue<bool>() ?? false),
         };
     }
 
@@ -697,6 +707,59 @@ internal sealed class ConfigService
         o["Enabled"] = s.SvEnabled;
         o["RefreshIntervalMinutes"] = s.SvRefreshIntervalMinutes;
         o["FailClosed"] = s.SvFailClosed;
+        o["AcceptMailboxlessSenders"] = s.SvAcceptMailboxless;
+
+        // Leftovers from pre-release 1.5 builds. EnsureSection preserves unknown keys, so without
+        // this they would sit in the file forever, looking like settings that do something.
+        o.Remove("IncludeGroups");
+        o.Remove("AcceptTenantDomains");
+    }
+
+    private static ConfigDocument.SenderRoutingSection ReadSenderRouting(JsonObject root)
+    {
+        var o = root["SenderRouting"] as JsonObject ?? new JsonObject();
+
+        var routes = new List<ConfigDocument.SenderRouteEntry>();
+        if (o["Routes"] is JsonArray arr)
+        {
+            foreach (var node in arr)
+            {
+                if (node is not JsonObject entry) continue;
+                var sender = Str(entry, "Sender");
+                var mailbox = Str(entry, "Mailbox");
+                // A half-filled route matches nothing or has nowhere to send — drop it.
+                if (string.IsNullOrWhiteSpace(sender) || string.IsNullOrWhiteSpace(mailbox)) continue;
+                routes.Add(new ConfigDocument.SenderRouteEntry { Sender = sender, Mailbox = mailbox });
+            }
+        }
+
+        return new ConfigDocument.SenderRoutingSection
+        {
+            SrEnabled = o["Enabled"]?.GetValue<bool>() ?? false,
+            SrRelayMailbox = Str(o, "RelayMailbox") ?? "",
+            SrRelayCacheMinutes = o["RelayCacheMinutes"]?.GetValue<int>() ?? 60,
+            SrRoutes = routes,
+        };
+    }
+
+    private static void WriteSenderRouting(JsonObject root, ConfigDocument.SenderRoutingSection s)
+    {
+        var o = EnsureSection(root, "SenderRouting");
+        o["Enabled"] = s.SrEnabled;
+        o["RelayMailbox"] = s.SrRelayMailbox;
+        o["RelayCacheMinutes"] = s.SrRelayCacheMinutes;
+        o.Remove("AutoFallback");   // pre-release 1.5 key; relaying is unconditional now
+
+        var arr = new JsonArray();
+        foreach (var route in s.SrRoutes)
+        {
+            arr.Add(new JsonObject
+            {
+                ["Sender"] = route.Sender,
+                ["Mailbox"] = route.Mailbox,
+            });
+        }
+        o["Routes"] = arr;
     }
 
     private static ConfigDocument.MalwareScanSection ReadMalwareScan(JsonObject root)

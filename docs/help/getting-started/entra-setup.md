@@ -36,8 +36,8 @@ The wizard then performs these steps and shows the progress of each:
    in the Windows certificate store (`LocalMachine\My`).
 4. **Create the app registration** in your tenant.
 5. **Create the service principal** for that app.
-6. **Grant the Graph permissions** — `Mail.Send`, `Mail.ReadWrite`, `User.Read.All` (with admin
-   consent).
+6. **Grant the Graph permissions** — `Mail.Send`, `Mail.ReadWrite`, `User.Read.All`,
+   `Group.Read.All`, `Domain.Read.All` (with admin consent).
 7. **Apply the configuration** — Tenant ID, Client ID and certificate are written to the service
    config for you.
 
@@ -51,13 +51,15 @@ thumbprint and expiry date.
 
 ![The wizard after every step has completed successfully](../assets/screenshots/entra-setup-3.png)
 
-### Why these three permissions?
+### Why these permissions?
 
 | Permission | Why GraphMailer needs it |
 |---|---|
 | `Mail.Send` | Sending mail — the core function. |
 | `Mail.ReadWrite` | Attachments **≥ 3 MB**. Graph caps a direct send at 4 MB, so large mail is uploaded as a draft, which is a mailbox write operation. |
 | `User.Read.All` | Optional sender validation — checking that a *From* address belongs to a real mailbox in your tenant. |
+| `Group.Read.All` | Used only when sender validation is set to accept **groups, public folders and mail users** as senders — this half reads the mail-enabled groups. |
+| `Domain.Read.All` | Used with sender validation: the tenant’s verified mail domains. They decide which of a mailbox’s addresses can really send — an address synced from on-premises Active Directory often sits in a domain that carries no mail — and they are how public folders and dynamic distribution groups are recognised. |
 
 > [!CAUTION]
 > By default these permissions apply to **every mailbox in the tenant** — the app could send as

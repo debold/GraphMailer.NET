@@ -32,6 +32,19 @@ public sealed class LiveTestSettings
     /// <summary>Optional: a secondary proxyAddress of the sender, for the alias test.</summary>
     public string? SenderAlias { get; init; }
 
+    /// <summary>
+    /// Optional: a real mailbox that holds SendAs on <see cref="MailboxlessSenderAddress"/>,
+    /// for the sender-routing test. Grant it with
+    /// <c>Add-RecipientPermission -Identity &lt;object&gt; -Trustee &lt;relay&gt; -AccessRights SendAs</c>.
+    /// </summary>
+    public string? RelayMailbox { get; init; }
+
+    /// <summary>
+    /// Optional: an address without a mailbox of its own — a distribution group, a mail-enabled
+    /// public folder or a mail user. Used to verify the relay path end to end.
+    /// </summary>
+    public string? MailboxlessSenderAddress { get; init; }
+
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(TenantId) &&
         !string.IsNullOrWhiteSpace(ClientId) &&
@@ -87,6 +100,26 @@ public sealed class LiveFactAttribute : FactAttribute
         }
     }
     private bool _requireSenderAlias;
+
+    /// <summary>
+    /// Set true for tests that additionally need LiveTests:RelayMailbox and
+    /// LiveTests:MailboxlessSenderAddress, plus a SendAs grant between the two in Exchange.
+    /// </summary>
+    public bool RequireRelaySender
+    {
+        get => _requireRelaySender;
+        set
+        {
+            _requireRelaySender = value;
+            if (!value) return;
+
+            var s = LiveTestSettings.Current;
+            if (string.IsNullOrWhiteSpace(s.RelayMailbox) ||
+                string.IsNullOrWhiteSpace(s.MailboxlessSenderAddress))
+                Skip = "LiveTests:RelayMailbox / LiveTests:MailboxlessSenderAddress not configured";
+        }
+    }
+    private bool _requireRelaySender;
 
     public LiveFactAttribute()
     {

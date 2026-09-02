@@ -28,6 +28,7 @@ internal sealed class SmtpMailboxFilter : MailboxFilter
     private readonly IOptionsMonitor<SmtpOptions> _smtpOptions;
     private readonly IOptionsMonitor<SenderValidationOptions> _senderValidation;
     private readonly ITenantSenderDirectory _senderDirectory;
+    private readonly ISenderRouter _senderRouter;
     private readonly IMetricsService _metrics;
     private readonly ILogger<SmtpMailboxFilter> _logger;
 
@@ -38,6 +39,7 @@ internal sealed class SmtpMailboxFilter : MailboxFilter
         IOptionsMonitor<SmtpOptions> smtpOptions,
         IOptionsMonitor<SenderValidationOptions> senderValidation,
         ITenantSenderDirectory senderDirectory,
+        ISenderRouter senderRouter,
         IMetricsService metrics,
         ILogger<SmtpMailboxFilter> logger)
     {
@@ -47,6 +49,7 @@ internal sealed class SmtpMailboxFilter : MailboxFilter
         _smtpOptions = smtpOptions;
         _senderValidation = senderValidation;
         _senderDirectory = senderDirectory;
+        _senderRouter = senderRouter;
         _metrics = metrics;
         _logger = logger;
 
@@ -194,11 +197,20 @@ internal sealed class SmtpMailboxFilter : MailboxFilter
         // so doomed messages fail here with a 550 instead of after 3 Graph retries.
         // The null reverse path ("@", NDRs) is exempt.
         var validation = _senderValidation.CurrentValue;
-        if (validation.Enabled && address != "@")
+        if (validation.Enabled && address != "@" && !_senderRouter.HasExplicitRoute(address))
         {
             var result = await _senderDirectory.ValidateAsync(address, cancellationToken);
 
-            if (result == SenderLookupResult.Unknown)
+            // Not a directory entry, but inside one of our own mail domains — that is what a
+            // mail-enabled public folder or a dynamic distribution group looks like, since
+            // Graph cannot enumerate either. Accept only when the operator opted in.
+            if (result == SenderLookupResult.KnownDomain && validation.AcceptMailboxlessSenders)
+            {
+                _logger.LogDebug(
+                    "[SmtpFilter] Sender {Address} accepted from {Ip}: not in the directory but in a verified tenant domain",
+                    address, remoteIp);
+            }
+            else if (result is SenderLookupResult.Unknown or SenderLookupResult.KnownDomain)
             {
                 _ipBlocking.RecordFailure(remoteIp, "unknownSender");
                 _logger.LogWarning(
