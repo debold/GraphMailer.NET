@@ -29,8 +29,15 @@ if (args.Length > 0)
     };
 }
 
+// A service has no console, so console-only bootstrap output is lost — and everything that can go
+// wrong before the configured logger exists (another instance holding the lock, an unreadable
+// config, a missing key ring) would fail completely silently. The file sink keeps that visible.
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
+    .WriteTo.File(
+        Path.Combine(AppPaths.LogsDir, "startup-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 7)
     .CreateBootstrapLogger();
 
 try
@@ -38,7 +45,9 @@ try
     // Machine-wide single-instance lock: a second GraphMailer.exe (e.g. started
     // manually while the Windows service is running) must not compete for the
     // SMTP ports and the mail queue. CLI commands above are exempt.
-    using var singleInstance = new SingleInstanceGuard("GraphMailer.Service");
+    // The grace period covers a restart: the outgoing process holds the lock until it exits, which
+    // is a moment after Windows already reported the service as stopped.
+    using var singleInstance = new SingleInstanceGuard("GraphMailer.Service", TimeSpan.FromSeconds(15));
     if (!singleInstance.IsPrimaryInstance)
     {
         Log.Fatal("[GraphMailer] Another instance of the GraphMailer service is already running – exiting");

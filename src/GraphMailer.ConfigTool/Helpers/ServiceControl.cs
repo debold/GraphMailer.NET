@@ -12,6 +12,30 @@ internal static class ServiceControl
 {
     public const string ServiceName = "GraphMailer";
 
+    /// <summary>ERROR_SERVICE_REQUEST_TIMEOUT — the service is starting but slow to report ready.</summary>
+    public const int ErrorServiceRequestTimeout = 1053;
+
+    /// <summary>ERROR_SERVICE_ALREADY_RUNNING.</summary>
+    public const int ErrorServiceAlreadyRunning = 1056;
+
+    /// <summary>ERROR_SERVICE_NOT_ACTIVE — a stop was asked for while it was already stopped.</summary>
+    public const int ErrorServiceNotActive = 1062;
+
+    /// <summary>
+    /// True when <c>sc stop</c> left the service in the state we wanted. "Already stopped" counts:
+    /// for a restart, nothing is wrong with a service that was down to begin with.
+    /// </summary>
+    public static bool IsStopAccepted(int exitCode)
+        => exitCode is 0 or ErrorServiceNotActive;
+
+    /// <summary>
+    /// True when <c>sc start</c> did not fail outright. A timeout only means the service is taking
+    /// its time, and "already running" is the SCM still holding the previous process on record —
+    /// in both cases the actual outcome has to be settled by polling the state, not by the code.
+    /// </summary>
+    public static bool IsStartAccepted(int exitCode)
+        => exitCode is 0 or ErrorServiceRequestTimeout or ErrorServiceAlreadyRunning;
+
     private static readonly Regex StateRegex = new(@"STATE\s*:\s*\d+\s+(\w+)", RegexOptions.Compiled);
     private static readonly Regex PidRegex = new(@"PID\s*:\s*(\d+)", RegexOptions.Compiled);
 

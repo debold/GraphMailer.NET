@@ -11,6 +11,7 @@ tagged with the component that produced it (for example `[SmtpRelay]`, `[QueuePr
 |---|---|
 | `graphmailer-*.log` | The service log — everything at or above the configured log level. |
 | `error-*.log` | Service errors only (a filtered copy, kept longer for post-incident review). |
+| `startup-*.log` | The few messages from before the service log is open — a config it could not read, a key ring it could not reach, another instance already running. Normally almost empty; the place to look when the service will not start and `graphmailer-*.log` shows nothing. |
 | `configtool-*.log` | Diagnostic log of the Config Tool — errors shown in its UI, with full detail. |
 | `configtool-crash.log` | Written only if the Config Tool itself crashes. |
 

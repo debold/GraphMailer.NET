@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A restart could leave the service down.** The outgoing process holds a machine-wide
+  single-instance lock until it exits, which is a moment *after* Windows reports the service as
+  stopped — long enough to finish the "service stopping" admin mail. An incoming instance started
+  in that window found the lock taken and exited before it could reach the service control manager,
+  which then sat waiting for a connection that never came. Nothing was written to the service log,
+  because the lock is taken before the log file is opened, so the failure left no trace at all.
+
+  Three changes: the service now waits up to 15 seconds for the lock instead of giving up at once,
+  so *any* restart path recovers; the ConfigTool waits for the previous process to actually exit
+  before starting the new one; and startup messages from before the configured logger exists now go
+  to `logs\startup-*.log` rather than to a console no service has.
+- Restart Service now records every step (stop, wait, start, wait) with its `sc.exe` exit code in
+  `logs\configtool-*.log`, and says which stage failed instead of reporting success regardless —
+  each step is a separate call that reports nothing but a number, so a failed restart used to leave
+  nothing to go on.
+- **Restart Service stopped the service but did not start it again**, and reported success either
+  way: the result of the start was discarded, so a service that never came back looked fine in the
+  tool. Restart now checks each step and says what actually happened. Two things went wrong along
+  the way — the wait for "stopped" treated *running* as a failure, which is exactly what the
+  service still reports in the moment between accepting the stop and beginning to shut down; and
+  starting while the previous process was still exiting is rejected by Windows with "service is
+  already running". Both are now waited through, the latter with one retry.
+
+
 ## 1.5.0.1085 — 2026-08-25
 
 ### Added

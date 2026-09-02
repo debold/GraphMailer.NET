@@ -388,30 +388,164 @@ public partial class StatusPage : UserControl
 
     private async void BtnRestart_Click(object sender, RoutedEventArgs e)
     {
+        // Every step is its own sc.exe call and none of them throws, so a restart that ends with
+        // the service down would otherwise leave nothing to go on. The steps go to the ConfigTool
+        // log; the operator gets the one sentence that says which stage failed.
+        var trace = new List<string>();
+        void Step(string text)
+        {
+            trace.Add(text);
+            ConfigToolLog.Info("StatusPage", "Restart: " + text);
+        }
+
+        void Report(string message)
+        {
+            ShowFeedback(message + " See logs\\configtool-*.log for the details.", true);
+            UpdateServiceStatus();
+        }
+
         try
         {
             SetSvcButtons(false);
-            ShowFeedback("Restarting service\u2026");
-            await Task.Run(() =>
+            ShowFeedback("Stopping service\u2026");
+
+            // The PID has to be taken while the service is still running: it is the only way to
+            // tell when the old process is really gone, and that is what the new one waits for.
+            var (beforeState, _, pid) = ServiceControl.Query();
+            Step($"begin, state={beforeState}, pid={pid}");
+
+            var (stopOut, stopExit) = await Task.Run(() => RunSc($"stop \"{SvcName}\""));
+            Step($"sc stop \u2192 exit {stopExit}; {Condense(stopOut)}");
+            if (!ServiceControl.IsStopAccepted(stopExit))
             {
-                RunSc($"stop \"{SvcName}\"");
-                for (int i = 0; i < 20; i++)
-                {
-                    var (out2, _) = RunSc($"query \"{SvcName}\"");
-                    if (out2.Contains("STOPPED")) break;
-                    Thread.Sleep(500);
-                }
-                RunSc($"start \"{SvcName}\"");
-            });
-            ShowFeedback("Service restarted.");
-            UpdateServiceStatus();
+                Report($"Restart failed \u2014 the service could not be stopped (exit {stopExit}).");
+                return;
+            }
+
+            var stopped = await Task.Run(() => WaitForStopped(30));
+            Step($"waited for stop \u2192 state={stopped}");
+            if (stopped != "STOPPED")
+            {
+                Report($"Restart failed \u2014 the service did not stop (state: {stopped}). It was left as it is.");
+                return;
+            }
+
+            var exited = await Task.Run(() => WaitForProcessExit(pid, 60));
+            Step($"waited for pid {pid} to exit \u2192 {(exited ? "gone" : "still running")}");
+
+            ShowFeedback("Starting service\u2026");
+            var (startOut, startExit) = await Task.Run(StartAfterStop);
+            Step($"sc start \u2192 exit {startExit}; {Condense(startOut)}");
+            if (!ServiceControl.IsStartAccepted(startExit))
+            {
+                Report($"The service was stopped but could not be started again (exit {startExit}).");
+                return;
+            }
+
+            var state = await Task.Run(() => PollForState("RUNNING", "STOPPED", 15));
+            Step($"waited for start \u2192 state={state}");
+
+            if (state == "RUNNING")
+            {
+                ShowFeedback("Service restarted.");
+                UpdateServiceStatus();
+                return;
+            }
+
+            Report("The service was stopped but did not come back up. " + StartFailureHint());
         }
         catch (Exception ex)
         {
-            ConfigToolLog.Error("StatusPage", ex, "Service restart failed");
+            ConfigToolLog.Error("StatusPage", ex,
+                "Service restart failed after: " + string.Join(" | ", trace));
             ShowFeedback($"Unexpected error: {ex.Message}", true);
             UpdateServiceStatus();
         }
+    }
+
+    /// <summary>sc.exe output as a single line, so a trace step stays one line.</summary>
+    private static string Condense(string output)
+    {
+        var text = string.Join(" ", output.Split('\n', '\r')
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0));
+        return text.Length == 0 ? "(no output)" : text;
+    }
+
+    /// <summary>
+    /// Waits until the service reports STOPPED.
+    ///
+    /// Deliberately not <see cref="PollForState"/>: that one also returns on a "failure" state, and
+    /// the only sensible failure state here would be RUNNING \u2014 which is exactly what the service
+    /// still reports in the moment between accepting the stop and beginning to shut down. Treating
+    /// it as failure aborts the restart right after the stop request, leaving the service down.
+    /// RUNNING \u2192 STOP_PENDING \u2192 STOPPED all have to be waited through.
+    /// </summary>
+    /// <summary>
+    /// Waits until the service's old process is really gone. Returns false on timeout.
+    ///
+    /// Windows reports STOPPED as soon as the service says it has shut down, but the process lives
+    /// on for a moment afterwards — long enough to finish the "service stopping" admin mail, for
+    /// one. GraphMailer takes a machine-wide single-instance lock before it can log anything, so a
+    /// start into that window produces a process that blocks on the lock, never reaches the SCM,
+    /// and leaves no trace whatsoever in the service log. The wait for the PID is what closes it.
+    /// </summary>
+    private static bool WaitForProcessExit(uint pid, int seconds)
+    {
+        if (pid == 0) return true;   // service was not running; nothing to wait for
+
+        for (int i = 0; i < seconds * 4; i++)
+        {
+            try
+            {
+                using var process = Process.GetProcessById((int)pid);
+                if (process.HasExited) return true;
+            }
+            catch (ArgumentException)
+            {
+                return true;   // no such process — it is gone
+            }
+            catch (InvalidOperationException)
+            {
+                return true;   // exited between the lookup and the check
+            }
+
+            Thread.Sleep(250);
+        }
+
+        return false;
+    }
+
+    private static string WaitForStopped(int seconds)
+    {
+        for (int i = 0; i < seconds * 2; i++)
+        {
+            Thread.Sleep(500);
+            var (state, _) = QueryServiceState();
+            if (state is "STOPPED" or "Not Installed") return state;
+        }
+        return QueryServiceState().state;
+    }
+
+    /// <summary>
+    /// Starts the service after a stop, retrying once on "already running".
+    ///
+    /// The SCM reports STOPPED as soon as the service has accepted the stop, which can be a moment
+    /// before its process is actually gone. Starting into that window fails with
+    /// ERROR_SERVICE_ALREADY_RUNNING \u2014 a race, not a real conflict, so give it a breath first and
+    /// retry once if it happens anyway.
+    /// </summary>
+    private static (string Output, int ExitCode) StartAfterStop()
+    {
+        Thread.Sleep(1000);
+
+        var result = RunSc($"start \"{SvcName}\"");
+        if (result.ExitCode != ServiceControl.ErrorServiceAlreadyRunning) return result;
+
+        ConfigToolLog.Info("StatusPage",
+            $"Restart: first start returned {result.ExitCode} (already running) — retrying once");
+        Thread.Sleep(2000);
+        return RunSc($"start \"{SvcName}\"");
     }
 
     private async void BtnInstall_Click(object sender, RoutedEventArgs e)

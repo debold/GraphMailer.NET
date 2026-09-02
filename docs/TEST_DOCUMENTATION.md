@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1755 tests** (1669 unit · 86 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-08-25
+**Total: 1766 tests** (1680 unit · 86 integration) plus **12 opt-in live tests** against a real M365 test tenant — last updated 2026-09-02
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -58,8 +58,14 @@
 | `SecondInstance_LockHeld_IsNotPrimary` | A first guard already holds the named lock | second guard's `IsPrimaryInstance` = `false` |
 | `NewInstance_AfterPrimaryDisposed_IsPrimary` | Primary disposed (mutex released) before a new guard is created | new guard's `IsPrimaryInstance` = `true` |
 | `Dispose_AsNonPrimary_DoesNotThrow` | Dispose a guard that never owned the mutex | no exception (no `ReleaseMutex` on a non-owner) |
+| `SecondInstance_WithoutAWait_GivesUpImmediately` | Lock held, no grace period | Not primary |
+| `SecondInstance_WaitExpires_IsNotPrimary` | Lock held for longer than the grace period | Not primary — a genuinely running instance still wins |
+| `SecondInstance_HolderReleasesWithinTheWait_BecomesPrimary` | Holder releases 300 ms into a 10 s wait | Primary — the restart case: the outgoing process holds the lock past the point where Windows reports the service stopped, and without the wait that start is silently lost |
 
 ---
+
+### IpBlockingService (`Infrastructure/Security/IpBlockingServiceTests.cs`)
+
 
 ### IpBlockingService (`Infrastructure/Security/IpBlockingServiceTests.cs`)
 
@@ -2000,6 +2006,26 @@ counter next to their search box must never let a capped list read as a complete
 | `Build_WheneverRowsAreLeftOut_LabelIsNeverSilent` (Theory) | Page limit reached (with and without filter) and scan cap reached | Label is never empty — regression guard for the old silent cut-offs |
 
 ---
+
+### Service control exit codes — ConfigTool (`ConfigTool/ServiceControlExitCodeTests.cs`)
+
+Which `sc.exe` exit codes count as "the command did what we wanted". The Restart button used to
+discard these entirely and always report success, so a service that stopped and never came back
+looked fine in the UI.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `IsStopAccepted_Success` | Exit 0 | Accepted |
+| `IsStopAccepted_AlreadyStopped_IsFine` | 1062 `ERROR_SERVICE_NOT_ACTIVE` | Accepted — restarting a service that was already down is no error |
+| `IsStopAccepted_RealFailures_AreRejected` (Theory) | Access denied, no such service, marked for deletion | Rejected |
+| `IsStartAccepted_Success` | Exit 0 | Accepted |
+| `IsStartAccepted_RequestTimeout_IsFine` | 1053 `ERROR_SERVICE_REQUEST_TIMEOUT` | Accepted — a slow start is settled by polling the state |
+| `IsStartAccepted_AlreadyRunning_IsFine` | 1056 `ERROR_SERVICE_ALREADY_RUNNING` | Accepted — the SCM can still hold the previous process right after a stop |
+| `IsStartAccepted_RealFailures_AreRejected` (Theory) | Access denied, no such service, logon failure | Rejected |
+| `StopAndStart_DoNotShareTheirTolerances` | Each code against the other command | Rejected both ways — either would hide one half of a failed restart |
+
+---
+
 
 ### UpdateCheckService (`Services/UpdateCheck/UpdateCheckServiceTests.cs`)
 

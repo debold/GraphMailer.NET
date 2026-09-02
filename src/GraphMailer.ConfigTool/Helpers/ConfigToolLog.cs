@@ -23,6 +23,14 @@ internal static class ConfigToolLog
         => _instance.Value?.Error(ex, "[{Source:l}] {Context:l}", source, context ?? ex.Message);
 
     /// <summary>
+    /// Records a step of a multi-stage operation, so a failure that produces no exception can still
+    /// be reconstructed afterwards — service control being the case in point: every step is a
+    /// separate sc.exe call, and only the exit codes say which one went wrong.
+    /// </summary>
+    internal static void Info(string source, string message)
+        => _instance.Value?.Information("[{Source:l}] {Message:l}", source, message);
+
+    /// <summary>
     /// Like <see cref="Error"/>, but suppresses repeats: logs only when the exception
     /// (type + message) for this source/context differs from the previously logged one.
     /// For periodic checks that would otherwise repeat the same trace every few seconds.
