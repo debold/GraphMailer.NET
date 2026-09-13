@@ -310,6 +310,10 @@ internal sealed class SmtpMessageStore : MessageStore
     /// Every outcome other than a confirmed detection lets the message through — an unavailable
     /// scanner, a timeout, an oversized part. A scanner problem must never become a mail outage,
     /// so the only thing that stops mail here is an actual verdict, and only in Enforce mode.
+    ///
+    /// Because those outcomes are silent by construction, every one of them is logged: in Audit
+    /// mode at Information, so the log is the audit trail the mode is named after, and at Debug in
+    /// Enforce, where the rejection is the event worth seeing.
     /// </summary>
     private async Task<SmtpResponse?> ScanForMalwareAsync(
         ISessionContext context,
@@ -324,17 +328,34 @@ internal sealed class SmtpMessageStore : MessageStore
         var opts = _scanOptions.CurrentValue;
         if (opts.Mode == MalwareScanMode.Off || !_scanner.IsAvailable) return null;
 
+        // Audit mode exists to be watched: an operator runs it to see what the scanner does to
+        // real mail before letting it reject any, and "no detections" is only reassuring once the
+        // log also shows that messages were in fact being inspected. So every message's
+        // disposition — scanned, bypassed, delivered unscanned — is logged at Information here.
+        // Enforce keeps the same lines at Debug: there the operator-relevant event is the
+        // rejection, and a line per clean message would bury it in routine traffic.
+        var auditLevel = opts.Mode == MalwareScanMode.Audit ? LogLevel.Information : LogLevel.Debug;
+
         var authUser = context.Authentication?.User ?? string.Empty;
         if (TryGetBypassReason(opts, authUser, remoteIp) is { } bypass)
         {
-            _logger.LogDebug("[MalwareScan] {MessageId}: scan skipped – {Reason}", messageId, bypass);
+            _logger.Log(auditLevel, "[MalwareScan] {MessageId}: scan skipped – {Reason}", messageId, bypass);
             return null;
         }
 
+        var sw = Stopwatch.StartNew();
         var result = await _scanner.ScanAsync(emlBytes, messageId, ct);
+        sw.Stop();
 
         if (result.Outcome is ScanOutcome.Failed or ScanOutcome.Skipped)
         {
+            // Both cases mean the message was delivered without being fully vetted, and both are
+            // already logged with their reason by the scanner itself (timeout, error, size limit)
+            // — the audit line adds the message's own outcome next to it.
+            _logger.Log(auditLevel,
+                "[MalwareScan] {MessageId}: scan incomplete ({Outcome}) after {Elapsed}ms – message is delivered unscanned",
+                messageId, result.Outcome, sw.ElapsedMilliseconds);
+
             // Fire-and-forget: the notification is threshold-based, so a single hiccup stays
             // quiet while a scanner that is consistently failing gets reported.
             _ = _notifications.NotifyMalwareScanFailureAsync(
@@ -342,7 +363,18 @@ internal sealed class SmtpMessageStore : MessageStore
             return null;
         }
 
-        if (result.Outcome != ScanOutcome.Malware) return null;
+        if (result.Outcome != ScanOutcome.Malware)
+        {
+            // Clean only — anything else reached one of the branches above, and reporting an
+            // unavailable scanner as "no detection" would claim coverage that never happened.
+            if (result.Outcome == ScanOutcome.Clean)
+                _logger.Log(auditLevel,
+                    "[MalwareScan] {MessageId}: scanned {Parts} part(s) of message from {From} ({Ip}) " +
+                    "in {Elapsed}ms – no detection",
+                    messageId, result.PartsScanned, from, remoteIp, sw.ElapsedMilliseconds);
+
+            return null;
+        }
 
         if (result.IsAllowlistable && IsAllowlisted(opts, result.Sha256!))
         {

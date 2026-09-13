@@ -61,6 +61,30 @@
 
 ### Fixed
 
+- **The malware filter left no trace in audit mode.** Audit mode exists to be watched — it rejects
+  nothing, so the log is the only evidence of what the scanner is doing — but only detections were
+  written, at Warning. On a normal mail flow with nothing to find, that meant complete silence,
+  indistinguishable from a scanner that was never running. Audit mode now logs the disposition of
+  **every** message at Information: how many parts were scanned and how long it took, which
+  messages a bypass rule skipped, and which ones went out unscanned after a failed or oversized
+  scan. In Enforce mode the same lines are written at Debug, so the rejection stays the visible
+  event there.
+
+- **Recent Detections could show an empty list while detections were on disk.** The list is built
+  from `mail\blocked\`, a folder the malware scan shares with the message rules' discard records.
+  It took the newest 200 *files* and only then dropped the rule discards — so a busy rule could
+  fill those 200 slots and push every finding out of sight, leaving the page reporting "No
+  detections recorded" with the records sitting right there. The limit now counts detections, and
+  the search reads past discards to find them. It stops after 5,000 records so the page cannot
+  stall on a huge folder, and says so in the caption instead of claiming there is nothing.
+
+- **The scanner never reported itself at service start.** Its startup line — the AMSI providers it
+  found and the mode it runs in, or a loud error when no provider is registered at all — was
+  written only when the first message arrived, because the scanner was not created until then. On a
+  quiet server the most important state of a security control was therefore missing from the
+  startup log for hours. It is now initialised while the service starts, unless scanning is switched
+  off entirely.
+
 - **The Graph API test mail ignored the configured subject prefix.** It always went out as
   `[GraphMailer] Connection test`, so an inbox rule built on a customised prefix (Notifications →
   *Subject prefix*) never caught it — the one message you send while setting the connection up was

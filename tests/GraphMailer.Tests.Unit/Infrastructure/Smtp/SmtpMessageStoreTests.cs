@@ -711,6 +711,117 @@ public sealed class SmtpMessageStoreTests : IDisposable
     }
 
     // =========================================================================
+    // Malware scan – audit trail
+    //
+    // In audit mode the log is the whole product of the feature: nothing is rejected, so an
+    // operator judging whether it is safe to switch to Enforce has only these lines to go on.
+    // "No detections" has to be distinguishable from "nothing was ever scanned", which is why
+    // the uneventful outcomes are asserted here rather than treated as tracing noise.
+    // =========================================================================
+
+    [Fact]
+    public async Task SaveAsync_CleanScan_AuditMode_LogsThatTheMessageWasScanned()
+    {
+        var logger = new FakeLogger<SmtpMessageStore>();
+        var sut = CreateStore(
+            logger: logger,
+            scanner: new FakeScanner(ScanResult.Clean(partsScanned: 3)),
+            scanOptions: new MalwareScanOptions { Mode = MalwareScanMode.Audit });
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        logger.HasEntry(LogLevel.Information, "3 part(s)").Should().BeTrue(
+            "the part count is what separates a real scan from a scanner that inspected nothing");
+        logger.HasEntry(LogLevel.Information, "no detection").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SaveAsync_CleanScan_EnforceMode_DoesNotLogPerMessageAtInformation()
+    {
+        // The counterpart to the test above: in Enforce the operator-relevant event is the
+        // rejection, and one Information line per clean message would bury it in routine traffic.
+        var logger = new FakeLogger<SmtpMessageStore>();
+        var sut = CreateStore(
+            logger: logger,
+            scanner: new FakeScanner(ScanResult.Clean(partsScanned: 3)),
+            scanOptions: new MalwareScanOptions { Mode = MalwareScanMode.Enforce });
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        logger.HasEntry(LogLevel.Information, "no detection").Should().BeFalse();
+        logger.HasEntry(LogLevel.Debug, "no detection").Should().BeTrue("the line still exists, one level down");
+    }
+
+    [Fact]
+    public async Task SaveAsync_BypassedUser_AuditMode_LogsTheSkipWithItsReason()
+    {
+        // A bypass is a hole in the coverage. In the mode whose job is to show coverage, it must
+        // be visible — otherwise the exempt sender's mail is indistinguishable from clean mail.
+        var logger = new FakeLogger<SmtpMessageStore>();
+        var sut = CreateStore(
+            logger: logger,
+            scanner: new FakeScanner(ScanResult.Clean(partsScanned: 1)),
+            scanOptions: new MalwareScanOptions
+            {
+                Mode = MalwareScanMode.Audit,
+                BypassAuthenticatedUsers = ["LegacyApp"],
+            });
+        var (context, transaction, buffer) = CreateSaveArgs(authUser: "legacyapp");
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        logger.HasEntry(LogLevel.Information, "scan skipped").Should().BeTrue();
+        logger.HasEntry(LogLevel.Information, "LegacyApp").Should().BeTrue(
+            "a policy skip is only actionable with the rule that caused it");
+    }
+
+    /// <param name="scanFailed">
+    /// True exercises a failed/timed-out scan, false an oversized part that was skipped. A bool
+    /// rather than the outcome itself because <c>ScanOutcome</c> is internal and a public test
+    /// signature cannot name it.
+    /// </param>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SaveAsync_IncompleteScan_AuditMode_LogsThatTheMessageWentOutUnscanned(bool scanFailed)
+    {
+        // Fail-open is deliberate, but it is also the one path where a message is delivered with
+        // no coverage at all. Silence here would read exactly like a clean scan.
+        var logger = new FakeLogger<SmtpMessageStore>();
+        var sut = CreateStore(
+            logger: logger,
+            scanner: new FakeScanner(scanFailed
+                ? ScanResult.Failed("scan timed out after 30s")
+                : ScanResult.Skipped("huge.iso", 99_000_000)),
+            scanOptions: new MalwareScanOptions { Mode = MalwareScanMode.Audit });
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        var response = await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        response.ReplyCode.Should().Be(SmtpReplyCode.Ok, "a scanner problem must never become a mail outage");
+        logger.HasEntry(LogLevel.Information, "delivered unscanned").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SaveAsync_UnavailableScanner_IsNeverReportedAsScanned()
+    {
+        // Guard against the audit trail claiming coverage it never had: an unavailable scanner
+        // returns "not malware" like a clean scan does, and must not be logged as one.
+        var logger = new FakeLogger<SmtpMessageStore>();
+        var sut = CreateStore(
+            logger: logger,
+            scanner: new FakeScanner(ScanResult.Unavailable()),
+            scanOptions: new MalwareScanOptions { Mode = MalwareScanMode.Audit });
+        var (context, transaction, buffer) = CreateSaveArgs();
+
+        await sut.SaveAsync(context, transaction, buffer, CancellationToken.None);
+
+        logger.HasEntry(LogLevel.Information, "no detection").Should().BeFalse();
+    }
+
+    // =========================================================================
     // Message rules
     // =========================================================================
 

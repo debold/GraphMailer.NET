@@ -281,6 +281,18 @@ try
     Log.Information("[GraphMailer] GraphMailer service {Version} ({InformationalVersion}) starting on {Machine}",
         BuildInfo.FileVersion, BuildInfo.InformationalVersion, Environment.MachineName);
 
+    // The scanner reports its own state from its constructor — the providers it found, or a loud
+    // error when none is registered. Resolved here rather than left to the first SMTP session, so
+    // that report lands in the startup log where an operator looks right after enabling scanning;
+    // otherwise a machine that receives no mail for a day looks identical to a working one.
+    // Skipped when scanning is off: initialising AMSI then would be wasted work, and the
+    // "no provider registered" error would be an alarm about a feature nobody switched on.
+    if (host.Services.GetRequiredService<IOptionsMonitor<MalwareScanOptions>>().CurrentValue.Mode
+        != MalwareScanMode.Off)
+    {
+        _ = host.Services.GetRequiredService<IMailContentScanner>();
+    }
+
     host.Run();
 
     return 0;

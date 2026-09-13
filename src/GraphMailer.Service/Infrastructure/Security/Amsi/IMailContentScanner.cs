@@ -34,15 +34,21 @@ internal enum ScanOutcome
 /// it would produce an allowlist entry that never matches again.
 /// </param>
 /// <param name="ResultCode">Raw <c>AMSI_RESULT</c>. AMSI exposes no threat name, so this is all the detail there is.</param>
+/// <param name="PartsScanned">
+/// How many parts were actually handed to the engine. This is what the audit line reports:
+/// "clean" alone cannot be told apart from "nothing was looked at", and the difference is the
+/// whole point of watching a scanner in audit mode. 0 for every outcome where nothing was scanned.
+/// </param>
 internal readonly record struct ScanResult(
     ScanOutcome Outcome,
     string? ThreatLocation = null,
     string? Sha256 = null,
     long PartSizeBytes = 0,
     uint ResultCode = 0,
-    string? Error = null)
+    string? Error = null,
+    int PartsScanned = 0)
 {
-    internal static ScanResult Clean() => new(ScanOutcome.Clean);
+    internal static ScanResult Clean(int partsScanned = 0) => new(ScanOutcome.Clean, PartsScanned: partsScanned);
     internal static ScanResult Unavailable() => new(ScanOutcome.Unavailable);
     internal static ScanResult Failed(string error) => new(ScanOutcome.Failed, Error: error);
     internal static ScanResult Skipped(string location, long size)

@@ -150,6 +150,7 @@ internal sealed class AmsiContentScanner : IMailContentScanner, IDisposable
     private ScanResult ScanParts(MimeMessage message, string messageId, IntPtr session, MalwareScanOptions opts)
     {
         var skipped = default(ScanResult?);
+        var scanned = 0;
 
         foreach (var target in EnumerateTargets(message, depth: 0))
         {
@@ -172,6 +173,8 @@ internal sealed class AmsiContentScanner : IMailContentScanner, IDisposable
             if (hr != AmsiNativeMethods.Ok)
                 return ScanResult.Failed($"AmsiScanBuffer failed for '{target.Name}' (HRESULT 0x{hr:X8})");
 
+            scanned++;
+
             _logger.LogDebug(
                 "[MalwareScan] {MessageId}: scanned '{Part}' ({Size} bytes) → AMSI result {Result}",
                 messageId, target.Name, data.Length, result);
@@ -185,10 +188,13 @@ internal sealed class AmsiContentScanner : IMailContentScanner, IDisposable
                 ThreatLocation: target.Name,
                 Sha256: target.IsAttachment ? Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant() : null,
                 PartSizeBytes: data.Length,
-                ResultCode: result);
+                ResultCode: result,
+                PartsScanned: scanned);
         }
 
-        return skipped ?? ScanResult.Clean();
+        // The skipped result was built the moment the oversized part was seen, before the
+        // remaining parts were scanned — so its count is filled in here, not there.
+        return skipped is { } s ? s with { PartsScanned = scanned } : ScanResult.Clean(scanned);
     }
 
     private ScanResult ScanRaw(ReadOnlyMemory<byte> eml, string messageId, IntPtr session, MalwareScanOptions opts)
@@ -205,8 +211,9 @@ internal sealed class AmsiContentScanner : IMailContentScanner, IDisposable
 
         // No hash: an allowlist entry for a whole message body would never match a second mail.
         return AmsiResult.IsMalware(result)
-            ? new ScanResult(ScanOutcome.Malware, "raw message (unparsable MIME)", null, data.Length, result)
-            : ScanResult.Clean();
+            ? new ScanResult(
+                ScanOutcome.Malware, "raw message (unparsable MIME)", null, data.Length, result, PartsScanned: 1)
+            : ScanResult.Clean(partsScanned: 1);
     }
 
     /// <summary>

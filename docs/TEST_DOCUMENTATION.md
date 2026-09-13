@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1937 tests** (1847 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-09-13
+**Total: 1956 tests** (1866 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-09-13
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -602,6 +602,23 @@ throughout; the machine's real antimalware provider is never involved.
 
 ---
 
+### SmtpMessageStore — malware scan audit trail (`Infrastructure/Smtp/SmtpMessageStoreTests.cs`)
+
+In audit mode the log is the entire product of the feature — nothing is rejected, so the operator
+deciding whether to switch to Enforce has only these lines. "No detections" must therefore be
+distinguishable from "nothing was ever scanned", which is why the uneventful outcomes are asserted
+here instead of being treated as tracing noise.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `SaveAsync_CleanScan_AuditMode_LogsThatTheMessageWasScanned` | Clean scan of 3 parts, mode Audit | `Information` line containing `3 part(s)` and `no detection` — the count separates a real scan from a scanner that inspected nothing |
+| `SaveAsync_CleanScan_EnforceMode_DoesNotLogPerMessageAtInformation` | Clean scan, mode Enforce | Nothing at `Information`; the same line at `Debug` — in Enforce the rejection is the event, and a line per clean message would bury it |
+| `SaveAsync_BypassedUser_AuditMode_LogsTheSkipWithItsReason` | Bypassed authenticated user, mode Audit | `Information` line containing `scan skipped` and the matching user — a coverage hole must be visible in the mode whose job is showing coverage |
+| `SaveAsync_IncompleteScan_AuditMode_LogsThatTheMessageWentOutUnscanned` (Theory, 2 cases) | Scan failed / oversized part skipped, mode Audit | SMTP 250 plus an `Information` line containing `delivered unscanned` — fail-open must not read like a clean scan |
+| `SaveAsync_UnavailableScanner_IsNeverReportedAsScanned` | Scanner returns `Unavailable`, mode Audit | No `no detection` line — the audit trail must never claim coverage that did not happen |
+
+---
+
 ### SmtpMessageStore — message rules (`Infrastructure/Smtp/SmtpMessageStoreTests.cs`)
 
 Where the rule engine sits in the DATA gate: what the client is told, what reaches the queue, and
@@ -648,6 +665,30 @@ runtime, so this is the only place to catch them.
 | `IsDuplicate_SameValueWithWhitespace_IsADuplicate` | Padded copy of an existing range | Duplicate — whitespace must not create a second entry that behaves identically |
 | `IsDuplicate_DifferentValue_IsNot` | `/8` vs `/16` | Not a duplicate |
 | `IsDuplicate_EmptyCandidate_IsNeverADuplicate` | Blank candidate | Not a duplicate |
+
+---
+
+### DetectionRecordReader — *Recent Detections* list (`ConfigTool/DetectionRecordReaderTests.cs`)
+
+`mail\blocked\` is shared with the message rules: both subsystems write records there, interleaved
+in time. The display limit therefore has to count **detections, not files** — the regression these
+tests guard is a burst of rule discards pushing real findings out of a list that then reports none.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Read_MissingDirectory_ReturnsEmpty` | `blocked\` does not exist | Empty, not truncated — a service that never blocked anything is the normal case |
+| `Read_RuleDiscards_AreNotDetections` | Only `Source = MessageRule` records | Empty — a rule discard was never flagged by the scanner |
+| `Read_RecordWithoutSource_CountsAsDetection` | Record predating the `Source` field | Counted as a detection — everything written back then came from the scanner |
+| `Read_DetectionOlderThanManyRuleDiscards_IsStillFound` | One detection behind 250 newer rule discards | The detection is returned (the reported defect: cutting to the newest N *files* hid it) |
+| `Read_ReturnsNewestFirst` | Two detections | Newest first |
+| `Read_MoreDetectionsThanTheLimit_ReturnsTheNewestOnes` | 210 detections | Exactly `MaxDetectionsShown` (200), newest first |
+| `Read_UnreadableRecord_DoesNotHideTheRest` | Corrupt JSON newer than a valid record | The valid detection is still returned |
+| `Read_SearchStoppedAtTheExaminationLimit_ReportsTruncated` | Nothing but discards within the examination limit | Empty **and** `Truncated = true` — the caller must not read this as "none exist" |
+| `Read_WholeFolderRead_IsNotReportedAsTruncated` | Exactly as many files as the limit allows | `Truncated = false` — a complete search, not a cut-off one |
+| `Describe_NothingFoundAndNothingSkipped_SaysTheFolderIsEmpty` | 0 rows, complete search | `"No detections recorded."` |
+| `Describe_NothingFoundAfterATruncatedSearch_DoesNotClaimTheFolderIsEmpty` | 0 rows, truncated search | A different caption naming the examined window — the empty claim would cover records never opened |
+| `Describe_FewerThanTheLimit_ReportsThePlainCount` | 3 rows | `"3 detection(s)"` |
+| `Describe_AtTheLimit_SaysTheListIsCut` | 200 rows | Caption contains `"newest shown"` |
 
 ---
 
