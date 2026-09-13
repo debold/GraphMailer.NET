@@ -23,6 +23,11 @@ internal static class GraphApiTestService
     /// <param name="certThumbprint">Certificate thumbprint — pass null when using secret auth.</param>
     /// <param name="from">Sender address (must be a licensed mailbox in the tenant).</param>
     /// <param name="to">Recipient address.</param>
+    /// <param name="subjectPrefix">
+    /// The configured notification subject prefix (Notifications page). The test mail carries the
+    /// same prefix as every other message GraphMailer sends, so inbox rules built for the
+    /// notifications also catch it.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     internal static async Task SendAsync(
         string tenantId,
@@ -31,6 +36,7 @@ internal static class GraphApiTestService
         string? certThumbprint,
         string from,
         string to,
+        string? subjectPrefix,
         CancellationToken ct)
     {
         // ── Build MSAL confidential-client application ────────────────────
@@ -91,7 +97,7 @@ internal static class GraphApiTestService
         {
             Message = new Message
             {
-                Subject = "[GraphMailer] Connection test",
+                Subject = NotificationSubject.Build(subjectPrefix, "Connection test"),
                 Body = new ItemBody
                 {
                     ContentType = BodyType.Html,

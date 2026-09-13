@@ -531,7 +531,8 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
 
         if (ndrOpts.NotifyAdmin && adminOpts.RecipientAddresses.Count > 0)
         {
-            var adminSubject = $"{adminOpts.SubjectPrefix} NDR: {(string.IsNullOrEmpty(meta.Subject) ? meta.MessageId : meta.Subject)}";
+            var adminSubject = NotificationSubject.Build(adminOpts.SubjectPrefix,
+                $"NDR: {(string.IsNullOrEmpty(meta.Subject) ? meta.MessageId : meta.Subject)}");
             _logger.LogInformation("[AdminNotify] Queueing NDR admin copy for {MessageId}", meta.MessageId);
             await EnqueueNotificationMailAsync(adminOpts.SenderAddress, adminOpts.RecipientAddresses, adminSubject, body, bodyHtml,
                 $"admin NDR copy for {meta.MessageId}", ct);
@@ -707,7 +708,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             return;
         }
 
-        var fullSubject = $"{opts.SubjectPrefix} {subject}";
+        var fullSubject = NotificationSubject.Build(opts.SubjectPrefix, subject);
         _logger.LogInformation("[AdminNotify] Sending notification: {Subject}", fullSubject);
 
         var html = NotificationHtmlRenderer.Render(mail);

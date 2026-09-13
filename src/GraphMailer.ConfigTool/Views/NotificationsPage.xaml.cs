@@ -57,6 +57,12 @@ public partial class NotificationsPage : UserControl
     /// <summary>Live sender state for cross-page validation (used by the Backup page).</summary>
     internal bool HasSenderAddress => !string.IsNullOrWhiteSpace(NotifFrom.Text);
 
+    /// <summary>
+    /// Live subject prefix, so the Graph API page's test mail carries the prefix currently shown
+    /// here — including an edit that has not been saved yet.
+    /// </summary>
+    internal string CurrentSubjectPrefix => SubjectPrefix.Text;
+
     internal void LoadFrom(ConfigDocument doc)
     {
         _adminRecipients.Clear();

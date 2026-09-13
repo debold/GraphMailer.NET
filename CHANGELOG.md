@@ -61,6 +61,13 @@
 
 ### Fixed
 
+- **The Graph API test mail ignored the configured subject prefix.** It always went out as
+  `[GraphMailer] Connection test`, so an inbox rule built on a customised prefix (Notifications →
+  *Subject prefix*) never caught it — the one message you send while setting the connection up was
+  the one message that did not look like the rest. The test mail now uses the prefix currently
+  shown on the Notifications page, including an edit that has not been saved yet, and every
+  GraphMailer-generated subject is built in one shared place. A prefix left empty now yields the
+  bare subject instead of one starting with a space.
 - **A missing SendAs permission was not reported for senders the directory already knew.** When the
   sender was recognised as a group up front, the message went straight through the relay mailbox —
   and a SendAs rejection on that path was mistaken for a message-format problem: the mail was

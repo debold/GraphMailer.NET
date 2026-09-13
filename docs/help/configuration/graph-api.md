@@ -31,6 +31,10 @@ the connection before saving.
 - **From** — a sender address; must be a licensed mailbox in your tenant.
 - **To** — any recipient address.
 
+The subject is `<subject prefix> Connection test`, using the **Subject prefix** from the
+[Notifications](notifications.md) page (`[GraphMailer]` by default) — so an inbox rule built for
+the notifications catches the test mail as well.
+
 > [!WARNING]
 > The **From** address must be a real Microsoft 365 mailbox (or one of its aliases). A test from an
 > address the tenant does not own is rejected.

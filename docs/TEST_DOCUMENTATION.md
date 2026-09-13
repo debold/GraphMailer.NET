@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1931 tests** (1841 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-09-02
+**Total: 1937 tests** (1847 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-09-13
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -365,6 +365,20 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Render_WithLink_RendersButtonWithUrl` | `LinkUrl` + `LinkLabel` set | Button with `href` to the URL and the label text |
 | `Render_WithoutLink_OmitsButton` | No `LinkUrl` | No `href` in the output |
 | `Render_CustomKickerAndFooterNote_OverrideDefaults` | NDR-style kicker + footer note | Custom kicker/footer rendered, default ConfigTool footer absent |
+
+---
+
+### NotificationSubject (`Services/Reporting/NotificationSubjectTests.cs`)
+
+> Shared subject builder for every mail GraphMailer sends itself (admin notifications, NDR admin
+> copies, scheduled reports, ConfigTool test mail), so all of them carry the configured prefix.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Build_WithPrefix_PutsPrefixInFrontOfSubject` | Default prefix `[GraphMailer]` + "Connection test" | `"[GraphMailer] Connection test"` |
+| `Build_CustomPrefix_IsUsedVerbatim` | Configured prefix `[MAIL-PROD]` | Custom prefix used, never a hard-coded one |
+| `Build_MissingPrefix_ReturnsBareSubjectWithoutLeadingSpace` (Theory) | Prefix `null` / `""` / whitespace | Bare subject, no leading space |
+| `Build_PrefixWithSurroundingWhitespace_IsTrimmedToASingleSeparator` | Prefix `"  [GM]  "` | `"[GM] Queue stalled"` |
 
 ---
 

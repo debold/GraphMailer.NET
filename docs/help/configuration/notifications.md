@@ -21,7 +21,7 @@ comes first.
 | Setting | Default | Meaning |
 |---|---|---|
 | Sender email address | — | The **From** address for every notification email. Must be a mailbox the Graph service principal may send as (`Mail.Send`). |
-| Subject prefix | `[GraphMailer]` | Prepended to every notification subject — handy for inbox rules and filtering. |
+| Subject prefix | `[GraphMailer]` | Prepended to the subject of every mail GraphMailer sends itself — notifications, NDR admin copies, scheduled reports and the [test email](graph-api.md). Handy for inbox rules and filtering. Leave it empty for no prefix. |
 
 > [!IMPORTANT]
 > Set the sender address to a real mailbox in your tenant (the same kind of address you use for the

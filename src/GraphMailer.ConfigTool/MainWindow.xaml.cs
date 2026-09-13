@@ -119,7 +119,12 @@ public partial class MainWindow : Window
             _messageRulesPage = new MessageRulesPage(
                 MarkDirty, () => AppPaths.DataDir, () => _smtpPage.ConfiguredListenerPorts);
             _messageRulesPage.LoadFrom(_currentDoc);
-            _graphApiPage = new GraphApiPage(MarkDirty, b => _suppressDirty = b); _graphApiPage.LoadFrom(_currentDoc);
+            // Live subject prefix, so the test mail uses the prefix currently typed on the
+            // Notifications page (created further below — the callback null-checks and the
+            // page's own LoadFrom value covers the window before that).
+            _graphApiPage = new GraphApiPage(
+                MarkDirty, b => _suppressDirty = b, () => _notificationsPage?.CurrentSubjectPrefix);
+            _graphApiPage.LoadFrom(_currentDoc);
             _queuePage = new MailQueuePage(MarkDirty); _queuePage.LoadFrom(_currentDoc);
             _monitoringPage = new MonitoringPage(MarkDirty); _monitoringPage.LoadFrom(_currentDoc);
             // The sender address (Notifications page) and the emailed-backups toggle

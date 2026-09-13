@@ -13,15 +13,24 @@ public partial class GraphApiPage : UserControl
 {
     private readonly Action _markDirty;
     private readonly Action<bool> _setOwnerSuppressDirty;
+    private readonly Func<string?>? _subjectPrefix;
     private bool _revealingSecret;
     private bool _suppressDirty;
 
+    /// <summary>Prefix from the last loaded config — used when no live callback is wired.</summary>
+    private string? _savedSubjectPrefix;
+
     private const string AppRegistrationName = "GraphMailer.NET";
 
-    public GraphApiPage(Action markDirty, Action<bool> setOwnerSuppressDirty)
+    /// <param name="subjectPrefix">
+    /// Live notification subject prefix from the Notifications page, so the test mail uses the
+    /// prefix currently shown there (including unsaved edits) rather than one of its own.
+    /// </param>
+    public GraphApiPage(Action markDirty, Action<bool> setOwnerSuppressDirty, Func<string?>? subjectPrefix = null)
     {
         _markDirty = markDirty;
         _setOwnerSuppressDirty = setOwnerSuppressDirty;
+        _subjectPrefix = subjectPrefix;
         InitializeComponent();
         SmtpPage.LoadClientAuthCertificates(ManualCertList);
     }
@@ -42,6 +51,7 @@ public partial class GraphApiPage : UserControl
 
     internal void LoadFrom(ConfigDocument doc)
     {
+        _savedSubjectPrefix = doc.Notification.SubjectPrefix;
         var g = doc.GraphApi;
         TenantId.Text = g.TenantId ?? string.Empty;
         ClientId.Text = g.ClientId ?? string.Empty;
@@ -282,6 +292,7 @@ public partial class GraphApiPage : UserControl
             await GraphApiTestService.SendAsync(
                 tenantId, clientId, clientSecret, certThumbprint,
                 from!, to!,
+                _subjectPrefix?.Invoke() ?? _savedSubjectPrefix,
                 System.Threading.CancellationToken.None);
 
             ShowTestOk($"✔  Test email sent successfully to {to}.");

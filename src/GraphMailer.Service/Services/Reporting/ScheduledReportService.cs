@@ -151,7 +151,8 @@ internal sealed class ScheduledReportService : BackgroundService
         {
             var data = _collector.Collect(opts.ScheduledReport, DateTimeOffset.Now);
             var email = HtmlReportRenderer.Render(data);
-            var subject = $"{opts.SubjectPrefix} {data.Title} — {data.PeriodStart:yyyy-MM-dd} to {data.PeriodEnd:yyyy-MM-dd}";
+            var subject = NotificationSubject.Build(opts.SubjectPrefix,
+                $"{data.Title} — {data.PeriodStart:yyyy-MM-dd} to {data.PeriodEnd:yyyy-MM-dd}");
 
             var inlineChart = email.ChartPng is null
                 ? null
