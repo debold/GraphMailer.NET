@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0.1090 — 2026-09-13
 
 ### Added
 
@@ -58,6 +58,90 @@
   else makes them visible. It answers "is this alias actually known?" without guessing from a
   rejection. The service writes the list to `data\sender-directory.json` after each sync; the window
   only reads it.
+
+- **Incoming mail can now be changed or refused by configurable rules.** A new *Message Rules*
+  page holds an ordered list of rules; each one has any number of conditions and any number of
+  actions. A rule applies when its conditions match, and the rules run top to bottom, so a rule
+  further down sees what the ones above it did. Any rule can end the run for the messages it
+  matches.
+
+  Rules are evaluated **when a message arrives**, during the SMTP session and before anything is
+  queued. That is what makes a rejection useful: the sending application gets a real SMTP reply
+  with the code and the text you configured, instead of an NDR hours later. It also means the
+  queued message, the copy in `mail\sent\` and the statistics all show the same thing — what
+  actually went out.
+
+  **Conditions** can look at the envelope sender and recipients, the From/To/Cc/Reply-To headers,
+  the subject, the plain-text and HTML bodies, any named header, attachment names, extensions,
+  sizes and count, the message size, the importance, whether the message is signed or encrypted,
+  and the session itself: client IP (including CIDR ranges), listener port, whether the sender
+  authenticated, and whether TLS was used. Each condition compares with equals, contains, starts
+  or ends with, a wildcard, a regular expression, an exact domain, an IP range or a numeric
+  comparison — and each one can be inverted on its own. A rule combines its conditions with
+  *all* or *any*.
+
+  Fields that can hold several values — recipients, headers, attachments — match when **any** of
+  them matches, so inverting such a condition means *none* of them match. That is the reading
+  that makes "no recipient outside the company" expressible, and the condition dialog says so
+  where it is configured.
+
+  **Actions** are: refuse the message with a reply code and text of your choosing; discard it
+  silently; add, remove or replace a recipient in To, Cc or Bcc; set, prefix or suffix the
+  subject; put text above or below the message body; set, add or remove a header; remove
+  attachments by name pattern, extension or size; set the importance; and rewrite the From or
+  Reply-To address.
+
+  **Subject and body text is stored exactly as typed**, including leading and trailing spaces —
+  a prefix of `[EXTERNAL] ` needs its trailing space, or the subject arrives as
+  `[EXTERNAL]Quarterly report`. Everywhere else (addresses, header names, patterns) surrounding
+  spaces are removed, because there they are only a typo. Addresses are validated by the same
+  rule the Notifications, Backup and SMTP user pages already use, so an address one page accepts
+  is an address every page accepts; the *address to match* of a recipient action additionally
+  takes an `@domain` entry or a `*` wildcard.
+
+  **A new rule starts in Audit mode**, and the rule engine as a whole is off after an upgrade.
+  In Audit mode a rule logs and counts exactly what it *would* have done and changes nothing,
+  which is the safe way to introduce a rule into live mail flow. Audit follows the same path
+  enforcement would — it honours "stop after this rule", and it stops where a rejection would
+  have happened — so switching a rule to Enforce cannot surprise you with a different set of
+  rules having run.
+
+  **A rule tester** — its own window, opened from the rule list — runs the rules exactly as they
+  stand on screen, saved or not, against a message you describe or a stored message you load. It reports which rules matched,
+  what each action did or would do, the resulting recipients, subject, headers and attachments,
+  and the SMTP reply a rejection would produce. It uses the service's own rule engine rather than
+  a copy of it, so what it shows is what the relay does. Nothing is sent, queued or written.
+
+  Rule hits are counted per rule and per mode in `metrics.db` (schema **v4**, additive) and shown
+  as a **Message Rules** card in the statistics, next to the malware breakdown and for the same
+  reason: an audit-mode hit changed nothing, so it must stay distinguishable from one that did.
+  Rules that matched but could not act — a body change on a signed message — are counted
+  separately as well, because "my rule matches and nothing happens" is exactly the question the
+  statistics should answer. A refusal also appears in the rejection breakdown as *Refused by a
+  message rule*.
+
+  The rules live in a new config section — schema **v11**, purely additive, so an upgraded
+  installation relays exactly as it did before until the engine is switched on.
+
+### Notes on how rules interact with Microsoft 365
+
+  Some of these are worth knowing before writing a rule, because Graph does not relay raw MIME —
+  it rebuilds the message property by property:
+
+- **Recipients follow the envelope, not the headers.** Every recipient action therefore changes
+  both. This matters most for removal: taking a recipient out of the header alone would leave
+  them in the envelope, and they would still receive the message — as an invisible blind copy.
+- **A Bcc recipient is added to the envelope only.** Writing a Bcc header would achieve nothing
+  on delivery and would put the blind copy into the archived message.
+- **Only `x-…` headers reach the recipient**, and Microsoft 365 carries at most five of them. The
+  action dialog says so for any other header, and the service warns at runtime when a message
+  ends up over the limit — exceeding it makes Graph reject the message, and the retry then drops
+  every custom header. The header is still set in the archived message either way.
+- **On a message with both a plain-text and an HTML body, only the HTML one is delivered.** Body
+  actions take a text and an optional HTML version; leaving the HTML empty generates it from the
+  text. The rule tester states which of the two will actually be delivered.
+- **A body part the message does not have is never created.** Adding an HTML body to a plain-text
+  message would change how every recipient sees it, which is far more than the rule asked for.
 
 ### Fixed
 
@@ -187,98 +271,6 @@
 - Config schema version 12: adds the `SenderRouting` section and `SenderValidation.AcceptMailboxlessSenders`.
   Purely additive — every new key defaults to the previous behaviour, so an existing installation
   keeps working unchanged until the options are switched on.
-
-
-## 1.5.0.1085 — 2026-08-25
-
-### Added
-
-- **Incoming mail can now be changed or refused by configurable rules.** A new *Message Rules*
-  page holds an ordered list of rules; each one has any number of conditions and any number of
-  actions. A rule applies when its conditions match, and the rules run top to bottom, so a rule
-  further down sees what the ones above it did. Any rule can end the run for the messages it
-  matches.
-
-  Rules are evaluated **when a message arrives**, during the SMTP session and before anything is
-  queued. That is what makes a rejection useful: the sending application gets a real SMTP reply
-  with the code and the text you configured, instead of an NDR hours later. It also means the
-  queued message, the copy in `mail\sent\` and the statistics all show the same thing — what
-  actually went out.
-
-  **Conditions** can look at the envelope sender and recipients, the From/To/Cc/Reply-To headers,
-  the subject, the plain-text and HTML bodies, any named header, attachment names, extensions,
-  sizes and count, the message size, the importance, whether the message is signed or encrypted,
-  and the session itself: client IP (including CIDR ranges), listener port, whether the sender
-  authenticated, and whether TLS was used. Each condition compares with equals, contains, starts
-  or ends with, a wildcard, a regular expression, an exact domain, an IP range or a numeric
-  comparison — and each one can be inverted on its own. A rule combines its conditions with
-  *all* or *any*.
-
-  Fields that can hold several values — recipients, headers, attachments — match when **any** of
-  them matches, so inverting such a condition means *none* of them match. That is the reading
-  that makes "no recipient outside the company" expressible, and the condition dialog says so
-  where it is configured.
-
-  **Actions** are: refuse the message with a reply code and text of your choosing; discard it
-  silently; add, remove or replace a recipient in To, Cc or Bcc; set, prefix or suffix the
-  subject; put text above or below the message body; set, add or remove a header; remove
-  attachments by name pattern, extension or size; set the importance; and rewrite the From or
-  Reply-To address.
-
-  **Subject and body text is stored exactly as typed**, including leading and trailing spaces —
-  a prefix of `[EXTERNAL] ` needs its trailing space, or the subject arrives as
-  `[EXTERNAL]Quarterly report`. Everywhere else (addresses, header names, patterns) surrounding
-  spaces are removed, because there they are only a typo. Addresses are validated by the same
-  rule the Notifications, Backup and SMTP user pages already use, so an address one page accepts
-  is an address every page accepts; the *address to match* of a recipient action additionally
-  takes an `@domain` entry or a `*` wildcard.
-
-  **A new rule starts in Audit mode**, and the rule engine as a whole is off after an upgrade.
-  In Audit mode a rule logs and counts exactly what it *would* have done and changes nothing,
-  which is the safe way to introduce a rule into live mail flow. Audit follows the same path
-  enforcement would — it honours "stop after this rule", and it stops where a rejection would
-  have happened — so switching a rule to Enforce cannot surprise you with a different set of
-  rules having run.
-
-  **A rule tester** — its own window, opened from the rule list — runs the rules exactly as they
-  stand on screen, saved or not, against a message you describe or a stored message you load. It reports which rules matched,
-  what each action did or would do, the resulting recipients, subject, headers and attachments,
-  and the SMTP reply a rejection would produce. It uses the service's own rule engine rather than
-  a copy of it, so what it shows is what the relay does. Nothing is sent, queued or written.
-
-  Rule hits are counted per rule and per mode in `metrics.db` (schema **v4**, additive) and shown
-  as a **Message Rules** card in the statistics, next to the malware breakdown and for the same
-  reason: an audit-mode hit changed nothing, so it must stay distinguishable from one that did.
-  Rules that matched but could not act — a body change on a signed message — are counted
-  separately as well, because "my rule matches and nothing happens" is exactly the question the
-  statistics should answer. A refusal also appears in the rejection breakdown as *Refused by a
-  message rule*.
-
-  Config schema is now **v11**; the new section is purely additive, and an upgraded installation
-  relays exactly as it did before until the engine is switched on.
-
-### Notes on how rules interact with Microsoft 365
-
-  Some of these are worth knowing before writing a rule, because Graph does not relay raw MIME —
-  it rebuilds the message property by property:
-
-- **Recipients follow the envelope, not the headers.** Every recipient action therefore changes
-  both. This matters most for removal: taking a recipient out of the header alone would leave
-  them in the envelope, and they would still receive the message — as an invisible blind copy.
-- **A Bcc recipient is added to the envelope only.** Writing a Bcc header would achieve nothing
-  on delivery and would put the blind copy into the archived message.
-- **Only `x-…` headers reach the recipient**, and Microsoft 365 carries at most five of them. The
-  action dialog says so for any other header, and the service warns at runtime when a message
-  ends up over the limit — exceeding it makes Graph reject the message, and the retry then drops
-  every custom header. The header is still set in the archived message either way.
-- **On a message with both a plain-text and an HTML body, only the HTML one is delivered.** Body
-  actions take a text and an optional HTML version; leaving the HTML empty generates it from the
-  text. The rule tester states which of the two will actually be delivered.
-- **A body part the message does not have is never created.** Adding an HTML body to a plain-text
-  message would change how every recipient sees it, which is far more than the rule asked for.
-
-### Changed
-
 - Rules run **after** the malware scan, never before it. The scanner has to see the message
   exactly as the client sent it — otherwise a rule that strips attachments could delete the very
   part the scan is meant to catch.
