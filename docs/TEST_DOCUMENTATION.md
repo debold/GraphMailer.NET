@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1956 tests** (1866 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-09-13
+**Total: 1978 tests** (1888 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-09-21
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -400,6 +400,11 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 | `Collect_ServiceSideInputMatchesRules_SurfacesEachDisabledFeature` | Sender validation / backup / NDR off, log level `Debug`, no Graph app | Backup + NDR + log-level hints; sender validation stays silent without a configured Graph app — guards the service-side `RecommendationInput` adapter against a mis-wired options monitor |
 | `Collect_DismissedRecommendation_IsOmittedFromTheReport` | Telemetry + backup applicable, telemetry dismissed | Only the backup hint reaches the report |
 | `Collect_DisabledOptInFeatures_DoNotAffectHealthSeverity` | Four features off, compared against an otherwise identical all-configured install | Same `WarningCount`/`ErrorCount` as the baseline; no "Telemetry" health row; "Software Update" stays `Unknown`, not `Warning` — a deliberate opt-out must never cry wolf in the severity banner |
+| `Collect_AllGraphPermissionsGranted_ReportsPermissionsOk` | Token carries every permission sender validation needs | Health row "Graph Permissions" is `Ok` |
+| `Collect_GraphPermissionMissing_ReportsErrorNamingTheRole` | Token lacks `Domain.Read.All` with sender validation on | Row is `Error`, names the role, and raises `ErrorCount` — the report must not read "all clear" in the same week the service mailed a permission alert |
+| `Collect_SenderValidationOff_DirectoryPermissionsAreNotRequired` | Delivery permissions only, sender validation off | Row is `Ok` — an unused permission is not a gap |
+| `Collect_ProbeThrows_ReportsPermissionsUnknownNotError` | Probe throws (network failure) | Row is `Unknown`, not `Error` — an unreachable Graph has its own health row |
+| `Collect_GraphNotConfigured_ReportsPermissionsUnknownWithoutProbing` | No tenant/client id | Row is `Unknown` and the probe is never called |
 
 ---
 
@@ -925,6 +930,30 @@ into the derived mail-domain set — which the MAIL FROM check then treats as on
 
 ---
 
+### GraphPermissions (`Services/GraphPermissionsTests.cs`)
+
+> The shared definition of the Graph application permissions GraphMailer needs, used by the Entra
+> setup wizard (grants them), the Graph monitor (alerts on gaps) and the ConfigTool (shows them).
+> The set used to be written out separately per consumer and drifted apart in 1.5.0.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Required_SenderValidationOff_IsDeliveryOnly` | Sender validation disabled | Only Mail.Send + Mail.ReadWrite required |
+| `Required_SenderValidationOn_AddsUserAndDomainRead` | Sender validation enabled | User.Read.All and Domain.Read.All added |
+| `Required_SenderValidationOnWithoutMailboxless_StillNeedsDomainRead` | Validation on, mailbox-less senders off | Domain.Read.All required, Group.Read.All not |
+| `Required_AcceptMailboxlessSenders_AddsGroupRead` | Validation on + mailbox-less senders on | All five permissions required |
+| `Required_MailboxlessWithoutValidation_IsDeliveryOnly` | Mailbox-less flag on, validation off | Delivery permissions only — the flag is never read, so no false alarm |
+| `All_CoversEveryRequirableRole` | The wizard's superset vs. the maximal requirement | Superset contains every requirable role, so re-running the wizard closes any gap |
+| `All_RoleIdsAreUniqueAndNonEmpty` | The wizard's role table | No blank and no duplicate Entra app-role id |
+| `Missing_AllGranted_IsEmpty` | Token carries every required role | No gap reported |
+| `Missing_GapPresent_NamesOnlyTheAbsentRoles` | Token carries 2 of 4 required roles | Exactly the two absent roles returned |
+| `Missing_GrantedRolesInDifferentCase_CountAsGranted` | Roles claim in lower/upper case | Treated as granted (case-insensitive) |
+| `Missing_ExtraRolesGranted_AreIgnored` | Token carries a role that is not required | No gap reported |
+| `DetailList_NamesEachRoleWithItsPurpose` | One role formatted for the operator | `"Mail.ReadWrite (needed for attachments ≥ 3 MB)"` |
+| `NameList_JoinsBareRoleNames` | Two roles formatted compactly | `"Mail.Send, Domain.Read.All"` |
+
+---
+
 ### PortProbeRegistry (`Services/PortProbeRegistryTests.cs`)
 
 | Test | Scenario | Expected result |
@@ -1306,6 +1335,21 @@ Maps `ConfigDocument.DecryptionFailures` paths to the UI elements that flag unde
 | `HasGraphApiFailure_WhenOnlyUserPasswords_ReturnsFalse` | Only `Users[i].Password` paths | `false` |
 | `HasUserFailure_WhenUserPasswordPresent_ReturnsTrue` | Paths include `Users[3].Password` | `true` |
 | `HasUserFailure_WhenOnlyGraphSecret_ReturnsFalse` | Only `GraphApi.ClientSecret` | `false` |
+
+---
+
+### GraphPermissionCheckService — ConfigTool (`ConfigTool/GraphPermissionCheckServiceTests.cs`)
+
+Reads the permissions actually granted to the app registration (app-only token → `roles` claim), so
+the Graph API page and the System Health grid show the same gap the service mails about. Only the
+paths that need no tenant are covered here; acquiring a real token belongs to the live tests.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Check_NoTenantId_IsUnknownWithReason` | Tenant ID missing | `Unknown` + reason naming Tenant ID — never a reported gap |
+| `Check_NoClientId_IsUnknownWithReason` | Client ID blank | `Unknown` + reason naming Client ID |
+| `Check_NoSecretAndNoCertificate_IsUnknownWithReason` | Neither credential configured | `Unknown` + reason naming the certificate |
+| `Check_CertificateNotInstalled_IsUnknownAndDoesNotThrow` | Thumbprint matches no installed cert | `Unknown` with the failure as reason; no exception escapes into the page |
 
 ---
 

@@ -75,6 +75,18 @@ to see *why* something is wrong.
 > sending one would need the very certificate that just lapsed. This row and the log are the only
 > places the condition shows up.
 
+The **Graph Permissions** row answers the notification email *"Graph application permissions are
+missing"*. It asks Entra ID for an app-only token and reads which application permissions that token
+actually carries, then compares them with what your configuration needs — so it reports the same gap
+the service mails about, and names the permissions that are absent. An upgrade is the usual reason
+for it to turn red: a new GraphMailer version can need a permission your app registration was never
+granted. The fix is on the [Graph API](../configuration/graph-api.md) page.
+
+Note the difference between this row and **Graph API** just above it: Graph API reports when mail
+last went out, which stays green while a directory permission is missing. The row shows *Unknown*
+when the question cannot be answered at all — no credentials configured, no network — because that
+is not evidence of a gap.
+
 ## Decryption warning banner
 
 If a stored secret cannot be decrypted (for example after restoring config to a different machine,

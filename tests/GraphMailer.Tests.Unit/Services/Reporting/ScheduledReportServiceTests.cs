@@ -41,6 +41,8 @@ public sealed class ScheduledReportServiceTests
             Monitor(new RecommendationOptions()),
             new ConfigurationBuilder().Build(),
             new EphemeralDataProtectionProvider(),
+            // Graph is unconfigured above, so the permission check never reaches the probe.
+            Substitute.For<IGraphConnectivityProbe>(),
             NullLogger<ReportDataCollector>.Instance);
 
     private static AdminNotificationsOptions Build(

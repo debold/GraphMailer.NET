@@ -41,6 +41,7 @@ internal sealed class ReportDataCollector
     private readonly IOptionsMonitor<RecommendationOptions> _recommendations;
     private readonly IConfiguration _configuration;
     private readonly IDataProtector _configProtector;
+    private readonly IGraphConnectivityProbe _probe;
     private readonly ILogger<ReportDataCollector> _logger;
 
     /// <summary>Path of the persisted update-check result; overridable in tests.</summary>
@@ -64,6 +65,7 @@ internal sealed class ReportDataCollector
         IOptionsMonitor<RecommendationOptions> recommendations,
         IConfiguration configuration,
         IDataProtectionProvider dpProvider,
+        IGraphConnectivityProbe probe,
         ILogger<ReportDataCollector> logger)
     {
         _mailQueue = mailQueue;
@@ -83,6 +85,7 @@ internal sealed class ReportDataCollector
         _recommendations = recommendations;
         _configuration = configuration;
         _configProtector = dpProvider.CreateProtector(DataProtectionExtensions.ConfigPurpose);
+        _probe = probe;
         _logger = logger;
     }
 
@@ -103,7 +106,10 @@ internal sealed class ReportDataCollector
         : _mailQueue.CurrentValue.MailDir;
 
     /// <summary>Builds the full report snapshot for the period ending at <paramref name="now"/>.</summary>
-    public ReportData Collect(ScheduledReportOptions opts, DateTimeOffset now)
+    /// <remarks>Asynchronous for one reason: the Graph permission health check asks Entra ID for a
+    /// token. Everything else answers from disk or SQLite.</remarks>
+    public async Task<ReportData> CollectAsync(
+        ScheduledReportOptions opts, DateTimeOffset now, CancellationToken ct = default)
     {
         var monthly = opts.Frequency == ReportFrequency.Monthly;
         var span = TimeSpan.FromDays(monthly ? 30 : 7);
@@ -133,7 +139,7 @@ internal sealed class ReportDataCollector
             FailedQueueItems = failedItems,
             MalwareBlocked = malwareBlocked,
             MalwareAuditOnly = malwareAudited,
-            Health = BuildHealth(queuedNow, failedCount, now),
+            Health = await BuildHealthAsync(queuedNow, failedCount, now, ct),
             Recommendations = BuildRecommendations(),
         };
 
@@ -386,7 +392,8 @@ internal sealed class ReportDataCollector
 
     // ── Health checks ────────────────────────────────────────────────────────
 
-    private List<HealthItem> BuildHealth(int queuedNow, int failedCount, DateTimeOffset now)
+    private async Task<List<HealthItem>> BuildHealthAsync(
+        int queuedNow, int failedCount, DateTimeOffset now, CancellationToken ct)
     {
         return
         [
@@ -398,8 +405,44 @@ internal sealed class ReportDataCollector
             CheckDisk(),
             CheckQueue(queuedNow, failedCount),
             CheckGraphApi(now),
+            await CheckGraphPermissionsAsync(ct),
             CheckSoftwareUpdate(),
         ];
+    }
+
+    /// <summary>
+    /// Reports whether the app registration still grants every Graph permission this configuration
+    /// needs. Sits next to <see cref="CheckGraphApi"/> deliberately: that one reports when mail last
+    /// went out and stays green while a directory permission is missing, so without this item the
+    /// report would claim a clean bill of health in the same week the service mailed a critical
+    /// permission alert.
+    /// </summary>
+    private async Task<HealthItem> CheckGraphPermissionsAsync(CancellationToken ct)
+    {
+        const string component = "Graph Permissions";
+        try
+        {
+            if (!_graphApi.CurrentValue.IsConfigured)
+                return new HealthItem(component, HealthStatus.Unknown, "Graph API not configured");
+
+            var probe = await _probe.ProbeAsync(ct);
+            var missing = GraphPermissions.Missing(probe.GrantedRoles, _senderValidation.CurrentValue);
+
+            return missing.Count == 0
+                ? new HealthItem(component, HealthStatus.Ok, "All required permissions granted")
+                : new HealthItem(component, HealthStatus.Error,
+                    $"Missing: {GraphPermissions.DetailList(missing)} — re-run the Entra setup wizard");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // An unreachable Graph is already its own health item; here it only means the
+            // permissions could not be read, which is not the same as a gap.
+            return new HealthItem(component, HealthStatus.Unknown, ex.Message);
+        }
     }
 
     // ── Recommendations ──────────────────────────────────────────────────────

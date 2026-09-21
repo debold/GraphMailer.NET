@@ -208,6 +208,11 @@ failures — to the Admin Recipients on a schedule.
 > same report design used throughout GraphMailer's emails, sent automatically on your chosen
 > schedule.
 
+Its health section covers the same components as the [Status](../monitoring/status.md) page,
+including **Graph Permissions** — so a missing Graph application permission shows up in the report
+as an error rather than leaving it to claim a clean bill of health in the same week you received the
+alert about it. See [Graph API](graph-api.md) for how to close such a gap.
+
 The report closes with a short **Recommendations** box listing the suggestions that currently apply
 to this installation — the same list shown on the
 [Recommendations](../monitoring/recommendations.md) page in the Configuration Tool, grouped by

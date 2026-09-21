@@ -46,6 +46,13 @@ The wizard then performs these steps and shows the progress of each:
 If a `GraphMailer Entra Auth` certificate already exists (for example when you re-run setup), the
 wizard offers to **keep** or **replace** it rather than generating a new one.
 
+> [!TIP]
+> Running the wizard again on an existing registration is safe and is the normal way to repair a
+> permission gap: it keeps the app and its certificate and grants only what is missing. A
+> GraphMailer upgrade can introduce a permission your registration never had — the registration
+> status box on the [Graph API](../configuration/graph-api.md) page and the **Graph Permissions**
+> row on the [Status](../monitoring/status.md) page both name what is absent.
+
 When it finishes, the page shows the result: app name, Tenant ID, Client ID, certificate subject,
 thumbprint and expiry date.
 

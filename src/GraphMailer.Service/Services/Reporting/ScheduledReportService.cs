@@ -149,7 +149,7 @@ internal sealed class ScheduledReportService : BackgroundService
     {
         try
         {
-            var data = _collector.Collect(opts.ScheduledReport, DateTimeOffset.Now);
+            var data = await _collector.CollectAsync(opts.ScheduledReport, DateTimeOffset.Now, ct);
             var email = HtmlReportRenderer.Render(data);
             var subject = NotificationSubject.Build(opts.SubjectPrefix,
                 $"{data.Title} — {data.PeriodStart:yyyy-MM-dd} to {data.PeriodEnd:yyyy-MM-dd}");

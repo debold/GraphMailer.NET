@@ -44,8 +44,8 @@ blocking works.
 ## Step 3 — Connect GraphMailer to Microsoft 365
 
 Open **Graph API** and run the **Entra setup wizard**. It registers an application in your tenant,
-requests the required permissions (`Mail.Send`, `Mail.ReadWrite`, `User.Read.All`), and stores the
-connection details for you.
+requests the required permissions (`Mail.Send`, `Mail.ReadWrite`, `User.Read.All`,
+`Domain.Read.All`, `Group.Read.All`), and stores the connection details for you.
 
 > [!IMPORTANT]
 > The wizard needs an administrator who can grant **admin consent** for the requested permissions.

@@ -39,42 +39,8 @@ internal static class GraphApiTestService
         string? subjectPrefix,
         CancellationToken ct)
     {
-        // ── Build MSAL confidential-client application ────────────────────
-        IConfidentialClientApplication msal;
-
-        if (!string.IsNullOrWhiteSpace(certThumbprint))
-        {
-            var cert = FindCertificate(certThumbprint);
-            if (cert is null)
-                throw new InvalidOperationException(
-                    $"Certificate with thumbprint '{certThumbprint}' not found " +
-                    "in LocalMachine\\My or CurrentUser\\My.");
-
-            msal = ConfidentialClientApplicationBuilder
-                .Create(clientId)
-                .WithTenantId(tenantId)
-                .WithCertificate(cert)
-                .Build();
-        }
-        else if (!string.IsNullOrWhiteSpace(clientSecret))
-        {
-            msal = ConfidentialClientApplicationBuilder
-                .Create(clientId)
-                .WithTenantId(tenantId)
-                .WithClientSecret(clientSecret)
-                .Build();
-        }
-        else
-        {
-            throw new InvalidOperationException(
-                "No authentication configured. " +
-                "Enter a Client Secret or select a certificate.");
-        }
-
         // ── Acquire token (client-credentials flow) ───────────────────────
-        var tokenResult = await msal
-            .AcquireTokenForClient(Scopes)
-            .ExecuteAsync(ct);
+        var tokenResult = await AcquireTokenAsync(tenantId, clientId, clientSecret, certThumbprint, ct);
 
         // ── Build Graph client with static token ──────────────────────────
         var graphClient = new GraphServiceClient(
@@ -118,6 +84,52 @@ internal static class GraphApiTestService
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Acquires an app-only Graph token with the credentials as they stand in the ConfigTool —
+    /// the same client-credentials flow the service uses, so the token (and its <c>roles</c>
+    /// claim) is exactly the one the service would get. Shared with the permission check.
+    /// </summary>
+    internal static async Task<AuthenticationResult> AcquireTokenAsync(
+        string tenantId,
+        string clientId,
+        string? clientSecret,
+        string? certThumbprint,
+        CancellationToken ct)
+    {
+        IConfidentialClientApplication msal;
+
+        if (!string.IsNullOrWhiteSpace(certThumbprint))
+        {
+            var cert = FindCertificate(certThumbprint);
+            if (cert is null)
+                throw new InvalidOperationException(
+                    $"Certificate with thumbprint '{certThumbprint}' not found " +
+                    "in LocalMachine\\My or CurrentUser\\My.");
+
+            msal = ConfidentialClientApplicationBuilder
+                .Create(clientId)
+                .WithTenantId(tenantId)
+                .WithCertificate(cert)
+                .Build();
+        }
+        else if (!string.IsNullOrWhiteSpace(clientSecret))
+        {
+            msal = ConfidentialClientApplicationBuilder
+                .Create(clientId)
+                .WithTenantId(tenantId)
+                .WithClientSecret(clientSecret)
+                .Build();
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "No authentication configured. " +
+                "Enter a Client Secret or select a certificate.");
+        }
+
+        return await msal.AcquireTokenForClient(Scopes).ExecuteAsync(ct);
+    }
 
     private static X509Certificate2? FindCertificate(string thumbprint)
     {

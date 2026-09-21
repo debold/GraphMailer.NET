@@ -12,8 +12,12 @@ using System.Windows.Threading;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using GraphMailer.ConfigTool.Helpers;
+using GraphMailer.ConfigTool.Services;
+using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure;
+using GraphMailer.Service.Infrastructure.Config;
 using GraphMailer.Service.Infrastructure.Encryption;
+using GraphMailer.Service.Services;
 using GraphMailer.Service.Services.UpdateCheck;
 using static GraphMailer.ConfigTool.Helpers.ServiceControl;
 
@@ -131,6 +135,10 @@ public partial class StatusPage : UserControl
 
         // ── Health rows (slow: sc.exe + TCP connect) — background thread ─
         var healthRows = await Task.Run(() => BuildHealthRows().ToList());
+
+        // Appended separately: it is the only row that needs the network (an app-only token
+        // request), so it must not hold up the ones that answer from disk.
+        healthRows.Add(await CheckGraphPermissionsHealthAsync());
         HealthGrid.ItemsSource = healthRows;
 
         UpdateSecretsBanner(healthRows.FirstOrDefault(r => r.Component == SecretsComponent));
@@ -1037,6 +1045,62 @@ public partial class StatusPage : UserControl
         {
             ConfigToolLog.ErrorOnChange("StatusPage", ex, "Graph API health check failed");
             return new HealthRow("Graph API", "Unknown", ex.Message, checkTime);
+        }
+    }
+
+    private const string GraphPermissionsComponent = "Graph Permissions";
+
+    /// <summary>
+    /// Reports whether the app registration grants every Graph permission the current
+    /// configuration needs — the same check the service runs before it mails the admin about a
+    /// gap. Without this row the ConfigTool had no answer to that mail: the Graph API row below
+    /// only reports when mail last went out, which stays green while a directory permission is
+    /// missing.
+    /// </summary>
+    private static async Task<HealthRow> CheckGraphPermissionsHealthAsync()
+    {
+        var checkTime = DateTime.Now.ToString("HH:mm:ss");
+        try
+        {
+            var protector = GetConfigProtector();
+            if (protector is null)
+                return new HealthRow(GraphPermissionsComponent, "Unknown",
+                    "Data Protection key ring not accessible", checkTime);
+
+            if (!File.Exists(AppPaths.ConfigFilePath))
+                return new HealthRow(GraphPermissionsComponent, "Unknown",
+                    "No configuration file", checkTime);
+
+            var doc = new ConfigService(AppPaths.ConfigFilePath, protector).Load();
+            var g = doc.GraphApi;
+
+            var result = await GraphPermissionCheckService.CheckAsync(
+                g.TenantId, g.ClientId, g.ClientSecret, g.ClientCertificateThumbprint,
+                new SenderValidationOptions
+                {
+                    Enabled = doc.SenderValidation.SvEnabled,
+                    AcceptMailboxlessSenders = doc.SenderValidation.SvAcceptMailboxless,
+                },
+                CancellationToken.None);
+
+            return result.State switch
+            {
+                GraphPermissionState.Complete => new HealthRow(GraphPermissionsComponent, "OK",
+                    "All required permissions granted", checkTime),
+
+                // Error, not Warning: mail that needs a missing permission fails, and the service
+                // has already raised a critical notification for the same condition.
+                GraphPermissionState.Incomplete => new HealthRow(GraphPermissionsComponent, "Error",
+                    $"Missing: {GraphPermissions.NameList(result.Missing)} — re-run the Entra setup "
+                    + "wizard on the Graph API page", checkTime),
+
+                _ => new HealthRow(GraphPermissionsComponent, "Unknown", result.Reason ?? "Not checked", checkTime),
+            };
+        }
+        catch (Exception ex)
+        {
+            ConfigToolLog.ErrorOnChange("StatusPage", ex, "Graph permission health check failed");
+            return new HealthRow(GraphPermissionsComponent, "Unknown", ex.Message, checkTime);
         }
     }
 

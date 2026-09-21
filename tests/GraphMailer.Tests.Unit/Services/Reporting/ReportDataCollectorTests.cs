@@ -54,7 +54,8 @@ public sealed class ReportDataCollectorTests : IDisposable
         bool backupEnabled = true,
         bool ndrEnabled = true,
         string logLevel = "Information",
-        IEnumerable<string>? dismissed = null)
+        IEnumerable<string>? dismissed = null,
+        IGraphConnectivityProbe? probe = null)
         => new(
             Monitor(new MailQueueOptions { MailDir = Path.Combine(_temp, "mail") }),
             Monitor(new MetricsOptions { Enabled = true, BasePath = _temp }),
@@ -78,6 +79,7 @@ public sealed class ReportDataCollectorTests : IDisposable
                 .AddInMemoryCollection(new Dictionary<string, string?> { ["Serilog:MinimumLevel:Default"] = logLevel })
                 .Build(),
             new EphemeralDataProtectionProvider(),
+            probe ?? Substitute.For<IGraphConnectivityProbe>(),
             NullLogger<ReportDataCollector>.Instance)
         {
             // Keep the test hermetic: never read the machine's real %ProgramData% status file.
@@ -106,7 +108,7 @@ public sealed class ReportDataCollectorTests : IDisposable
             { From = "a@corp.com", To = ["x@ext.com"], MessageId = "m1" });
         await metrics.RecordEmailFailedAsync("m3", "550 rejected", "c@corp.com");
 
-        var data = CreateCollector().Collect(new ScheduledReportOptions { Frequency = ReportFrequency.Weekly }, DateTimeOffset.Now);
+        var data = await CreateCollector().CollectAsync(new ScheduledReportOptions { Frequency = ReportFrequency.Weekly }, DateTimeOffset.Now);
 
         data.Delivered.Should().Be(1);
         data.Failed.Should().Be(1);
@@ -115,7 +117,7 @@ public sealed class ReportDataCollectorTests : IDisposable
     }
 
     [Fact]
-    public void Collect_ReadsFailedQueueFolder()
+    public async Task Collect_ReadsFailedQueueFolder()
     {
         WriteFailedMeta(new MailMetadata
         {
@@ -129,7 +131,7 @@ public sealed class ReportDataCollectorTests : IDisposable
             LastAttemptAt = DateTime.UtcNow,
         });
 
-        var data = CreateCollector().Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var data = await CreateCollector().CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         data.FailedQueueCount.Should().Be(1);
         data.FailedQueueItems.Should().ContainSingle();
@@ -149,14 +151,14 @@ public sealed class ReportDataCollectorTests : IDisposable
         await metrics.RecordEmailSentAsync(new SentEmailEvent
             { From = "a@corp.com", To = ["y@ext.com"], MessageId = "m2", DurationMs = 400 });
 
-        var data = CreateCollector().Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var data = await CreateCollector().CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         data.AvgDeliveryMs.Should().Be(300);
         data.PeakDeliveryMs.Should().Be(400);
     }
 
     [Fact]
-    public void Collect_UpdateAvailable_ReportsSoftwareUpdateWarning()
+    public async Task Collect_UpdateAvailable_ReportsSoftwareUpdateWarning()
     {
         WriteUpdateStatus(new UpdateCheckStatus
         {
@@ -166,7 +168,7 @@ public sealed class ReportDataCollectorTests : IDisposable
             LastCheckUtc = DateTime.UtcNow,
         });
 
-        var data = CreateCollector(updateCheckEnabled: true).Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var data = await CreateCollector(updateCheckEnabled: true).CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         var row = data.Health.Should().ContainSingle(h => h.Component == "Software Update").Subject;
         row.Status.Should().Be(HealthStatus.Warning);
@@ -174,7 +176,7 @@ public sealed class ReportDataCollectorTests : IDisposable
     }
 
     [Fact]
-    public void Collect_UpToDate_ReportsSoftwareUpdateOk()
+    public async Task Collect_UpToDate_ReportsSoftwareUpdateOk()
     {
         WriteUpdateStatus(new UpdateCheckStatus
         {
@@ -184,7 +186,7 @@ public sealed class ReportDataCollectorTests : IDisposable
             LastCheckUtc = new DateTime(2026, 7, 18, 6, 0, 0, DateTimeKind.Utc),
         });
 
-        var data = CreateCollector(updateCheckEnabled: true).Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var data = await CreateCollector(updateCheckEnabled: true).CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         var row = data.Health.Should().ContainSingle(h => h.Component == "Software Update").Subject;
         row.Status.Should().Be(HealthStatus.Ok);
@@ -192,19 +194,19 @@ public sealed class ReportDataCollectorTests : IDisposable
     }
 
     [Fact]
-    public void Collect_NoUpdateStatusFile_ReportsSoftwareUpdateUnknown()
+    public async Task Collect_NoUpdateStatusFile_ReportsSoftwareUpdateUnknown()
     {
-        var disabled = CreateCollector(updateCheckEnabled: false).Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var disabled = await CreateCollector(updateCheckEnabled: false).CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
         disabled.Health.Should().ContainSingle(h => h.Component == "Software Update")
             .Which.Should().Match<HealthItem>(h => h.Status == HealthStatus.Unknown && h.Detail == "Update check disabled");
 
-        var enabled = CreateCollector(updateCheckEnabled: true).Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var enabled = await CreateCollector(updateCheckEnabled: true).CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
         enabled.Health.Should().ContainSingle(h => h.Component == "Software Update")
             .Which.Should().Match<HealthItem>(h => h.Status == HealthStatus.Unknown && h.Detail == "No check has run yet");
     }
 
     [Fact]
-    public void Collect_UpdateCheckFailedWithoutResult_ReportsSoftwareUpdateUnknown()
+    public async Task Collect_UpdateCheckFailedWithoutResult_ReportsSoftwareUpdateUnknown()
     {
         WriteUpdateStatus(new UpdateCheckStatus
         {
@@ -212,7 +214,7 @@ public sealed class ReportDataCollectorTests : IDisposable
             LastCheckUtc = DateTime.UtcNow,
         });
 
-        var data = CreateCollector(updateCheckEnabled: true).Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var data = await CreateCollector(updateCheckEnabled: true).CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         var row = data.Health.Should().ContainSingle(h => h.Component == "Software Update").Subject;
         row.Status.Should().Be(HealthStatus.Unknown);
@@ -220,10 +222,10 @@ public sealed class ReportDataCollectorTests : IDisposable
     }
 
     [Fact]
-    public void Collect_BothOptInFeaturesDisabled_RecommendsUpdateCheckAndTelemetry()
+    public async Task Collect_BothOptInFeaturesDisabled_RecommendsUpdateCheckAndTelemetry()
     {
-        var data = CreateCollector(updateCheckEnabled: false, telemetryEnabled: false)
-            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var data = await CreateCollector(updateCheckEnabled: false, telemetryEnabled: false)
+            .CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         data.Recommendations.Should().HaveCount(2);
         data.Recommendations.Should().Contain(r => r.Id == RecommendationIds.UpdateCheck);
@@ -231,30 +233,30 @@ public sealed class ReportDataCollectorTests : IDisposable
     }
 
     [Fact]
-    public void Collect_OnlyTelemetryDisabled_RecommendsTelemetryOnly()
+    public async Task Collect_OnlyTelemetryDisabled_RecommendsTelemetryOnly()
     {
-        var data = CreateCollector(telemetryEnabled: false)
-            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var data = await CreateCollector(telemetryEnabled: false)
+            .CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         data.Recommendations.Should().ContainSingle().Which.Id.Should().Be(RecommendationIds.Telemetry);
     }
 
     [Fact]
-    public void Collect_EverythingRecommendedIsConfigured_RecommendsNothing()
+    public async Task Collect_EverythingRecommendedIsConfigured_RecommendsNothing()
     {
-        var data = CreateCollector().Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var data = await CreateCollector().CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         data.Recommendations.Should().BeEmpty("an install with everything enabled must never be nagged");
     }
 
     [Fact]
-    public void Collect_ServiceSideInputMatchesRules_SurfacesEachDisabledFeature()
+    public async Task Collect_ServiceSideInputMatchesRules_SurfacesEachDisabledFeature()
     {
         // Guards the service-side RecommendationInput adapter: a monitor that is wired to the
         // wrong option would silently drop its hint from every report.
-        var data = CreateCollector(
+        var data = await CreateCollector(
                 senderValidationEnabled: false, backupEnabled: false, ndrEnabled: false, logLevel: "Debug")
-            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+            .CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         // Sender validation needs a configured Graph app; this collector has none, so it stays silent.
         data.Recommendations.Select(r => r.Id).Should().BeEquivalentTo(
@@ -262,24 +264,24 @@ public sealed class ReportDataCollectorTests : IDisposable
     }
 
     [Fact]
-    public void Collect_DismissedRecommendation_IsOmittedFromTheReport()
+    public async Task Collect_DismissedRecommendation_IsOmittedFromTheReport()
     {
-        var data = CreateCollector(telemetryEnabled: false, backupEnabled: false,
+        var data = await CreateCollector(telemetryEnabled: false, backupEnabled: false,
                                    dismissed: [RecommendationIds.Telemetry])
-            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+            .CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         data.Recommendations.Should().ContainSingle().Which.Id.Should().Be(RecommendationIds.ConfigBackup);
     }
 
     [Fact]
-    public void Collect_DisabledOptInFeatures_DoNotAffectHealthSeverity()
+    public async Task Collect_DisabledOptInFeatures_DoNotAffectHealthSeverity()
     {
         // Recommendations are informational: they must not push the report into a
         // warning/error state, or the severity banner would cry wolf every single time.
-        var data = CreateCollector(updateCheckEnabled: false, telemetryEnabled: false,
+        var data = await CreateCollector(updateCheckEnabled: false, telemetryEnabled: false,
                                    backupEnabled: false, ndrEnabled: false)
-            .Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
-        var baseline = CreateCollector().Collect(new ScheduledReportOptions(), DateTimeOffset.Now);
+            .CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
+        var baseline = await CreateCollector().CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
 
         // Compared against an otherwise identical install with nothing to recommend, so the
         // machine's own health (disk space, certificates) does not colour the assertion.
@@ -292,10 +294,126 @@ public sealed class ReportDataCollectorTests : IDisposable
             .Which.Status.Should().Be(HealthStatus.Unknown, "a disabled update check is a choice, not a warning");
     }
 
-    [Fact]
-    public void Collect_NoMetricsDb_ReturnsZeroedStatsWithoutThrowing()
+    // ── Graph permissions health item ────────────────────────────────────────
+
+    private static IGraphConnectivityProbe ProbeReturning(params string[] roles)
     {
-        var data = CreateCollector().Collect(new ScheduledReportOptions { Frequency = ReportFrequency.Monthly }, DateTimeOffset.Now);
+        var probe = Substitute.For<IGraphConnectivityProbe>();
+        probe.ProbeAsync(Arg.Any<CancellationToken>()).Returns(new GraphProbeResult(roles));
+        return probe;
+    }
+
+    private static IOptionsMonitor<GraphApiOptions> ConfiguredGraph()
+        => Monitor(new GraphApiOptions
+        {
+            TenantId = "tenant-id",
+            ClientId = "client-id",
+            ClientSecret = "s3cr3t",
+        });
+
+    /// <summary>
+    /// Builds a collector with Graph credentials in place, so the permission check actually runs.
+    /// The shared factory deliberately leaves them empty.
+    /// </summary>
+    private ReportDataCollector CreateCollectorWithGraph(
+        IGraphConnectivityProbe probe, bool senderValidationEnabled)
+        => new(
+            Monitor(new MailQueueOptions { MailDir = Path.Combine(_temp, "mail") }),
+            Monitor(new MetricsOptions { Enabled = true, BasePath = _temp }),
+            Monitor(new CertificateOptions()),
+            Monitor(new CertificateMonitoringOptions()),
+            Monitor(new DiskSpaceMonitoringOptions()),
+            Monitor(new List<SmtpServerEntry>()),
+            Monitor(new UpdateCheckOptions { Enabled = true }),
+            Monitor(new TelemetryOptions { Enabled = true }),
+            ConfiguredGraph(),
+            Monitor(new SenderValidationOptions { Enabled = senderValidationEnabled }),
+            Monitor(new MalwareScanOptions { Mode = MalwareScanMode.Off }),
+            Monitor(new BackupOptions { Enabled = true }),
+            Monitor(new NdrOptions { Enabled = true }),
+            Monitor(new AdminNotificationsOptions { RecipientAddresses = ["ops@corp.com"] }),
+            Monitor(new RecommendationOptions()),
+            new ConfigurationBuilder().Build(),
+            new EphemeralDataProtectionProvider(),
+            probe,
+            NullLogger<ReportDataCollector>.Instance)
+        {
+            UpdateStatusPath = Path.Combine(_temp, "update-status.json"),
+        };
+
+    private static HealthItem GraphPermissionRow(ReportData data)
+        => data.Health.Should().ContainSingle(h => h.Component == "Graph Permissions").Subject;
+
+    [Fact]
+    public async Task Collect_AllGraphPermissionsGranted_ReportsPermissionsOk()
+    {
+        var probe = ProbeReturning("Mail.Send", "Mail.ReadWrite", "User.Read.All", "Domain.Read.All");
+
+        var data = await CreateCollectorWithGraph(probe, senderValidationEnabled: true)
+            .CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        GraphPermissionRow(data).Status.Should().Be(HealthStatus.Ok);
+    }
+
+    /// <summary>The whole point of the row: the report must not read "all clear" in the same week
+    /// the service mailed a critical permission alert.</summary>
+    [Fact]
+    public async Task Collect_GraphPermissionMissing_ReportsErrorNamingTheRole()
+    {
+        var probe = ProbeReturning("Mail.Send", "Mail.ReadWrite", "User.Read.All");
+
+        var data = await CreateCollectorWithGraph(probe, senderValidationEnabled: true)
+            .CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        var row = GraphPermissionRow(data);
+        row.Status.Should().Be(HealthStatus.Error);
+        row.Detail.Should().Contain("Domain.Read.All");
+        data.ErrorCount.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task Collect_SenderValidationOff_DirectoryPermissionsAreNotRequired()
+    {
+        var probe = ProbeReturning("Mail.Send", "Mail.ReadWrite");
+
+        var data = await CreateCollectorWithGraph(probe, senderValidationEnabled: false)
+            .CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        GraphPermissionRow(data).Status.Should().Be(HealthStatus.Ok);
+    }
+
+    /// <summary>An unreachable Graph is reported by its own health item; here it only means the
+    /// permissions could not be read, which must not be rendered as a gap.</summary>
+    [Fact]
+    public async Task Collect_ProbeThrows_ReportsPermissionsUnknownNotError()
+    {
+        var probe = Substitute.For<IGraphConnectivityProbe>();
+        probe.ProbeAsync(Arg.Any<CancellationToken>())
+            .Returns<GraphProbeResult>(_ => throw new HttpRequestException("no route to host"));
+
+        var data = await CreateCollectorWithGraph(probe, senderValidationEnabled: true)
+            .CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        GraphPermissionRow(data).Status.Should().Be(HealthStatus.Unknown);
+    }
+
+    [Fact]
+    public async Task Collect_GraphNotConfigured_ReportsPermissionsUnknownWithoutProbing()
+    {
+        var probe = ProbeReturning("Mail.Send");
+
+        // The shared factory leaves tenant/client id empty.
+        var data = await CreateCollector(probe: probe)
+            .CollectAsync(new ScheduledReportOptions(), DateTimeOffset.Now);
+
+        GraphPermissionRow(data).Status.Should().Be(HealthStatus.Unknown);
+        await probe.DidNotReceiveWithAnyArgs().ProbeAsync(default);
+    }
+
+    [Fact]
+    public async Task Collect_NoMetricsDb_ReturnsZeroedStatsWithoutThrowing()
+    {
+        var data = await CreateCollector().CollectAsync(new ScheduledReportOptions { Frequency = ReportFrequency.Monthly }, DateTimeOffset.Now);
 
         data.Delivered.Should().Be(0);
         data.Failed.Should().Be(0);

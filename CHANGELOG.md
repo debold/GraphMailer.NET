@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A missing Graph permission is now visible in the ConfigTool, not only in an email.** The service
+  has always checked which application permissions the app registration really grants and mailed the
+  admin about a gap. The ConfigTool had no matching display: the green box on the **Graph API** page
+  said "Entra ID app registration is active" as soon as a Tenant ID, Client ID and certificate were
+  filled in, and the **Graph API** health row only reported when mail last went out — neither asks
+  Entra what was actually granted. An administrator who received the alert after upgrading to 1.5.0
+  (which started requiring `Domain.Read.All` and `Group.Read.All`) therefore found nothing to act on.
+
+  The Graph API page now asks Entra ID for a token when it opens and reads the permissions that token
+  carries. The box reports what came back: green when the configuration's requirements are met,
+  yellow naming each missing permission and what it is needed for, grey when the check itself could
+  not run — no credentials, no network — because that is not evidence of a gap. The **Status** page
+  gained a matching **Graph Permissions** row. Re-running the Entra setup wizard was already the fix
+  and still is; it keeps the existing registration and certificate and grants only what is missing.
+
+- **The periodic operations report reports the same gap.** Its health section listed nine components
+  and none of them looked at permissions — its *Graph API* row reports when mail last went out and
+  stays green while a directory permission is missing. The report could therefore arrive with a
+  clean bill of health in the same week the service mailed a critical permission alert. It now
+  carries a **Graph Permissions** row alongside the others, which counts towards the report's error
+  total.
+
+- The required permissions now live in one place (`GraphPermissions`) shared by the setup wizard, the
+  monitor and the ConfigTool. They were written out separately per consumer, which is how 1.5.0's two
+  new permissions reached the wizard and the monitor but not the ConfigTool.
+
+### Changed
+
+- The help pages for **Graph API**, **Entra / Graph Setup**, **Quick Start**, **Status** and
+  **Notifications** document all five permissions with the condition each one applies under. Two of
+  them still described the three-permission set from before 1.5.0.
+
 ## 1.5.0.1090 — 2026-09-13
 
 ### Added

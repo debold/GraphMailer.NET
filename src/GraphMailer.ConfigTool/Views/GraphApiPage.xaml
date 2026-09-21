@@ -37,16 +37,32 @@
                                        Style="{StaticResource HintText}"/>
                         </Border>
 
+                        <!-- Registration state. Shown for every configured registration, not just
+                             one the wizard created, because a permission gap hits a hand-made
+                             registration just as hard. The permission half is filled in by an
+                             app-only token check when the page loads; until that answers, the box
+                             claims only what the config alone can prove. -->
+                        <Border x:Name="RegistrationStateBox"
+                                Style="{StaticResource InfoBox}"
+                                Margin="0,14,0,0"
+                                Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock x:Name="RegistrationStateText"
+                                           Style="{StaticResource HintText}"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"/>
+                                <TextBlock x:Name="RegistrationStateDetail"
+                                           Style="{StaticResource HintText}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,6,0,0"
+                                           Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Border>
+
                         <!-- Post-setup info panel -->
                         <StackPanel x:Name="SetupInfoPanel"
                                     Visibility="Collapsed"
                                     Margin="0,14,0,0">
-                            <Border Style="{StaticResource OkBox}"
-                                    Margin="0,0,0,8">
-                                <TextBlock Style="{StaticResource HintText}"
-                                           FontWeight="SemiBold"
-                                           Text="✔  Entra ID app registration is active."/>
-                            </Border>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="130"/>

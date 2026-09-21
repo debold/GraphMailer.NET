@@ -4,7 +4,9 @@ using System.Windows;
 using System.Windows.Controls;
 using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.ConfigTool.Services;
+using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure.Config;
+using GraphMailer.Service.Services;
 using GraphMailer.Service.Services.Advisor;
 
 namespace GraphMailer.ConfigTool.Views;
@@ -113,9 +115,133 @@ public partial class GraphApiPage : UserControl
             SetupInfoPanel.Visibility = Visibility.Collapsed;
         }
 
+        _senderValidation = doc.SenderValidation;
+        StartPermissionCheck(g, doc.SenderValidation);
+
         // Flag the secret field when its ENC[...] value could not be decrypted on load.
         SetSecretUndecryptable(
             DecryptionFailureMap.HasGraphApiFailure(doc.DecryptionFailures));
+    }
+
+    // ── Registration / permission state ───────────────────────────────────────
+
+    /// <summary>Cancels a check still in flight when a newer one starts or the window closes —
+    /// otherwise a slow token request could overwrite the result of a later, faster one.</summary>
+    private CancellationTokenSource? _permissionCheckCts;
+
+    /// <summary>Sender-validation flags from the last loaded config — they decide which
+    /// permissions are required, and the page needs them again after a wizard run.</summary>
+    private ConfigDocument.SenderValidationSection _senderValidation = new();
+
+    /// <summary>
+    /// Verifies in the background that the app registration really grants every permission the
+    /// current configuration needs, and reports the outcome in the state box. Fire-and-forget:
+    /// the page stays usable while the token request runs.
+    /// </summary>
+    private void StartPermissionCheck(
+        ConfigDocument.GraphApiSection graph,
+        ConfigDocument.SenderValidationSection senderValidation)
+    {
+        _permissionCheckCts?.Cancel();
+        _permissionCheckCts?.Dispose();
+        _permissionCheckCts = null;
+
+        bool configured = !string.IsNullOrWhiteSpace(graph.TenantId)
+                       && !string.IsNullOrWhiteSpace(graph.ClientId)
+                       && (!string.IsNullOrWhiteSpace(graph.ClientSecret)
+                        || !string.IsNullOrWhiteSpace(graph.ClientCertificateThumbprint));
+
+        if (!configured)
+        {
+            RegistrationStateBox.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        ShowRegistrationState(
+            "InfoBox", "✔  Entra ID app registration is active.",
+            "Checking the granted Graph permissions…");
+
+        // The service reads these two flags to decide which permissions it needs, so the check
+        // has to use the saved values — not whatever an unsaved edit on the Sender Validation
+        // page currently shows.
+        var options = new SenderValidationOptions
+        {
+            Enabled = senderValidation.SvEnabled,
+            AcceptMailboxlessSenders = senderValidation.SvAcceptMailboxless,
+        };
+
+        var cts = new CancellationTokenSource();
+        _permissionCheckCts = cts;
+
+        _ = RunPermissionCheckAsync(graph, options, cts);
+    }
+
+    private async Task RunPermissionCheckAsync(
+        ConfigDocument.GraphApiSection graph,
+        SenderValidationOptions senderValidation,
+        CancellationTokenSource cts)
+    {
+        try
+        {
+            var result = await GraphPermissionCheckService.CheckAsync(
+                graph.TenantId, graph.ClientId, graph.ClientSecret,
+                graph.ClientCertificateThumbprint, senderValidation, cts.Token);
+
+            if (cts.IsCancellationRequested) return;
+            ApplyPermissionResult(result);
+        }
+        catch (OperationCanceledException)
+        {
+            // superseded by a newer check — the newer one owns the box
+        }
+        finally
+        {
+            if (ReferenceEquals(_permissionCheckCts, cts))
+            {
+                _permissionCheckCts = null;
+                cts.Dispose();
+            }
+        }
+    }
+
+    private void ApplyPermissionResult(GraphPermissionCheckResult result)
+    {
+        switch (result.State)
+        {
+            case GraphPermissionState.Complete:
+                ShowRegistrationState(
+                    "OkBox", "✔  Entra ID app registration is active.",
+                    "All Graph permissions this configuration needs are granted.");
+                break;
+
+            case GraphPermissionState.Incomplete:
+                // Named individually, and with the reason each is needed: the operator has to
+                // recognise them in the Entra portal, and "some permissions are missing" would
+                // leave them exactly as stuck as the notification mail alone did.
+                ShowRegistrationState(
+                    "WarnBox", "⚠  Graph permissions are missing from the app registration.",
+                    $"Not granted: {GraphPermissions.DetailList(result.Missing)}. "
+                    + "Run \"Sign in & set up automatically\" above — it keeps the existing "
+                    + "registration and certificate and only adds what is missing. Granting them "
+                    + "in the Entra portal by hand works too; either way admin consent is required.");
+                break;
+
+            default:
+                ShowRegistrationState(
+                    "InfoBox", "✔  Entra ID app registration is active.",
+                    $"The granted Graph permissions could not be checked: {result.Reason}");
+                break;
+        }
+    }
+
+    private void ShowRegistrationState(string boxStyle, string headline, string? detail)
+    {
+        RegistrationStateBox.Style = (Style)FindResource(boxStyle);
+        RegistrationStateText.Text = headline;
+        RegistrationStateDetail.Text = detail ?? string.Empty;
+        RegistrationStateDetail.Visibility = string.IsNullOrEmpty(detail)
+            ? Visibility.Collapsed : Visibility.Visible;
+        RegistrationStateBox.Visibility = Visibility.Visible;
     }
 
     private void SetSecretUndecryptable(bool on)
@@ -226,6 +352,17 @@ public partial class GraphApiPage : UserControl
         ShowSetupInfo(AppRegistrationName, result.TenantId, result.ClientId,
                       result.CertSubject, result.CertThumbprint, result.CertNotAfter);
         SetupStatusBox.Visibility = Visibility.Collapsed;
+
+        // The wizard just granted whatever was missing — re-check so the box turns green now
+        // instead of after the next config reload.
+        StartPermissionCheck(
+            new ConfigDocument.GraphApiSection
+            {
+                TenantId = result.TenantId,
+                ClientId = result.ClientId,
+                ClientCertificateThumbprint = result.CertThumbprint,
+            },
+            _senderValidation);
     }
 
     // ── Test email ────────────────────────────────────────────────────────────

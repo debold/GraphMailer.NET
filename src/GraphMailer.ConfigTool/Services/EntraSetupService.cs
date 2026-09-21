@@ -1,4 +1,5 @@
-﻿using Microsoft.Graph;
+﻿using GraphMailer.Service.Services;
+using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Microsoft.Identity.Client;
@@ -85,31 +86,12 @@ internal static class EntraSetupService
     private const string BootstrapClientId = "04b07795-8ddb-461a-bbee-02f9e1bf7b46";
     private const string GraphBase = "https://graph.microsoft.com/v1.0";
     private const string MsGraphAppId = "00000003-0000-0000-c000-000000000000";
-    private const string MailSendRoleId = "b633e1c5-b582-4048-a93e-9f11b44c7e96";
-    // Mail.ReadWrite (application) — required for attachments ≥ 3 MB: Graph's sendMail
-    // request is capped at 4 MB, so large attachments go through a draft + upload
-    // session, which are mailbox write operations not covered by Mail.Send.
-    private const string MailReadWriteRoleId = "e2a3a72e-5f79-4c64-b1b1-878b674786c9";
-    // User.Read.All (application) — required by the optional tenant sender validation
-    private const string UserReadAllRoleId = "df021288-bdef-4463-88db-98f22de89214";
 
-    // Group.Read.All (application) — sender validation with SenderValidation.AcceptMailboxlessSenders,
-    // so distribution groups are accepted as senders.
-    private const string GroupReadAllRoleId = "5b567255-7703-4780-807c-7be8301ae99b";
-    // Domain.Read.All (application) — the verified tenant mail domains, which decide whether a
-    // mail-enabled public folder or dynamic distribution group is accepted as a sender.
-    private const string DomainReadAllRoleId = "dbb9058a-0e50-45d7-ae91-66909b5d4664";
+    // The roles themselves — ids, names and the reason each one is needed — live in
+    // GraphPermissions, shared with the Graph monitor that alerts on gaps and the Graph API page
+    // that shows them. The wizard grants the full set regardless of configuration.
+    private static readonly IReadOnlyList<GraphAppRole> RequiredAppRoles = GraphPermissions.All;
 
-    // Granted together so the matching ConfigTool option works without a second trip to the Entra
-    // portal. Both directory-read roles stay unused until that option is switched on.
-    private static readonly (string RoleId, string Name)[] RequiredAppRoles =
-    [
-        (MailSendRoleId, "Mail.Send"),
-        (MailReadWriteRoleId, "Mail.ReadWrite"),
-        (UserReadAllRoleId, "User.Read.All"),
-        (GroupReadAllRoleId, "Group.Read.All"),
-        (DomainReadAllRoleId, "Domain.Read.All"),
-    ];
     internal const int SignInTimeoutMinutes = 3;
     internal const int CertExpiryWarningDays = 30;
 
@@ -331,17 +313,17 @@ internal static class EntraSetupService
             var graphSpJson = await graphSpResp.Content.ReadFromJsonAsync<JsonElement>(ct);
             var graphSpId = graphSpJson.GetProperty("value")[0].GetProperty("id").GetString()!;
 
-            foreach (var (roleId, name) in missingRoles)
+            foreach (var role in missingRoles)
             {
                 var grantResp = await http.PostAsJsonAsync(
                     $"{GraphBase}/servicePrincipals/{spId}/appRoleAssignments",
-                    new { principalId = spId, resourceId = graphSpId, appRoleId = roleId },
+                    new { principalId = spId, resourceId = graphSpId, appRoleId = role.RoleId },
                     ct);
-                await EnsureSuccessAsync(grantResp, $"grant {name} permission");
+                await EnsureSuccessAsync(grantResp, $"grant {role.Name} permission");
             }
 
             report(SetupSteps.GrantPermission, SetupStepState.Done,
-                $"Application permission(s) granted (admin consent): {string.Join(", ", missingRoles.Select(r => r.Name))}.");
+                $"Application permission(s) granted (admin consent): {GraphPermissions.NameList(missingRoles)}.");
         }
 
         // ── Step 6: Apply configuration ────────────────────────────────────
