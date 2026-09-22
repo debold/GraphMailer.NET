@@ -19,6 +19,8 @@ namespace GraphMailer.Service.Services;
 ///   - On success: deletes both files (or archives to mail/sent/ if configured).
 ///   - On failure: increments RetryCount and schedules the next attempt (transient interval
 ///     for the first few retries, then the steady interval — see <see cref="RetrySchedule"/>).
+///   - Throttled by Exchange Online (429/503/504, mailbox concurrency limits): additionally holds
+///     back every other message through the same mailbox until that retry — other senders go on.
 ///   - After <see cref="MailQueueOptions.MessageExpirationHours"/> since receipt: moves to mail/failed/.
 ///   - When Graph API credentials are not configured the batch is silently skipped.
 /// </summary>
@@ -41,6 +43,14 @@ internal sealed class QueueProcessor : BackgroundService
     private readonly string _queuePath;
     private readonly string _sentPath;
     private readonly string _failedPath;
+
+    // Mailboxes Exchange Online is currently throttling (Graph user key → hold until, UTC).
+    // One throttled attempt holds back every queued message through that mailbox until the
+    // failed message's own next retry: the limits are per mailbox, so the others would fail
+    // the same way, add load to a mailbox that is already saturated, and stall the sequential
+    // queue for every other sender. In-memory only — after a restart the first attempt simply
+    // re-learns it. Touched only from the (sequential) polling loop, so no locking.
+    private readonly Dictionary<string, DateTime> _throttledMailboxes = new(StringComparer.OrdinalIgnoreCase);
 
     public QueueProcessor(
         IOptionsMonitor<MailQueueOptions> options,
@@ -232,8 +242,8 @@ internal sealed class QueueProcessor : BackgroundService
         if (meta.SentAt.HasValue)
         {
             _logger.LogWarning(
-                "[QueueProcessor] {MessageId} was already delivered at {SentAt:u} — completing interrupted cleanup without re-sending",
-                meta.MessageId, meta.SentAt.Value);
+                "[QueueProcessor] {MessageId} was already delivered at {SentAt:yyyy-MM-dd HH:mm:ss zzz} — completing interrupted cleanup without re-sending",
+                meta.MessageId, ToLocal(meta.SentAt.Value));
             var deliveredEml = Path.Combine(_queuePath, $"{meta.MessageId}.eml");
             await ArchiveOrDeleteAsync(deliveredEml, metaPath, meta, opts);
             return true;
@@ -242,8 +252,27 @@ internal sealed class QueueProcessor : BackgroundService
         // Honour exponential back-off window
         if (meta.NextRetryAt.HasValue && meta.NextRetryAt.Value > DateTime.UtcNow)
         {
-            _logger.LogDebug("[QueueProcessor] {MessageId} back-off not elapsed (next: {Next:u}), skipping",
-                meta.MessageId, meta.NextRetryAt.Value);
+            _logger.LogDebug("[QueueProcessor] {MessageId} back-off not elapsed (next: {Next:yyyy-MM-dd HH:mm:ss zzz}), skipping",
+                meta.MessageId, ToLocal(meta.NextRetryAt.Value));
+            return false;
+        }
+
+        // Graph's /users/{key}/sendMail accepts only a real mailbox as user key. The router
+        // turns the envelope sender into one: the resolved object id for a tenant mailbox
+        // (so secondary proxyAddresses work as senders), or the relay mailbox for senders
+        // that own no mailbox at all — groups, public folders, mail users.
+        // Resolved outside the try so the failure path can classify by how we routed.
+        var route = _senderRouter.Resolve(meta.From);
+
+        // Hold back while Exchange throttles the mailbox this message goes through. An expired
+        // message still gets its final attempt, so a mailbox that stays saturated for the whole
+        // expiration window cannot keep mail from ever reaching the NDR.
+        if (IsMailboxHeld(route.GraphUserKey, out var heldUntil)
+            && !RetrySchedule.HasExpired(meta.ReceivedAt, DateTime.UtcNow, opts.MessageExpirationHours))
+        {
+            _logger.LogDebug(
+                "[QueueProcessor] {MessageId} held back — mailbox {Mailbox} is throttled by Exchange Online until {Until:yyyy-MM-dd HH:mm:ss zzz}",
+                meta.MessageId, route.GraphUserKey, ToLocal(heldUntil));
             return false;
         }
 
@@ -276,13 +305,6 @@ internal sealed class QueueProcessor : BackgroundService
             await QuarantineAsync(metaPath, emlPath, meta, meta.LastError, ct);
             return true;
         }
-
-        // Graph's /users/{key}/sendMail accepts only a real mailbox as user key. The router
-        // turns the envelope sender into one: the resolved object id for a tenant mailbox
-        // (so secondary proxyAddresses work as senders), or the relay mailbox for senders
-        // that own no mailbox at all — groups, public folders, mail users.
-        // Resolved outside the try so the failure path can classify by how we routed.
-        var route = _senderRouter.Resolve(meta.From);
 
         try
         {
@@ -319,6 +341,11 @@ internal sealed class QueueProcessor : BackgroundService
             if (delivery.Relayed && !route.IsRelay)
                 _senderRouter.MarkMailboxUnavailable(meta.From);
 
+            if (_throttledMailboxes.Remove(route.GraphUserKey))
+                _logger.LogInformation(
+                    "[QueueProcessor] Mailbox {Mailbox} accepts mail again — its held-back messages resume",
+                    route.GraphUserKey);
+
             // Delivered: record when, and drop the retry schedule left over from
             // earlier failed attempts (LastAttemptAt/LastError stay as history).
             meta.SentAt = DateTime.UtcNow;
@@ -335,6 +362,14 @@ internal sealed class QueueProcessor : BackgroundService
 
                 _logger.LogInformation("[QueueProcessor] Delivered {MessageId} | From: {From} | To: {Recipients} | Subject: {Subject}",
                     meta.MessageId, meta.From, string.Join(", ", meta.To), meta.Subject);
+
+                // A late delivery closes the story the earlier "failed (attempt n)" warnings
+                // started: how long the recipient waited and what held the message up.
+                if (meta.RetryCount > 0)
+                    _logger.LogInformation(
+                        "[QueueProcessor] {MessageId} delivered on attempt {Attempt}, {Delay} after receipt (last error: {LastError})",
+                        meta.MessageId, meta.RetryCount + 1,
+                        FormatDelay(meta.SentAt.Value - meta.ReceivedAt), meta.LastError);
 
                 try
                 {
@@ -390,6 +425,10 @@ internal sealed class QueueProcessor : BackgroundService
             var permanentRejection = ex is GraphDeliveryException { IsPermanent: true }
                                      || IsHopelessSendAs(ex, route);
 
+            if (!permanentRejection && ex is GraphDeliveryException { IsThrottled: true } throttled)
+                HoldMailbox(route.GraphUserKey, throttled.ErrorCode,
+                    now.AddSeconds(RetrySchedule.NextRetryIntervalSeconds(meta.RetryCount, opts)));
+
             if (permanentRejection || RetrySchedule.HasExpired(meta.ReceivedAt, now, opts.MessageExpirationHours))
             {
                 if (permanentRejection)
@@ -410,9 +449,17 @@ internal sealed class QueueProcessor : BackgroundService
                 meta.NextRetryAt = now.Add(interval);
                 meta.Status = "queued";
 
-                _logger.LogWarning(ex,
-                    "[QueueProcessor] {MessageId} failed (attempt {Attempt}), retry after {RetryAt:u}",
-                    meta.MessageId, meta.RetryCount, meta.NextRetryAt.Value);
+                // A classified Graph rejection carries everything that matters in its message
+                // (status, code, request id) and GraphApiClient has logged it already — its stack
+                // trace, with the SDK's retry attempts nested inside, only buries that line.
+                if (ex is GraphDeliveryException)
+                    _logger.LogWarning(
+                        "[QueueProcessor] {MessageId} failed (attempt {Attempt}), retry after {RetryAt:yyyy-MM-dd HH:mm:ss zzz}: {Error}",
+                        meta.MessageId, meta.RetryCount, ToLocal(meta.NextRetryAt.Value), ex.Message);
+                else
+                    _logger.LogWarning(ex,
+                        "[QueueProcessor] {MessageId} failed (attempt {Attempt}), retry after {RetryAt:yyyy-MM-dd HH:mm:ss zzz}",
+                        meta.MessageId, meta.RetryCount, ToLocal(meta.NextRetryAt.Value));
 
                 await WriteMetaAtomicAsync(metaPath, meta);
             }
@@ -421,8 +468,6 @@ internal sealed class QueueProcessor : BackgroundService
         return true;
     }
 
-    /// <summary>
-    /// Removes a delivered message from the queue (or archives it to mail/sent/).
     /// <summary>
     /// A SendAs denial normally stays retryable: it usually means the operator has just granted
     /// the permission and Exchange has not replicated it yet, which takes up to an hour. That
@@ -436,6 +481,57 @@ internal sealed class QueueProcessor : BackgroundService
            && ex is GraphDeliveryException gde
            && GraphApiClient.IsSendAsRejection(gde.ErrorCode);
 
+    /// <summary>True while <paramref name="mailbox"/> is held back after a throttled attempt.</summary>
+    private bool IsMailboxHeld(string mailbox, out DateTime heldUntil)
+    {
+        if (!_throttledMailboxes.TryGetValue(mailbox, out heldUntil))
+            return false;
+
+        // Hold elapsed: the next message goes out as a probe. The entry stays until a delivery
+        // succeeds, so the recovery is logged once and a failed probe renews the hold quietly.
+        return heldUntil > DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Holds back all messages through <paramref name="mailbox"/> until <paramref name="until"/>.
+    /// The first hold is the operator's signal that the problem is the mailbox, not GraphMailer or
+    /// the message — hence a Warning with the error code. Renewals after a failed probe are Debug:
+    /// the failed attempt itself is already logged.
+    /// </summary>
+    private void HoldMailbox(string mailbox, string? errorCode, DateTime until)
+    {
+        var renewal = _throttledMailboxes.ContainsKey(mailbox);
+        _throttledMailboxes[mailbox] = until;
+
+        if (renewal)
+            _logger.LogDebug(
+                "[QueueProcessor] Mailbox {Mailbox} still throttled ({ErrorCode}) — holding its messages until {Until:yyyy-MM-dd HH:mm:ss zzz}",
+                mailbox, errorCode, ToLocal(until));
+        else
+            _logger.LogWarning(
+                "[QueueProcessor] Mailbox {Mailbox} is throttled by Exchange Online ({ErrorCode}) — holding all its queued messages until {Until:yyyy-MM-dd HH:mm:ss zzz}; other senders are not affected. " +
+                "Persistent throttling usually means other clients or apps are overloading this mailbox",
+                mailbox, errorCode, ToLocal(until));
+    }
+
+    /// <summary>Queue delay for the log, e.g. <c>1h 12m 5s</c>; leading zero units are left out.</summary>
+    internal static string FormatDelay(TimeSpan delay)
+    {
+        if (delay < TimeSpan.Zero) delay = TimeSpan.Zero;   // clock adjusted between receipt and send
+
+        var hours = (long)delay.TotalHours;
+        if (hours > 0) return $"{hours}h {delay.Minutes}m {delay.Seconds}s";
+        if (delay.Minutes > 0) return $"{delay.Minutes}m {delay.Seconds}s";
+        return $"{delay.Seconds}s";
+    }
+
+    // Queue timestamps are stored in UTC; log lines carry local time with offset, so render
+    // them the same way — a UTC "retry after" next to a local log timestamp reads as the past.
+    private static DateTimeOffset ToLocal(DateTime utc) =>
+        new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToLocalTime();
+
+    /// <summary>
+    /// Removes a delivered message from the queue (or archives it to mail/sent/).
     /// Runs in the post-delivery commit phase, so it is deliberately not cancellable
     /// and re-entrant: an earlier interrupted commit may already have moved the .eml.
     /// </summary>

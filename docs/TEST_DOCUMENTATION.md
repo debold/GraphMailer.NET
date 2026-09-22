@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 1978 tests** (1888 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-09-21
+**Total: 2020 tests** (1930 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-09-22
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -783,6 +783,35 @@ Backs the ConfigTool's **Test scanner** button. The vector now lives in `AmsiSel
 | `CleanupFailedEmails_ExpiredFile_DeletesBothFiles` | `mtime` older than `FailedEmailRetentionDays` | `.eml` + `.meta.json` deleted from `mail/failed/` |
 | `CleanupFailedEmails_FileWithinRetention_IsKept` | `mtime` within retention window | File remains in `mail/failed/` |
 | `CleanupFailedEmails_RetentionZero_KeepsEverything` | `FailedEmailRetentionDays = 0`, year-old file | File kept (0 = keep forever) |
+| `ProcessBatch_ThrottledMailbox_HoldsItsOtherMessages_OtherSendersStillDelivered` | Four queued messages, three from a mailbox Exchange throttles, one from another sender | Only the first throttled message and the other sender's message are attempted; the held ones keep `RetryCount = 0` and no `NextRetryAt` — regression: one throttled mailbox stalled all other senders |
+| `ProcessBatch_ThrottledMailbox_StaysHeldOnTheNextTick` | Throttled mailbox, second polling tick within the hold | No further attempt against that mailbox |
+| `ProcessBatch_HoldElapsed_NextMessageGoesOutAsProbe` | Transient retry interval `0` (hold ends immediately) | The next message from the mailbox is attempted — the hold is bounded by the failed message's retry interval |
+| `ProcessBatch_HeldMailbox_ExpiredMessageStillGetsItsFinalAttempt` | Mailbox held; a second message from it is past `MessageExpirationHours` | The expired message is still attempted and moves to `mail/failed/` (NDR), so a permanently throttled mailbox cannot keep mail from ever failing |
+| `ProcessBatch_NonThrottledFailure_DoesNotHoldTheMailbox` | HTTP 500 without throttling classification | Both messages from the sender are attempted — only throttling holds a mailbox |
+| `ProcessBatch_ThrottledMailboxRecovered_AllItsMessagesAreDelivered` | Throttled once, then Exchange accepts again | The retried message and the later ones from the same mailbox are delivered; queue empty |
+| `FormatDelay_RendersCompactDuration` (Theory) | 0 s, 42 s, 5 m 3 s, 1 h, 26 h 1 m 1 s, negative | `0s`, `42s`, `5m 3s`, `1h 0m 0s`, `26h 1m 1s` (no day unit, comparable to the expiration hours), `0s` — used by the *delivered on attempt n* log line |
+
+---
+
+### GraphApiClient — Exchange throttling (`Services/GraphApiClientThrottlingTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `IsThrottlingRejection_BusyMailboxOrService_ReturnsTrue` (Theory) | 503 `ErrorDirectoryConcurrencyLimit` / `CommandConcurrencyLimitReached`, 504, 429 `ApplicationThrottled`, 503 generic, `ErrorServerBusy` / `MailboxConcurrency` by code | `true` |
+| `IsThrottlingRejection_OtherFailures_ReturnsFalse` (Theory) | 500, 400, 403 SendAs, 404, 401 | `false` |
+| `TryReadApiFailure_RetryHandlerGaveUp_ReadsTheLastAttemptFromTheAggregate` | Real Kiota `RetryHandler` with Exchange-shaped 504 + 3 × 503 bodies | The thrown `AggregateException` is read as 503 `ErrorDirectoryConcurrencyLimit` with its message; throttled, not permanent — regression: the ODataError-only catch missed this shape |
+| `TryReadApiFailure_GatewayTimeoutBody_ReadsRequestIdFromInnerError` | 4 × 504 with Graph's `innerError.request-id` | Status 504, code `UnknownError`, request id extracted |
+| `TryReadApiFailure_MappedODataError_ReadsItsFields` | `ODataError` with status, code, message, request id | All four fields carried over |
+| `TryReadApiFailure_NonHttpFailure_ReturnsFalse` | `HttpRequestException`; aggregate of `IOException` | `false` — not an HTTP-level Graph failure |
+| `ShouldRetryMailboxWrite_OnlyGraphThrottlingIsRetriedInPlace` (Theory) | 429 / 503 / 504 | Only 429 is retried in place |
+| `MailboxWriteRetryOption_BusyMailboxOrTimeout_IsNotResentByTheSdk` (Theory) | 503 / 504 through the real `RetryHandler` with the mailbox-write option | Exactly one request — 504 risks a duplicate send, 503 only adds load to a saturated mailbox |
+| `MailboxWriteRetryOption_GraphThrottling_IsStillRetriedInPlace` | 429 then 202 | Retried once, returns 202 |
+| `TryReadApiFailure_MappedODataError_ReadsDiagnosticResponseHeaders` | 503 through the SDK's default pipeline with `Retry-After`, `client-request-id`, `Date`, `x-ms-ags-diagnostic` | All four headers read from the `ODataError`; `DescribeHeaders()` lists them for the rejection warning |
+| `TryReadApiFailure_RetryHandlerGaveUp_ReadsDiagnosticHeadersOfTheLastAttempt` | 429 until the real `RetryHandler` gives up | Headers of the last attempt are read from the `AggregateException` |
+| `DeliveryRequest_ThroughGraphServiceClient_SendsTheQueueIdAsClientRequestId` | `sendMail` through the SDK's default pipeline | The request carries the queue id (GUID form) as `client-request-id` — the SDK's telemetry handler does not replace it |
+| `ClientRequestIdFor_QueueId_IsSentInGuidForm` (Theory) | 32-hex queue id, dashed GUID, non-GUID id | Dashed GUID for both GUID forms; `null` (SDK default) otherwise |
+| `DescribeHeaders_NoHeaders_IsADash` | Failure without any diagnostic header | `-` |
+| `MailboxWriteRetryOption_ThroughGraphServiceClient_SendsOnceAndSurfacesODataError` | `sendMail` through the SDK's default middleware pipeline with the per-request option, stub answers 503 | One request; an `ODataError` the classifier reads as throttled `ErrorDirectoryConcurrencyLimit` |
 
 ---
 

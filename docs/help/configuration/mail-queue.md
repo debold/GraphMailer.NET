@@ -35,6 +35,22 @@ exactly the schedule the service will apply.
 > returns. Only when the expiration time is exceeded is the message moved to *failed* and (if
 > enabled) a non-delivery report is sent.
 
+### Throttled sender mailboxes
+
+Exchange Online limits how many requests a single mailbox handles at once. When a mailbox is
+overloaded — typically because other clients or apps work on it at the same time — Microsoft 365
+answers with a throttling error (`ErrorDirectoryConcurrencyLimit`, `CommandConcurrencyLimitReached`,
+HTTP 429/503/504). GraphMailer then **holds back every queued message from that mailbox** until the
+failed message's next retry, instead of trying each one in turn against a mailbox that is already
+saturated. Mail from all other senders keeps flowing.
+
+Held messages are not counted as failed attempts and keep their full expiration window. When the
+hold ends, the oldest message goes out first; once it is delivered, the rest follow. The log shows
+one warning when a mailbox is first held (*“Mailbox … is throttled by Exchange Online”*) and an
+information line when it accepts mail again. See
+[Troubleshooting](../reference/troubleshooting.md#one-sender-is-delayed-mailbox-throttled) if a
+mailbox stays throttled.
+
 ## Mail Directories
 
 All mail lives under one **Mail base directory** (default

@@ -21,6 +21,59 @@ The message sits in the queue, or eventually lands in **failed**.
   message is retried until the expiration window elapses (default 24 h). It only fails permanently
   after that. See [Mail Queue](../configuration/mail-queue.md).
 
+## One sender is delayed (mailbox throttled)
+
+Mail from one sender address stays in the queue for a long time while all other senders are
+delivered normally. The log shows *“Mailbox … is throttled by Exchange Online”* with an error code
+such as `ErrorDirectoryConcurrencyLimit` or `CommandConcurrencyLimitReached`.
+
+Exchange Online limits how many requests one mailbox handles at the same time. GraphMailer sends one
+message at a time, so on its own it stays well below that limit. When the limit is reached anyway,
+something else is loading the mailbox. GraphMailer holds that sender's mail back and retries on the
+normal [retry schedule](../configuration/mail-queue.md#throttled-sender-mailboxes). No mail is lost
+within the expiration window.
+
+If it keeps happening, look at the mailbox in Microsoft 365:
+
+- **Other clients and apps** using the same mailbox: many Outlook users with full access to a shared
+  mailbox, mobile devices, ERP or line-of-business software connecting via EWS, IMAP or Graph,
+  backup and archiving tools, Power Automate flows.
+- **Mailbox size and folder item counts** (`Get-MailboxStatistics`, `Get-MailboxFolderStatistics`),
+  in particular a very large *Sent Items* folder.
+- **Microsoft 365 Service health** for Exchange Online incidents at that time.
+
+If the cause is not on your side, open a Microsoft support case and include the `RequestId` values
+from the GraphMailer log.
+
+### Collecting diagnostics
+
+Every rejection is logged as a warning that includes the response headers Microsoft support asks for:
+`Retry-After`, `client-request-id`, `Date` and `x-ms-ags-diagnostic`. The last one names the Exchange
+Online datacenter and server that handled the request. The `client-request-id` of every delivery
+request is the message's **queue id** (the file name in `mail\queue\`, in GUID form), so Microsoft can
+find all attempts of one message from that id alone.
+
+To also see the size, timing and outcome of every single Graph request, raise the log level for the
+delivery components only. The global *Debug* level would also log every SMTP session and health
+probe. Add this to `graphmailer.json`, next to the `MinimumLevel` value the ConfigTool writes, and
+restart the GraphMailer service:
+
+```json
+"Serilog": {
+  "MinimumLevel": {
+    "Default": "Information",
+    "Override": {
+      "GraphMailer.Service.Services.GraphApiClient": "Debug",
+      "GraphMailer.Service.Services.QueueProcessor": "Debug"
+    }
+  }
+}
+```
+
+The log then shows, per message, the mailbox, size, attachments and whether a copy is saved to
+*Sent Items*, followed by one line per Graph request with its duration and result. Remove the
+`Override` block again once the diagnosis is complete.
+
 ## `MailboxNotEnabledForRESTAPI`
 
 The sender passes validation but delivery fails with this error.

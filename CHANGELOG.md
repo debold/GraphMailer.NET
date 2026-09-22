@@ -4,6 +4,55 @@
 
 ### Fixed
 
+- **A throttled sender mailbox no longer slows down every other sender.** When Exchange Online
+  throttles a mailbox (`ErrorDirectoryConcurrencyLimit`, `CommandConcurrencyLimitReached`, HTTP
+  429/503/504), usually because other clients are loading it at the same time, GraphMailer tried
+  every queued message from that mailbox in turn. Each try took 20 to 60 seconds, so mail from all
+  other senders waited behind them, and the extra requests added load to a mailbox that was already
+  saturated. Now one throttled attempt holds back all queued messages from that mailbox until the
+  failed message's next retry. Other senders go out immediately. Held messages are not counted as
+  failed attempts and keep their full expiration window. The log shows one warning naming the
+  mailbox when the hold starts and an information line when it accepts mail again.
+
+- **Busy or timed-out mailbox writes are no longer resent within seconds.** The Graph SDK resent
+  `sendMail` (and the draft/upload-session requests) up to three times on HTTP 503 and 504. A 504
+  gives no guarantee that the send did not happen, so this could deliver the same message twice. A
+  503 from a saturated mailbox only made the saturation worse. These requests now go back to the
+  queue after one try, and the queue's retry schedule takes over. Graph's own 429 throttling, which
+  names a safe retry time, is still retried in place.
+
+- **Graph errors are logged with code and request id even after the SDK's retries run out.** In that
+  case the SDK throws a different exception type, which the error handling did not recognise. The
+  log then contained only a multi-line "Too many retries performed" dump, the queue stored that dump
+  as the message's last error, and the error code and request id Microsoft support asks for were
+  buried in the stack trace. These failures are now classified like any other Graph rejection and
+  logged in one line: `HTTP 503 ErrorDirectoryConcurrencyLimit: … (RequestId: …)`. The queue's
+  *“failed (attempt n)”* warning for a Graph rejection now ends with that same text and no longer
+  repeats the stack trace.
+
+- **Graph rejections carry what Microsoft support needs.** The rejection warning now includes the
+  response headers `Retry-After`, `client-request-id`, `Date` and `x-ms-ags-diagnostic`. The last
+  one names the Exchange Online datacenter and server that handled the request. Every delivery
+  request also sends the message's queue id as its `client-request-id`, so Microsoft can find all
+  attempts of one message from that id alone.
+
+- **Per-request timing at Debug level.** With Debug logging for the delivery components (see
+  *Troubleshooting → Collecting diagnostics* for a targeted override that leaves the rest of the log
+  at Information), each message logs its mailbox, size, attachments and Sent Items setting, followed
+  by one line per Graph request with its duration and result. This shows whether a mailbox gets
+  slower before Exchange starts refusing it.
+
+- **A message that is delivered only after retries now says so in the log.** Until now the log showed
+  the failed attempts and then an ordinary *Delivered* line, and nothing tied the two together. An
+  extra line now reports the attempt number, how long after receipt the message went out, and the
+  last error that held it up, e.g. *“… delivered on attempt 7, 1h 28m 35s after receipt (last error:
+  HTTP 503 ErrorDirectoryConcurrencyLimit: …)”*. Messages delivered on the first try log nothing
+  extra.
+
+- **Queue retry times in the log are shown in local time.** *“retry after 2026-01-01 10:05:00Z”*
+  (UTC) next to a local log timestamp of 12:00 read like a time in the past. Retry and hold times now
+  use the same local format with offset as the log line itself.
+
 - **A missing Graph permission is now visible in the ConfigTool, not only in an email.** The service
   has always checked which application permissions the app registration really grants and mailed the
   admin about a gap. The ConfigTool had no matching display: the green box on the **Graph API** page

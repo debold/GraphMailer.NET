@@ -112,7 +112,8 @@ public sealed class QueueProcessorTests : IDisposable
         DateTime? nextRetryAt = null,
         DateTime? receivedAt = null,
         DateTime? sentAt = null,
-        bool isNotification = false)
+        bool isNotification = false,
+        string from = "sender@example.com")
     {
         var queueDir = Path.Combine(_tempDir, "queue");
         Directory.CreateDirectory(queueDir);
@@ -120,7 +121,7 @@ public sealed class QueueProcessorTests : IDisposable
         var meta = new MailMetadata
         {
             MessageId = messageId,
-            From = "sender@example.com",
+            From = from,
             To = ["rcpt@example.com"],
             ReceivedAt = receivedAt ?? DateTime.UtcNow,
             ClientIp = "127.0.0.1",
@@ -749,6 +750,173 @@ public sealed class QueueProcessorTests : IDisposable
     // =========================================================================
     // FIFO ordering
     // =========================================================================
+
+    // =========================================================================
+    // Throttled mailbox — hold back its other messages
+    // =========================================================================
+
+    private static GraphDeliveryException Throttled() => new(
+        "HTTP 503 ErrorDirectoryConcurrencyLimit: \"Directory Concurrency Limit Reached\"",
+        isPermanent: false, errorCode: "ErrorDirectoryConcurrencyLimit", isThrottled: true);
+
+    /// <summary>Client that fails every send from <paramref name="throttledSender"/> as throttled and records all attempts.</summary>
+    private static IGraphApiClient ThrottlingClient(string throttledSender, List<string> attempts, Exception? failure = null)
+    {
+        var client = Substitute.For<IGraphApiClient>();
+        client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                attempts.Add(ci.ArgAt<string>(3));
+                return ci.ArgAt<string>(1) == throttledSender
+                    ? Task.FromException<GraphDeliveryResult>(failure ?? Throttled())
+                    : Task.FromResult(SendOk);
+            });
+        return client;
+    }
+
+    private async Task EnqueueInOrderAsync(params (string Id, string From)[] messages)
+    {
+        var queueDir = Path.Combine(_tempDir, "queue");
+        for (var i = 0; i < messages.Length; i++)
+        {
+            await EnqueueMessageAsync(messages[i].Id, from: messages[i].From);
+            File.SetCreationTimeUtc(Path.Combine(queueDir, $"{messages[i].Id}.eml"),
+                DateTime.UtcNow.AddMinutes(-10 + i));
+        }
+    }
+
+    private MailMetadata ReadQueuedMeta(string messageId) =>
+        JsonSerializer.Deserialize(
+            File.ReadAllText(Path.Combine(_tempDir, "queue", $"{messageId}.meta.json")),
+            MailMetadataJsonContext.Default.MailMetadata)!;
+
+    [Fact]
+    public async Task ProcessBatch_ThrottledMailbox_HoldsItsOtherMessages_OtherSendersStillDelivered()
+    {
+        // Regression: Exchange throttled one sender mailbox for hours; every one of its
+        // messages was tried in turn, hammering the saturated mailbox and stalling all other senders.
+        var attempts = new List<string>();
+        var sut = CreateProcessor(graphClient: ThrottlingClient("busy@example.com", attempts));
+        await EnqueueInOrderAsync(
+            ("busy-1", "busy@example.com"),
+            ("busy-2", "busy@example.com"),
+            ("other-1", "other@example.com"),
+            ("busy-3", "busy@example.com"));
+
+        await sut.ProcessBatchAsync();
+
+        attempts.Should().Equal(["busy-1", "other-1"], "one throttled attempt holds the rest of that mailbox");
+        File.Exists(Path.Combine(_tempDir, "queue", "other-1.meta.json")).Should().BeFalse("the other sender is delivered");
+        ReadQueuedMeta("busy-1").RetryCount.Should().Be(1);
+        foreach (var held in new[] { "busy-2", "busy-3" })
+        {
+            var meta = ReadQueuedMeta(held);
+            meta.RetryCount.Should().Be(0, "a held message was never attempted and keeps its full retry budget");
+            meta.NextRetryAt.Should().BeNull();
+        }
+    }
+
+    [Fact]
+    public async Task ProcessBatch_ThrottledMailbox_StaysHeldOnTheNextTick()
+    {
+        var attempts = new List<string>();
+        var sut = CreateProcessor(graphClient: ThrottlingClient("busy@example.com", attempts));
+        await EnqueueInOrderAsync(("busy-1", "busy@example.com"), ("busy-2", "busy@example.com"));
+
+        await sut.ProcessBatchAsync();
+        await sut.ProcessBatchAsync();
+
+        attempts.Should().Equal("busy-1");
+    }
+
+    [Fact]
+    public async Task ProcessBatch_HoldElapsed_NextMessageGoesOutAsProbe()
+    {
+        // The hold lasts exactly as long as the failed message's own retry interval — zero here.
+        var attempts = new List<string>();
+        var sut = CreateProcessor(
+            queueOpts: new MailQueueOptions { TransientRetryIntervalSeconds = 0 },
+            graphClient: ThrottlingClient("busy@example.com", attempts));
+        await EnqueueInOrderAsync(("busy-1", "busy@example.com"), ("busy-2", "busy@example.com"));
+
+        await sut.ProcessBatchAsync();
+
+        attempts.Should().Equal("busy-1", "busy-2");
+    }
+
+    [Fact]
+    public async Task ProcessBatch_HeldMailbox_ExpiredMessageStillGetsItsFinalAttempt()
+    {
+        // A mailbox throttled for the whole expiration window must not keep mail from its NDR.
+        var attempts = new List<string>();
+        var sut = CreateProcessor(
+            queueOpts: new MailQueueOptions { MessageExpirationHours = 24 },
+            graphClient: ThrottlingClient("busy@example.com", attempts));
+        await EnqueueInOrderAsync(("busy-1", "busy@example.com"));
+        await EnqueueMessageAsync("busy-expired", from: "busy@example.com",
+            receivedAt: DateTime.UtcNow.AddHours(-25));
+        File.SetCreationTimeUtc(Path.Combine(_tempDir, "queue", "busy-expired.eml"), DateTime.UtcNow);
+
+        await sut.ProcessBatchAsync();
+
+        attempts.Should().Equal("busy-1", "busy-expired");
+        File.Exists(Path.Combine(_tempDir, "queue", "busy-expired.meta.json")).Should().BeFalse("it expired and left for the NDR");
+        Directory.GetFiles(Path.Combine(_tempDir, "failed"), "*.meta.json").Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task ProcessBatch_NonThrottledFailure_DoesNotHoldTheMailbox()
+    {
+        // Only throttling says something about the mailbox — any other failure is the message's own.
+        var attempts = new List<string>();
+        var sut = CreateProcessor(graphClient: ThrottlingClient("busy@example.com", attempts,
+            new GraphDeliveryException("HTTP 500 InternalServerError", isPermanent: false)));
+        await EnqueueInOrderAsync(("fail-1", "busy@example.com"), ("fail-2", "busy@example.com"));
+
+        await sut.ProcessBatchAsync();
+
+        attempts.Should().Equal("fail-1", "fail-2");
+    }
+
+    [Fact]
+    public async Task ProcessBatch_ThrottledMailboxRecovered_AllItsMessagesAreDelivered()
+    {
+        var attempts = new List<string>();
+        var throttle = true;
+        var client = Substitute.For<IGraphApiClient>();
+        client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                attempts.Add(ci.ArgAt<string>(3));
+                return throttle
+                    ? Task.FromException<GraphDeliveryResult>(Throttled())
+                    : Task.FromResult(SendOk);
+            });
+        var sut = CreateProcessor(
+            queueOpts: new MailQueueOptions { TransientRetryIntervalSeconds = 0 },
+            graphClient: client);
+        await EnqueueInOrderAsync(("busy-1", "busy@example.com"));
+
+        await sut.ProcessBatchAsync();           // throttled → held (hold elapses immediately)
+        throttle = false;
+        await EnqueueInOrderAsync(("busy-2", "busy@example.com"), ("busy-3", "busy@example.com"));
+        await sut.ProcessBatchAsync();           // probe succeeds → hold lifted for the rest
+
+        attempts.Should().Equal("busy-1", "busy-1", "busy-2", "busy-3");
+        Directory.GetFiles(Path.Combine(_tempDir, "queue")).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(0, "0s")]
+    [InlineData(42, "42s")]
+    [InlineData(5 * 60 + 3, "5m 3s")]
+    [InlineData(3600, "1h 0m 0s")]
+    [InlineData(26 * 3600 + 61, "26h 1m 1s")]      // no day unit — hours stay comparable to MessageExpirationHours
+    [InlineData(-5, "0s")]                         // clock adjusted between receipt and send
+    public void FormatDelay_RendersCompactDuration(int seconds, string expected)
+        => QueueProcessor.FormatDelay(TimeSpan.FromSeconds(seconds)).Should().Be(expected);
 
     [Fact]
     public async Task ProcessBatch_DeliversMessagesInArrivalOrder_NotFilenameOrder()

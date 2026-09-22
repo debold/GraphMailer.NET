@@ -19,11 +19,21 @@ internal sealed class GraphDeliveryException : Exception
     /// </summary>
     public string? ErrorCode { get; }
 
+    /// <summary>
+    /// Exchange Online refused because the mailbox (or the service in front of it) is
+    /// overloaded — throttling, a per-mailbox concurrency limit, a gateway timeout. Says
+    /// nothing about the message itself: every other message through the same mailbox
+    /// would fail the same way right now, so the queue processor holds them back.
+    /// </summary>
+    public bool IsThrottled { get; }
+
     public GraphDeliveryException(
-        string message, bool isPermanent, Exception? innerException = null, string? errorCode = null)
+        string message, bool isPermanent, Exception? innerException = null, string? errorCode = null,
+        bool isThrottled = false)
         : base(message, innerException)
     {
         IsPermanent = isPermanent;
         ErrorCode = errorCode;
+        IsThrottled = isThrottled;
     }
 }

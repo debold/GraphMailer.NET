@@ -6,6 +6,8 @@ using Microsoft.Graph.Users.Item.Messages.Item.Attachments.CreateUploadSession;
 using Microsoft.Graph.Users.Item.SendMail;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Kiota.Abstractions;
+using Microsoft.Kiota.Http.HttpClientLibrary.Middleware.Options;
 using MimeKit;
 using GraphMailer.Service.Configuration;
 
@@ -116,14 +118,20 @@ internal sealed class GraphApiClient : IGraphApiClient
                 "[GraphApi] {MessageId}: moved {Moved} attachment(s) to the upload-session path to stay under the 4 MB request cap",
                 messageId, moved);
 
-        _logger.LogDebug(
-            "[GraphApi] {MessageId}: {Small} small attachment(s), {Large} large attachment(s)",
-            messageId, smallAttachments.Count, largeAttachments.Count);
-
         var attachmentBytes =
             smallAttachments.Sum(a => (long)(a.ContentBytes?.Length ?? 0)) +
             largeAttachments.Sum(a => (long)a.Content.Length);
         var attachmentCount = smallAttachments.Count + largeAttachments.Count;
+
+        // Everything that could plausibly make one mailbox's sends slower or more fragile than
+        // another's — size, the draft path's extra requests, the Sent Items write — so a
+        // throttling incident can be correlated with what was being sent.
+        _logger.LogDebug(
+            "[GraphApi] {MessageId}: sending through mailbox {Mailbox} — {MimeBytes:N0} bytes MIME, " +
+            "{Small} small + {Large} large attachment(s) ({AttachmentBytes:N0} bytes), {Recipients} recipient(s), " +
+            "saveToSentItems: {SaveToSentItems}, relay: {Relay}",
+            messageId, sendAs, emlContent.Length, smallAttachments.Count, largeAttachments.Count,
+            attachmentBytes, envelopeRecipients.Count, saveToSentItems, sendingAsRelay);
 
         try
         {
@@ -133,23 +141,27 @@ internal sealed class GraphApiClient : IGraphApiClient
 
             return new GraphDeliveryResult(variant, attachmentCount, attachmentBytes, relayed || sendingAsRelay);
         }
-        catch (ODataError ex)
+        catch (Exception ex) when (TryReadApiFailure(ex, out var failure))
         {
             // Extract the structured fields Microsoft Graph returns on every error response.
             // These are lost when the exception propagates as-is because QueueProcessor only
-            // stores ex.Message in the metrics DB and the failed-mail metadata.
-            var code   = ex.Error?.Code    ?? "UnknownError";
-            var msg    = ex.Error?.Message ?? ex.Message;
-            var reqId  = ex.Error?.InnerError?.RequestId ?? "n/a";
-            var status = ex.ResponseStatusCode;
+            // stores ex.Message in the metrics DB and the failed-mail metadata. Covers both
+            // shapes a rejection arrives in: an ODataError, and the AggregateException the
+            // SDK's retry handler throws once its own retries are used up.
+            var (status, code, msg, reqId) = (failure.Status, failure.Code, failure.Message, failure.RequestId);
             var isPermanent = IsPermanentRejection(status, code);
+            var isThrottled = IsThrottlingRejection(status, code);
 
+            // The response headers are what Microsoft support needs to find the request in the
+            // Exchange backend (x-ms-ags-diagnostic names the serving datacenter/scale unit) and
+            // tell us whether Exchange asked for a specific back-off (Retry-After).
             _logger.LogWarning(
-                "[GraphApi] {MessageId} rejected – HTTP {HttpStatus} {ErrorCode}: {ErrorMessage} (RequestId: {RequestId}, permanent: {Permanent})",
-                messageId, status, code, msg, reqId, isPermanent);
+                "[GraphApi] {MessageId} rejected – HTTP {HttpStatus} {ErrorCode}: {ErrorMessage} (RequestId: {RequestId}, permanent: {Permanent}, throttled: {Throttled}; " +
+                "response: {ResponseHeaders})",
+                messageId, status, code, msg, reqId, isPermanent, isThrottled, failure.DescribeHeaders());
 
             throw new GraphDeliveryException(
-                $"HTTP {status} {code}: \"{msg}\" (RequestId: {reqId})", isPermanent, ex, code);
+                $"HTTP {status} {code}: \"{msg}\" (RequestId: {reqId})", isPermanent, ex, code, isThrottled);
         }
         catch (AuthenticationFailedException ex)
         {
@@ -440,6 +452,146 @@ internal sealed class GraphApiClient : IGraphApiClient
         return status is 400 or 404 or 413;
     }
 
+    /// <summary>
+    /// Classifies a Graph rejection as "the mailbox is overloaded right now" — not a problem
+    /// with the message. 429 is Graph's own throttling; 503/504 are what Exchange Online answers
+    /// when a mailbox runs out of its concurrency budget (e.g. <c>ErrorDirectoryConcurrencyLimit</c>,
+    /// <c>CommandConcurrencyLimitReached</c> — typically because other clients hammer the same
+    /// mailbox) or the backend times out. The codes are listed as well because Exchange does not
+    /// always pair them with the same status.
+    /// </summary>
+    internal static bool IsThrottlingRejection(int status, string code) =>
+        status is 429 or 503 or 504
+        || code.Equals("ErrorDirectoryConcurrencyLimit", StringComparison.OrdinalIgnoreCase)
+        || code.Equals("CommandConcurrencyLimitReached", StringComparison.OrdinalIgnoreCase)
+        || code.Equals("ApplicationThrottled", StringComparison.OrdinalIgnoreCase)
+        || code.Equals("MailboxConcurrency", StringComparison.OrdinalIgnoreCase)
+        || code.Equals("ErrorServerBusy", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The structured fields of a Graph error response, plus the response headers that matter for
+    /// diagnosing throttling: <c>Retry-After</c> (did Exchange ask for a specific back-off?), the
+    /// echoed <c>client-request-id</c> (our queue id, see <see cref="ClientRequestId"/>), the server
+    /// <c>Date</c>, and <c>x-ms-ags-diagnostic</c> (serving datacenter / scale unit / role instance —
+    /// what Microsoft support needs to locate the request in the Exchange backend).
+    /// </summary>
+    internal readonly record struct ApiFailure(
+        int Status, string Code, string Message, string RequestId,
+        string? RetryAfter = null, string? ClientRequestId = null, string? ServerDate = null,
+        string? AgsDiagnostic = null)
+    {
+        /// <summary>The headers present, as one log-friendly string; <c>-</c> when none came back.</summary>
+        public string DescribeHeaders()
+        {
+            var parts = new List<string>(4);
+            if (RetryAfter is not null) parts.Add($"Retry-After={RetryAfter}");
+            if (ClientRequestId is not null) parts.Add($"client-request-id={ClientRequestId}");
+            if (ServerDate is not null) parts.Add($"Date={ServerDate}");
+            if (AgsDiagnostic is not null) parts.Add($"x-ms-ags-diagnostic={AgsDiagnostic}");
+            return parts.Count == 0 ? "-" : string.Join(", ", parts);
+        }
+    }
+
+    /// <summary>
+    /// Reads status, error code, message, request id and the diagnostic response headers from a
+    /// failed Graph call, whichever shape it arrives in:
+    ///   - <see cref="ODataError"/> — the SDK mapped the error body;
+    ///   - <see cref="AggregateException"/> of <see cref="ApiException"/>s — the retry handler
+    ///     gave up ("Too many retries performed") and throws before any error mapping, with the
+    ///     raw JSON body only inside each inner exception's message. The last attempt wins;
+    ///   - a plain <see cref="ApiException"/> without a mapped body.
+    /// Returns false for anything that is not an HTTP-level Graph failure (network, auth, …).
+    /// </summary>
+    internal static bool TryReadApiFailure(Exception ex, out ApiFailure failure)
+    {
+        switch (ex)
+        {
+            case ODataError odata:
+                failure = WithHeaders(new ApiFailure(
+                    odata.ResponseStatusCode,
+                    odata.Error?.Code ?? "UnknownError",
+                    odata.Error?.Message ?? odata.Message,
+                    odata.Error?.InnerError?.RequestId ?? Header(odata, "request-id") ?? "n/a"), odata);
+                return true;
+
+            case AggregateException aggregate
+                when aggregate.InnerExceptions.OfType<ApiException>().LastOrDefault() is { } last:
+                return TryReadApiFailure(last, out failure);
+
+            case ApiException api:
+                failure = WithHeaders(ReadRawApiException(api), api);
+                return true;
+
+            default:
+                failure = default;
+                return false;
+        }
+    }
+
+    private static ApiFailure WithHeaders(ApiFailure failure, ApiException api) => failure with
+    {
+        RetryAfter = Header(api, "Retry-After"),
+        ClientRequestId = Header(api, "client-request-id"),
+        ServerDate = Header(api, "Date"),
+        AgsDiagnostic = Header(api, "x-ms-ags-diagnostic"),
+    };
+
+    // The retry handler's inner exceptions read "HTTP request failed with status code: <Name>.<body>"
+    // where <body> is Graph's JSON error document (or empty).
+    private static ApiFailure ReadRawApiException(ApiException api)
+    {
+        var status = api.ResponseStatusCode;
+        if (status == 0)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(api.Message, @"status code: (\w+)");
+            if (match.Success && Enum.TryParse<System.Net.HttpStatusCode>(match.Groups[1].Value, out var parsed))
+                status = (int)parsed;
+        }
+
+        string? code = null, message = null, requestId = null;
+        var bodyStart = api.Message.IndexOf('{');
+        if (bodyStart >= 0)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(api.Message[bodyStart..]);
+                if (doc.RootElement.TryGetProperty("error", out var error))
+                {
+                    code = StringProperty(error, "code");
+                    message = StringProperty(error, "message");
+                    if (error.TryGetProperty("innerError", out var inner))
+                        requestId = StringProperty(inner, "request-id");
+                }
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Not a JSON body — fall back to the status line below.
+            }
+        }
+
+        return new ApiFailure(
+            status,
+            string.IsNullOrEmpty(code) ? "UnknownError" : code,
+            message ?? (bodyStart >= 0 ? api.Message[..bodyStart] : api.Message),
+            requestId ?? Header(api, "request-id") ?? "n/a");
+
+        static string? StringProperty(System.Text.Json.JsonElement e, string name) =>
+            e.ValueKind == System.Text.Json.JsonValueKind.Object
+            && e.TryGetProperty(name, out var p) && p.ValueKind == System.Text.Json.JsonValueKind.String
+                ? p.GetString()
+                : null;
+    }
+
+    // Header names are case-insensitive; Kiota's dictionary does not guarantee that. Multiple
+    // values (rare) are joined so nothing the server sent is dropped.
+    private static string? Header(ApiException api, string name)
+    {
+        var values = api.ResponseHeaders?
+            .FirstOrDefault(h => h.Key.Equals(name, StringComparison.OrdinalIgnoreCase))
+            .Value?.Where(v => !string.IsNullOrEmpty(v)).ToList();
+        return values is { Count: > 0 } ? string.Join(" | ", values) : null;
+    }
+
     // -------------------------------------------------------------------------
     // GraphServiceClient lifecycle — client creation and certificate loading
     // live in GraphClientProvider (shared with GraphDirectoryGateway).
@@ -451,6 +603,76 @@ internal sealed class GraphApiClient : IGraphApiClient
     // -------------------------------------------------------------------------
     // Delivery paths
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Retry policy for the non-idempotent mailbox writes of the delivery path (sendMail,
+    /// draft create/send, upload-session create). The SDK's default retries 429, 503 and 504
+    /// up to three times within seconds; here only 429 is kept:
+    ///   - 429 means Graph refused the request before running it and says when to come back
+    ///     (Retry-After) — retrying in place is safe and cheap.
+    ///   - 504 gives no such guarantee: Exchange may still complete the send behind the timed-out
+    ///     gateway, so an immediate resend risks a duplicate at the recipient.
+    ///   - 503 from Exchange is mostly a per-mailbox concurrency limit. Three quick resends only add
+    ///     load to a mailbox that is already saturated and stall the (sequential) queue for tens of
+    ///     seconds per message.
+    /// The queue's own retry schedule — which also holds back the sender's other messages — takes
+    /// over for 503/504 instead.
+    /// </summary>
+    internal static RetryHandlerOption MailboxWriteRetryOption() =>
+        new() { ShouldRetry = (_, _, response) => ShouldRetryMailboxWrite(response.StatusCode) };
+
+    internal static bool ShouldRetryMailboxWrite(System.Net.HttpStatusCode status) =>
+        status == System.Net.HttpStatusCode.TooManyRequests;
+
+    /// <summary>
+    /// The <c>client-request-id</c> sent with every delivery request of a message: its queue id,
+    /// in the GUID form Graph expects. Graph echoes it and records it server-side, so Microsoft
+    /// support can find every request of one queued message from our id alone — across all its
+    /// attempts — without anyone digging request ids out of the log. Null for a non-GUID id; the
+    /// SDK then generates a random one as before.
+    /// </summary>
+    internal static string? ClientRequestIdFor(string messageId) =>
+        Guid.TryParse(messageId, out var id) ? id.ToString("D") : null;
+
+    /// <summary>Request configuration for a delivery request: correlation id, plus the mailbox-write retry policy.</summary>
+    internal static Action<RequestConfiguration<DefaultQueryParameters>> DeliveryRequest(
+        string messageId, bool mailboxWrite = true) => rc =>
+    {
+        if (ClientRequestIdFor(messageId) is { } clientRequestId)
+            rc.Headers.Add("client-request-id", clientRequestId);
+        if (mailboxWrite)
+            rc.Options.Add(MailboxWriteRetryOption());
+    };
+
+    /// <summary>
+    /// Runs one Graph request and logs at Debug what it did and how long it took, success or not.
+    /// Read in sequence, these lines show whether a mailbox gets slower before Exchange starts
+    /// refusing it, and that GraphMailer never has more than one request in flight. The time
+    /// includes the SDK's in-place 429 retries.
+    /// </summary>
+    private async Task<T> TimedAsync<T>(string messageId, string operation, string mailbox, Func<Task<T>> request)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var result = await request();
+            _logger.LogDebug("[GraphApi] {MessageId}: {Operation} on {Mailbox} succeeded in {ElapsedMs} ms",
+                messageId, operation, mailbox, sw.ElapsedMilliseconds);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            var outcome = TryReadApiFailure(ex, out var failure)
+                ? $"HTTP {failure.Status} {failure.Code}"
+                : ex.GetType().Name;
+            _logger.LogDebug("[GraphApi] {MessageId}: {Operation} on {Mailbox} failed ({Outcome}) after {ElapsedMs} ms",
+                messageId, operation, mailbox, outcome, sw.ElapsedMilliseconds);
+            throw;
+        }
+    }
+
+    private Task TimedAsync(string messageId, string operation, string mailbox, Func<Task> request) =>
+        TimedAsync<object?>(messageId, operation, mailbox, async () => { await request(); return null; });
 
     /// <summary>Single-request delivery for messages with small or no attachments.</summary>
     private async Task SendDirectAsync(
@@ -470,7 +692,8 @@ internal sealed class GraphApiClient : IGraphApiClient
             SaveToSentItems = saveToSentItems
         };
 
-        await client.Users[sendAs].SendMail.PostAsync(requestBody, cancellationToken: ct);
+        await TimedAsync(messageId, "sendMail", sendAs, () =>
+            client.Users[sendAs].SendMail.PostAsync(requestBody, DeliveryRequest(messageId), ct));
 
         // Attachment count at Information level: operators must be able to see from the
         // default log alone whether a delivered message carried its attachments.
@@ -498,8 +721,10 @@ internal sealed class GraphApiClient : IGraphApiClient
         MessageFidelity fidelity,
         CancellationToken ct)
     {
-        var draft = await client.Users[sendAs].Messages.PostAsync(
-            BuildMessage(mime, smallAttachments, envelopeRecipients, fidelity), cancellationToken: ct);
+        var draft = await TimedAsync(messageId, "create draft", sendAs, () =>
+            client.Users[sendAs].Messages.PostAsync(
+                BuildMessage(mime, smallAttachments, envelopeRecipients, fidelity),
+                DeliveryRequest(messageId), ct));
 
         if (draft?.Id is null)
             throw new InvalidOperationException("[GraphApi] Graph API did not return a draft ID.");
@@ -511,10 +736,11 @@ internal sealed class GraphApiClient : IGraphApiClient
                 _logger.LogDebug("[GraphApi] Uploading '{Name}' ({Size:N0} bytes) for {MessageId}",
                     attachment.Name, attachment.Content.Length, messageId);
 
-                await UploadLargeAttachmentAsync(client, sendAs, draft.Id, attachment, ct);
+                await UploadLargeAttachmentAsync(client, sendAs, draft.Id, attachment, messageId, ct);
             }
 
-            await client.Users[sendAs].Messages[draft.Id].Send.PostAsync(cancellationToken: ct);
+            await TimedAsync(messageId, "send draft", sendAs, () =>
+                client.Users[sendAs].Messages[draft.Id].Send.PostAsync(DeliveryRequest(messageId), ct));
 
             _logger.LogInformation(
                 "[GraphApi] Delivered {MessageId} via draft + upload session (from: {From}, attachments: {AttachmentCount})",
@@ -525,8 +751,10 @@ internal sealed class GraphApiClient : IGraphApiClient
             // Best-effort draft cleanup so the mailbox doesn't accumulate orphaned drafts
             try
             {
-                await client.Users[sendAs].Messages[draft.Id].DeleteAsync(
-                    cancellationToken: CancellationToken.None);
+                // Idempotent — the SDK's default retries stay on.
+                await TimedAsync(messageId, "delete draft", sendAs, () =>
+                    client.Users[sendAs].Messages[draft.Id].DeleteAsync(
+                        DeliveryRequest(messageId, mailboxWrite: false), CancellationToken.None));
             }
             catch (Exception ex)
             {
@@ -555,25 +783,27 @@ internal sealed class GraphApiClient : IGraphApiClient
         string sendAs,
         string draftId,
         LargeAttachment attachment,
+        string messageId,
         CancellationToken ct)
     {
         var (name, contentType, content, contentId, isInline) = attachment;
 
-        var uploadSession = await client.Users[sendAs].Messages[draftId]
-            .Attachments.CreateUploadSession.PostAsync(
-                new CreateUploadSessionPostRequestBody
-                {
-                    AttachmentItem = new AttachmentItem
+        var uploadSession = await TimedAsync(messageId, "create upload session", sendAs, () =>
+            client.Users[sendAs].Messages[draftId]
+                .Attachments.CreateUploadSession.PostAsync(
+                    new CreateUploadSessionPostRequestBody
                     {
-                        AttachmentType = AttachmentType.File,
-                        Name = name,
-                        Size = content.Length,
-                        ContentType = contentType,
-                        ContentId = contentId,
-                        IsInline = isInline,
-                    }
-                },
-                cancellationToken: ct);
+                        AttachmentItem = new AttachmentItem
+                        {
+                            AttachmentType = AttachmentType.File,
+                            Name = name,
+                            Size = content.Length,
+                            ContentType = contentType,
+                            ContentId = contentId,
+                            IsInline = isInline,
+                        }
+                    },
+                    DeliveryRequest(messageId), ct));
 
         if (uploadSession?.UploadUrl is null)
             throw new InvalidOperationException(
@@ -583,18 +813,21 @@ internal sealed class GraphApiClient : IGraphApiClient
         var uploadTask = new LargeFileUploadTask<FileAttachment>(
             uploadSession, contentStream, UploadSliceSize, client.RequestAdapter);
 
-        UploadResult<FileAttachment> result;
-        try
+        // Timed as one step: the slices are separate requests inside the SDK's upload task.
+        var result = await TimedAsync(messageId, $"upload '{name}' ({content.Length:N0} bytes)", sendAs, async () =>
         {
-            result = await uploadTask.UploadAsync(cancellationToken: ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogWarning(ex,
-                "[GraphApi] Upload of attachment '{Name}' was interrupted — resuming at the last confirmed range",
-                name);
-            result = await uploadTask.ResumeAsync(cancellationToken: ct);
-        }
+            try
+            {
+                return await uploadTask.UploadAsync(cancellationToken: ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex,
+                    "[GraphApi] Upload of attachment '{Name}' was interrupted — resuming at the last confirmed range",
+                    name);
+                return await uploadTask.ResumeAsync(cancellationToken: ct);
+            }
+        });
 
         if (!result.UploadSucceeded)
             throw new InvalidOperationException(
