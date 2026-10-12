@@ -32,10 +32,89 @@ public sealed class GraphApiClientThrottlingTests
     [InlineData(504, "UnknownError")]
     [InlineData(429, "ApplicationThrottled")]
     [InlineData(503, "ServiceUnavailable")]
+    [InlineData(503, "MailboxInfoStale")]                 // incident 2026-10-12 — still holds the mailbox
     [InlineData(500, "ErrorServerBusy")]                  // code-based regardless of status
     [InlineData(0, "MailboxConcurrency")]
     public void IsThrottlingRejection_BusyMailboxOrService_ReturnsTrue(int status, string code)
         => GraphApiClient.IsThrottlingRejection(status, code).Should().BeTrue();
+
+    [Theory]
+    [InlineData(429, "TooManyRequests", true)]
+    [InlineData(429, "ApplicationThrottled", true)]
+    [InlineData(503, "ErrorDirectoryConcurrencyLimit", true)]
+    [InlineData(503, "CommandConcurrencyLimitReached", true)]
+    [InlineData(500, "ErrorServerBusy", true)]
+    [InlineData(0, "MailboxConcurrency", true)]
+    [InlineData(503, "MailboxInfoStale", false)]          // briefly unavailable — says nothing about load
+    [InlineData(503, "ServiceUnavailable", false)]
+    [InlineData(504, "UnknownError", false)]
+    [InlineData(500, "InternalServerError", false)]
+    public void IsRateLimitRejection_OnlyActualRateLimitsCount(int status, string code, bool expected)
+        => GraphApiClient.IsRateLimitRejection(status, code).Should().Be(expected);
+
+    // =========================================================================
+    // ParseRetryAfter
+    // =========================================================================
+
+    private static readonly DateTimeOffset Now = new(2026, 10, 12, 9, 15, 40, TimeSpan.Zero);
+
+    [Theory]
+    [InlineData("5", 5)]
+    [InlineData("0", 0)]
+    [InlineData("120", 120)]
+    [InlineData("5 | 30", 5)]                             // repeated header, joined by Header() — first wins
+    public void ParseRetryAfter_DelaySeconds_ReturnsThatDelay(string value, int expectedSeconds)
+        => GraphApiClient.ParseRetryAfter(value, serverDate: null, Now)
+            .Should().Be(TimeSpan.FromSeconds(expectedSeconds));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("soon")]
+    [InlineData("-5")]
+    public void ParseRetryAfter_MissingOrUnreadable_ReturnsNull(string? value)
+        => GraphApiClient.ParseRetryAfter(value, serverDate: null, Now).Should().BeNull();
+
+    [Fact]
+    public void ParseRetryAfter_HttpDate_IsMeasuredAgainstTheServersDate()
+    {
+        // Local clock 10 min ahead of the server: measuring against it would turn 30 s into "now".
+        var localNow = Now.AddMinutes(10);
+        GraphApiClient.ParseRetryAfter("Mon, 12 Oct 2026 09:16:10 GMT", "Mon, 12 Oct 2026 09:15:40 GMT", localNow)
+            .Should().Be(TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
+    public void ParseRetryAfter_HttpDateWithoutServerDate_IsMeasuredAgainstLocalTime()
+        => GraphApiClient.ParseRetryAfter("Mon, 12 Oct 2026 09:16:10 GMT", serverDate: null, Now)
+            .Should().Be(TimeSpan.FromSeconds(30));
+
+    [Fact]
+    public void ParseRetryAfter_HttpDateInThePast_MeansNow()
+        => GraphApiClient.ParseRetryAfter("Mon, 12 Oct 2026 09:00:00 GMT", serverDate: null, Now)
+            .Should().Be(TimeSpan.Zero);
+
+    [Fact]
+    public async Task ParseRetryAfter_HeadersReadThroughTheSdk_AreUnderstood()
+    {
+        // The exact strings Kiota hands over for Retry-After (HTTP-date form) and Date must parse.
+        var response = Response(HttpStatusCode.ServiceUnavailable,
+            """{"error":{"code":"MailboxInfoStale","message":"Mailbox info is stale."}}""");
+        response.Headers.Remove("Retry-After");
+        response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+            new DateTimeOffset(2026, 1, 1, 12, 0, 45, TimeSpan.Zero));
+        response.Headers.Date = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        var client = GraphClient(new StubHandler(new Queue<HttpResponseMessage>([response])));
+
+        var send = () => client.Users["busy@example.com"].SendMail.PostAsync(
+            new Microsoft.Graph.Users.Item.SendMail.SendMailPostRequestBody(),
+            rc => rc.Options.Add(GraphApiClient.MailboxWriteRetryOption()));
+
+        var thrown = (await send.Should().ThrowAsync<ODataError>()).Which;
+        GraphApiClient.TryReadApiFailure(thrown, out var failure).Should().BeTrue();
+        GraphApiClient.ParseRetryAfter(failure.RetryAfter, failure.ServerDate, DateTimeOffset.UtcNow)
+            .Should().Be(TimeSpan.FromSeconds(45));
+    }
 
     [Theory]
     [InlineData(500, "InternalServerError")]

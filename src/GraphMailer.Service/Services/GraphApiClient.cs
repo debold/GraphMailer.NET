@@ -151,6 +151,7 @@ internal sealed class GraphApiClient : IGraphApiClient
             var (status, code, msg, reqId) = (failure.Status, failure.Code, failure.Message, failure.RequestId);
             var isPermanent = IsPermanentRejection(status, code);
             var isThrottled = IsThrottlingRejection(status, code);
+            var retryAfter = ParseRetryAfter(failure.RetryAfter, failure.ServerDate, DateTimeOffset.UtcNow);
 
             // The response headers are what Microsoft support needs to find the request in the
             // Exchange backend (x-ms-ags-diagnostic names the serving datacenter/scale unit) and
@@ -161,7 +162,8 @@ internal sealed class GraphApiClient : IGraphApiClient
                 messageId, status, code, msg, reqId, isPermanent, isThrottled, failure.DescribeHeaders());
 
             throw new GraphDeliveryException(
-                $"HTTP {status} {code}: \"{msg}\" (RequestId: {reqId})", isPermanent, ex, code, isThrottled);
+                $"HTTP {status} {code}: \"{msg}\" (RequestId: {reqId})", isPermanent, ex, code, isThrottled,
+                isThrottled && IsRateLimitRejection(status, code), retryAfter);
         }
         catch (AuthenticationFailedException ex)
         {
@@ -461,12 +463,52 @@ internal sealed class GraphApiClient : IGraphApiClient
     /// always pair them with the same status.
     /// </summary>
     internal static bool IsThrottlingRejection(int status, string code) =>
-        status is 429 or 503 or 504
+        status is 503 or 504 || IsRateLimitRejection(status, code);
+
+    /// <summary>
+    /// The part of <see cref="IsThrottlingRejection"/> that is actual rate limiting: Graph's 429 or
+    /// a named Exchange concurrency/throttling code. A 503/504 without such a code — e.g.
+    /// <c>MailboxInfoStale</c> — means the mailbox or backend is briefly unavailable, which says
+    /// nothing about load and must not be reported as throttling.
+    /// </summary>
+    internal static bool IsRateLimitRejection(int status, string code) =>
+        status == 429
         || code.Equals("ErrorDirectoryConcurrencyLimit", StringComparison.OrdinalIgnoreCase)
         || code.Equals("CommandConcurrencyLimitReached", StringComparison.OrdinalIgnoreCase)
         || code.Equals("ApplicationThrottled", StringComparison.OrdinalIgnoreCase)
         || code.Equals("MailboxConcurrency", StringComparison.OrdinalIgnoreCase)
         || code.Equals("ErrorServerBusy", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The wait a <c>Retry-After</c> header asks for, in either RFC 9110 form: delay-seconds
+    /// (<c>5</c>) or an HTTP date. A date is measured against the server's own <c>Date</c> header
+    /// when it sent one, so a skewed local clock does not stretch or cut the wait; a date already
+    /// past means "now". Returns null when there is no header or it cannot be read.
+    /// </summary>
+    internal static TimeSpan? ParseRetryAfter(string? retryAfter, string? serverDate, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(retryAfter))
+            return null;
+
+        // Header() joins repeated values with " | " — the first one is what the server meant.
+        var value = retryAfter.Split('|')[0].Trim();
+        if (!System.Net.Http.Headers.RetryConditionHeaderValue.TryParse(value, out var parsed))
+            return null;
+
+        if (parsed.Delta is { } delta)
+            return delta;
+
+        if (parsed.Date is not { } date)
+            return null;
+
+        var reference = DateTimeOffset.TryParseExact(serverDate, "r",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal, out var serverNow)
+            ? serverNow
+            : now;
+        var wait = date - reference;
+        return wait < TimeSpan.Zero ? TimeSpan.Zero : wait;
+    }
 
     /// <summary>
     /// The structured fields of a Graph error response, plus the response headers that matter for
@@ -615,8 +657,8 @@ internal sealed class GraphApiClient : IGraphApiClient
     ///   - 503 from Exchange is mostly a per-mailbox concurrency limit. Three quick resends only add
     ///     load to a mailbox that is already saturated and stall the (sequential) queue for tens of
     ///     seconds per message.
-    /// The queue's own retry schedule — which also holds back the sender's other messages — takes
-    /// over for 503/504 instead.
+    /// The queue's retry — at the server's Retry-After when it sent one, and holding back the
+    /// sender's other messages meanwhile — takes over for 503/504 instead.
     /// </summary>
     internal static RetryHandlerOption MailboxWriteRetryOption() =>
         new() { ShouldRetry = (_, _, response) => ShouldRetryMailboxWrite(response.StatusCode) };

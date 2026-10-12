@@ -17,10 +17,12 @@ namespace GraphMailer.Service.Services;
 ///   - Reads up to <see cref="MailQueueOptions.BatchSize"/> *.meta.json files per tick.
 ///   - Skips messages whose <see cref="MailMetadata.NextRetryAt"/> is still in the future.
 ///   - On success: deletes both files (or archives to mail/sent/ if configured).
-///   - On failure: increments RetryCount and schedules the next attempt (transient interval
-///     for the first few retries, then the steady interval — see <see cref="RetrySchedule"/>).
-///   - Throttled by Exchange Online (429/503/504, mailbox concurrency limits): additionally holds
-///     back every other message through the same mailbox until that retry — other senders go on.
+///   - On failure: increments RetryCount and schedules the next attempt — at the server's
+///     Retry-After when it sent one, otherwise the transient interval for the first few retries,
+///     then the steady interval (see <see cref="RetrySchedule"/>).
+///   - Throttled or unavailable in Exchange Online (429/503/504, mailbox concurrency limits):
+///     additionally holds back every other message through the same mailbox until that retry —
+///     other senders go on.
 ///   - After <see cref="MailQueueOptions.MessageExpirationHours"/> since receipt: moves to mail/failed/.
 ///   - When Graph API credentials are not configured the batch is silently skipped.
 /// </summary>
@@ -44,13 +46,23 @@ internal sealed class QueueProcessor : BackgroundService
     private readonly string _sentPath;
     private readonly string _failedPath;
 
-    // Mailboxes Exchange Online is currently throttling (Graph user key → hold until, UTC).
-    // One throttled attempt holds back every queued message through that mailbox until the
-    // failed message's own next retry: the limits are per mailbox, so the others would fail
-    // the same way, add load to a mailbox that is already saturated, and stall the sequential
-    // queue for every other sender. In-memory only — after a restart the first attempt simply
+    // Mailboxes Exchange Online is currently throttling or cannot serve (Graph user key → hold).
+    // One such attempt holds back every queued message through that mailbox until the failed
+    // message's own next retry: the condition is per mailbox, so the others would fail the same
+    // way, add load to a mailbox that may already be saturated, and stall the sequential queue
+    // for every other sender. In-memory only — after a restart the first attempt simply
     // re-learns it. Touched only from the (sequential) polling loop, so no locking.
-    private readonly Dictionary<string, DateTime> _throttledMailboxes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, MailboxHold> _throttledMailboxes = new(StringComparer.OrdinalIgnoreCase);
+
+    // A hold that keeps being renewed for this long is no longer a blip: from here on the operator
+    // gets one Warning pointing at the usual causes (other clients loading the mailbox, an
+    // Exchange Online incident). Shorter holds stay a single first-hold warning.
+    internal static readonly TimeSpan PersistentHoldThreshold = TimeSpan.FromMinutes(15);
+
+    /// <param name="Until">Hold ends (UTC) — the failed message's next retry.</param>
+    /// <param name="Since">First failure of this uninterrupted hold (UTC).</param>
+    /// <param name="PersistenceReported">The persistent-hold warning has been logged.</param>
+    private readonly record struct MailboxHold(DateTime Until, DateTime Since, bool PersistenceReported);
 
     public QueueProcessor(
         IOptionsMonitor<MailQueueOptions> options,
@@ -271,7 +283,7 @@ internal sealed class QueueProcessor : BackgroundService
             && !RetrySchedule.HasExpired(meta.ReceivedAt, DateTime.UtcNow, opts.MessageExpirationHours))
         {
             _logger.LogDebug(
-                "[QueueProcessor] {MessageId} held back — mailbox {Mailbox} is throttled by Exchange Online until {Until:yyyy-MM-dd HH:mm:ss zzz}",
+                "[QueueProcessor] {MessageId} held back — mailbox {Mailbox} is held until {Until:yyyy-MM-dd HH:mm:ss zzz}",
                 meta.MessageId, route.GraphUserKey, ToLocal(heldUntil));
             return false;
         }
@@ -341,10 +353,10 @@ internal sealed class QueueProcessor : BackgroundService
             if (delivery.Relayed && !route.IsRelay)
                 _senderRouter.MarkMailboxUnavailable(meta.From);
 
-            if (_throttledMailboxes.Remove(route.GraphUserKey))
+            if (_throttledMailboxes.Remove(route.GraphUserKey, out var endedHold))
                 _logger.LogInformation(
-                    "[QueueProcessor] Mailbox {Mailbox} accepts mail again — its held-back messages resume",
-                    route.GraphUserKey);
+                    "[QueueProcessor] Mailbox {Mailbox} accepts mail again after {HeldFor} — its held-back messages resume",
+                    route.GraphUserKey, FormatDelay(DateTime.UtcNow - endedHold.Since));
 
             // Delivered: record when, and drop the retry schedule left over from
             // earlier failed attempts (LastAttemptAt/LastError stay as history).
@@ -425,9 +437,14 @@ internal sealed class QueueProcessor : BackgroundService
             var permanentRejection = ex is GraphDeliveryException { IsPermanent: true }
                                      || IsHopelessSendAs(ex, route);
 
+            // The server's Retry-After, when it sent one, decides the next attempt — for this
+            // message and for the mailbox hold alike. Our own schedule is only the fallback.
+            var serverRetryAfter = (ex as GraphDeliveryException)?.RetryAfter;
+            var nextAttempt = RetrySchedule.NextAttemptUtc(
+                meta.RetryCount, opts, now, meta.ReceivedAt, serverRetryAfter);
+
             if (!permanentRejection && ex is GraphDeliveryException { IsThrottled: true } throttled)
-                HoldMailbox(route.GraphUserKey, throttled.ErrorCode,
-                    now.AddSeconds(RetrySchedule.NextRetryIntervalSeconds(meta.RetryCount, opts)));
+                HoldMailbox(route.GraphUserKey, throttled, nextAttempt, now);
 
             if (permanentRejection || RetrySchedule.HasExpired(meta.ReceivedAt, now, opts.MessageExpirationHours))
             {
@@ -443,10 +460,8 @@ internal sealed class QueueProcessor : BackgroundService
             }
             else
             {
-                // Two-phase interval: fast transient retries, then a steady interval.
-                var interval = TimeSpan.FromSeconds(
-                    RetrySchedule.NextRetryIntervalSeconds(meta.RetryCount, opts));
-                meta.NextRetryAt = now.Add(interval);
+                // Server's Retry-After, else two-phase interval (fast transient retries, then steady).
+                meta.NextRetryAt = nextAttempt;
                 meta.Status = "queued";
 
                 // A classified Graph rejection carries everything that matters in its message
@@ -454,8 +469,10 @@ internal sealed class QueueProcessor : BackgroundService
                 // trace, with the SDK's retry attempts nested inside, only buries that line.
                 if (ex is GraphDeliveryException)
                     _logger.LogWarning(
-                        "[QueueProcessor] {MessageId} failed (attempt {Attempt}), retry after {RetryAt:yyyy-MM-dd HH:mm:ss zzz}: {Error}",
-                        meta.MessageId, meta.RetryCount, ToLocal(meta.NextRetryAt.Value), ex.Message);
+                        "[QueueProcessor] {MessageId} failed (attempt {Attempt}), retry after {RetryAt:yyyy-MM-dd HH:mm:ss zzz} ({RetryBasis}): {Error}",
+                        meta.MessageId, meta.RetryCount, ToLocal(meta.NextRetryAt.Value),
+                        serverRetryAfter is { } wait ? $"Retry-After {FormatDelay(wait)} requested by the server" : "retry schedule",
+                        ex.Message);
                 else
                     _logger.LogWarning(ex,
                         "[QueueProcessor] {MessageId} failed (attempt {Attempt}), retry after {RetryAt:yyyy-MM-dd HH:mm:ss zzz}",
@@ -484,34 +501,55 @@ internal sealed class QueueProcessor : BackgroundService
     /// <summary>True while <paramref name="mailbox"/> is held back after a throttled attempt.</summary>
     private bool IsMailboxHeld(string mailbox, out DateTime heldUntil)
     {
-        if (!_throttledMailboxes.TryGetValue(mailbox, out heldUntil))
+        if (!_throttledMailboxes.TryGetValue(mailbox, out var hold))
+        {
+            heldUntil = default;
             return false;
+        }
 
         // Hold elapsed: the next message goes out as a probe. The entry stays until a delivery
         // succeeds, so the recovery is logged once and a failed probe renews the hold quietly.
+        heldUntil = hold.Until;
         return heldUntil > DateTime.UtcNow;
     }
 
     /// <summary>
     /// Holds back all messages through <paramref name="mailbox"/> until <paramref name="until"/>.
     /// The first hold is the operator's signal that the problem is the mailbox, not GraphMailer or
-    /// the message — hence a Warning with the error code. Renewals after a failed probe are Debug:
-    /// the failed attempt itself is already logged.
+    /// the message — hence a Warning with the error code, worded by what Exchange reported: rate
+    /// limiting, or a mailbox that is briefly unavailable (which says nothing about load). Renewals
+    /// after a failed probe are Debug — the failed attempt itself is already logged — until the
+    /// hold has lasted <see cref="PersistentHoldThreshold"/>; that gets one Warning naming the
+    /// usual causes.
     /// </summary>
-    private void HoldMailbox(string mailbox, string? errorCode, DateTime until)
+    private void HoldMailbox(string mailbox, GraphDeliveryException failure, DateTime until, DateTime nowUtc)
     {
-        var renewal = _throttledMailboxes.ContainsKey(mailbox);
-        _throttledMailboxes[mailbox] = until;
+        if (!_throttledMailboxes.TryGetValue(mailbox, out var hold))
+        {
+            _throttledMailboxes[mailbox] = new MailboxHold(until, nowUtc, PersistenceReported: false);
+            if (failure.IsRateLimited)
+                _logger.LogWarning(
+                    "[QueueProcessor] Mailbox {Mailbox} is throttled by Exchange Online ({ErrorCode}) — holding all its queued messages until {Until:yyyy-MM-dd HH:mm:ss zzz}; other senders are not affected",
+                    mailbox, failure.ErrorCode, ToLocal(until));
+            else
+                _logger.LogWarning(
+                    "[QueueProcessor] Mailbox {Mailbox} is temporarily unavailable in Exchange Online ({ErrorCode}) — holding all its queued messages until {Until:yyyy-MM-dd HH:mm:ss zzz}; other senders are not affected",
+                    mailbox, failure.ErrorCode, ToLocal(until));
+            return;
+        }
 
-        if (renewal)
-            _logger.LogDebug(
-                "[QueueProcessor] Mailbox {Mailbox} still throttled ({ErrorCode}) — holding its messages until {Until:yyyy-MM-dd HH:mm:ss zzz}",
-                mailbox, errorCode, ToLocal(until));
-        else
+        var persistent = !hold.PersistenceReported && nowUtc - hold.Since >= PersistentHoldThreshold;
+        _throttledMailboxes[mailbox] = hold with { Until = until, PersistenceReported = hold.PersistenceReported || persistent };
+
+        if (persistent)
             _logger.LogWarning(
-                "[QueueProcessor] Mailbox {Mailbox} is throttled by Exchange Online ({ErrorCode}) — holding all its queued messages until {Until:yyyy-MM-dd HH:mm:ss zzz}; other senders are not affected. " +
-                "Persistent throttling usually means other clients or apps are overloading this mailbox",
-                mailbox, errorCode, ToLocal(until));
+                "[QueueProcessor] Mailbox {Mailbox} has not accepted mail for {HeldFor} ({ErrorCode}) — holding its messages until {Until:yyyy-MM-dd HH:mm:ss zzz}. " +
+                "Usual causes: other clients or apps loading this mailbox, or an Exchange Online incident (check Service health)",
+                mailbox, FormatDelay(nowUtc - hold.Since), failure.ErrorCode, ToLocal(until));
+        else
+            _logger.LogDebug(
+                "[QueueProcessor] Mailbox {Mailbox} still not accepting mail ({ErrorCode}) — holding its messages until {Until:yyyy-MM-dd HH:mm:ss zzz}",
+                mailbox, failure.ErrorCode, ToLocal(until));
     }
 
     /// <summary>Queue delay for the log, e.g. <c>1h 12m 5s</c>; leading zero units are left out.</summary>

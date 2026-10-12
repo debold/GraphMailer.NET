@@ -27,7 +27,14 @@ time elapses — measured from when it was **received**.
 | Message expiration (hours) | `24` | 0–240 | How long a message is retried before it is given up. `0` = fail on the first error. |
 
 The page shows a **Calculated retry schedule** that updates live as you change these values — it is
-exactly the schedule the service will apply.
+exactly the schedule the service will apply when Microsoft 365 does not say otherwise.
+
+> [!NOTE]
+> When Microsoft 365 rejects a message **and tells GraphMailer when to try again** (the
+> `Retry-After` response header), that time is used instead of the schedule, on every attempt and
+> without a minimum of its own. The schedule only applies to failures without such a header. The
+> one limit is the expiration: a requested wait that reaches beyond it is cut short, so the final
+> attempt and the non-delivery report still happen on time.
 
 > [!NOTE]
 > Give-up is by **time, not attempt count**. A long Microsoft 365 or internet outage that stays
@@ -40,16 +47,23 @@ exactly the schedule the service will apply.
 Exchange Online limits how many requests a single mailbox handles at once. When a mailbox is
 overloaded — typically because other clients or apps work on it at the same time — Microsoft 365
 answers with a throttling error (`ErrorDirectoryConcurrencyLimit`, `CommandConcurrencyLimitReached`,
-HTTP 429/503/504). GraphMailer then **holds back every queued message from that mailbox** until the
-failed message's next retry, instead of trying each one in turn against a mailbox that is already
-saturated. Mail from all other senders keeps flowing.
+HTTP 429). A mailbox can also be **briefly unavailable** for reasons that have nothing to do with
+load, such as `MailboxInfoStale` or another HTTP 503/504. In both cases GraphMailer **holds back
+every queued message from that mailbox** until the failed message's next retry, instead of trying
+each one in turn against a mailbox that cannot take them right now. Mail from all other senders
+keeps flowing.
+
+The hold lasts exactly as long as Microsoft 365 asks for in its `Retry-After` header, often only a
+few seconds. Only without that header does it follow the retry schedule above.
 
 Held messages are not counted as failed attempts and keep their full expiration window. When the
 hold ends, the oldest message goes out first; once it is delivered, the rest follow. The log shows
-one warning when a mailbox is first held (*“Mailbox … is throttled by Exchange Online”*) and an
-information line when it accepts mail again. See
+one warning when a mailbox is first held (*“Mailbox … is throttled by Exchange Online”* or
+*“Mailbox … is temporarily unavailable in Exchange Online”*) and an information line with the
+duration when it accepts mail again. If a hold lasts 15 minutes or more, one further warning
+(*“Mailbox … has not accepted mail for …”*) points at the usual causes. See
 [Troubleshooting](../reference/troubleshooting.md#one-sender-is-delayed-mailbox-throttled) if a
-mailbox stays throttled.
+mailbox stays held.
 
 ## Mail Directories
 

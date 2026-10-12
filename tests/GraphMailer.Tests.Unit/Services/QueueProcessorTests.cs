@@ -908,6 +908,78 @@ public sealed class QueueProcessorTests : IDisposable
         Directory.GetFiles(Path.Combine(_tempDir, "queue")).Should().BeEmpty();
     }
 
+    // =========================================================================
+    // Server Retry-After takes precedence over the retry schedule
+    // =========================================================================
+
+    private static GraphDeliveryException MailboxInfoStale(TimeSpan retryAfter) => new(
+        "HTTP 503 MailboxInfoStale: \"Mailbox info is stale.\"",
+        isPermanent: false, errorCode: "MailboxInfoStale", isThrottled: true, retryAfter: retryAfter);
+
+    private static readonly MailQueueOptions DefaultSchedule = new()
+    {
+        TransientRetryCount = 6, TransientRetryIntervalSeconds = 300,
+        RetryIntervalSeconds = 900, MessageExpirationHours = 24,
+    };
+
+    [Fact]
+    public async Task ProcessMessage_ServerSentRetryAfter_RetriesThenNotOnTheSchedule()
+    {
+        var client = Substitute.For<IGraphApiClient>();
+        client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new GraphDeliveryException("HTTP 500 InternalServerError", isPermanent: false,
+                retryAfter: TimeSpan.FromSeconds(20)));
+        var sut = CreateProcessor(queueOpts: DefaultSchedule, graphClient: client);
+        var metaPath = await EnqueueMessageAsync("msg-retry-after", retryCount: 7,
+            nextRetryAt: DateTime.UtcNow.AddMinutes(-1));
+
+        var before = DateTime.UtcNow;
+        await sut.ProcessBatchAsync();
+
+        var meta = JsonSerializer.Deserialize<MailMetadata>(await File.ReadAllTextAsync(metaPath))!;
+        meta.RetryCount.Should().Be(8);
+        meta.NextRetryAt!.Value.Should().BeCloseTo(before.AddSeconds(20), TimeSpan.FromSeconds(5),
+            "the server's Retry-After wins over the 900 s steady interval, on every attempt");
+    }
+
+    [Fact]
+    public async Task ProcessBatch_UnavailableMailboxWithRetryAfter_HoldEndsWhenTheServerSaid()
+    {
+        // Regression (incident 2026-10-12): Exchange answered 503 MailboxInfoStale with
+        // Retry-After 5; the mailbox was held for the 5-min transient interval instead and two
+        // dozen messages were delivered late. Retry-After 0 makes the hold end at once here.
+        var attempts = new List<string>();
+        var sut = CreateProcessor(queueOpts: DefaultSchedule,
+            graphClient: ThrottlingClient("busy@example.com", attempts, MailboxInfoStale(TimeSpan.Zero)));
+        await EnqueueInOrderAsync(("busy-1", "busy@example.com"), ("busy-2", "busy@example.com"));
+
+        var before = DateTime.UtcNow;
+        await sut.ProcessBatchAsync();
+
+        attempts.Should().Equal("busy-1", "busy-2");
+        ReadQueuedMeta("busy-1").NextRetryAt!.Value.Should().BeCloseTo(before, TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task ProcessBatch_UnavailableMailboxWithRetryAfter_OtherMessagesWaitUntilThen()
+    {
+        var attempts = new List<string>();
+        var sut = CreateProcessor(queueOpts: DefaultSchedule,
+            graphClient: ThrottlingClient("busy@example.com", attempts, MailboxInfoStale(TimeSpan.FromSeconds(30))));
+        await EnqueueInOrderAsync(
+            ("busy-1", "busy@example.com"),
+            ("busy-2", "busy@example.com"),
+            ("other-1", "other@example.com"));
+
+        var before = DateTime.UtcNow;
+        await sut.ProcessBatchAsync();
+
+        attempts.Should().Equal(["busy-1", "other-1"], "the mailbox is still held while the server's wait runs");
+        ReadQueuedMeta("busy-1").NextRetryAt!.Value.Should().BeCloseTo(before.AddSeconds(30), TimeSpan.FromSeconds(5));
+        ReadQueuedMeta("busy-2").RetryCount.Should().Be(0);
+    }
+
     [Theory]
     [InlineData(0, "0s")]
     [InlineData(42, "42s")]

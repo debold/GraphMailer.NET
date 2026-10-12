@@ -25,13 +25,19 @@ The message sits in the queue, or eventually lands in **failed**.
 
 Mail from one sender address stays in the queue for a long time while all other senders are
 delivered normally. The log shows *“Mailbox … is throttled by Exchange Online”* with an error code
-such as `ErrorDirectoryConcurrencyLimit` or `CommandConcurrencyLimitReached`.
+such as `ErrorDirectoryConcurrencyLimit` or `CommandConcurrencyLimitReached`, or *“Mailbox … is
+temporarily unavailable in Exchange Online”* with a code such as `MailboxInfoStale`.
 
 Exchange Online limits how many requests one mailbox handles at the same time. GraphMailer sends one
 message at a time, so on its own it stays well below that limit. When the limit is reached anyway,
-something else is loading the mailbox. GraphMailer holds that sender's mail back and retries on the
-normal [retry schedule](../configuration/mail-queue.md#throttled-sender-mailboxes). No mail is lost
-within the expiration window.
+something else is loading the mailbox. GraphMailer holds that sender's mail back and retries at the
+time Microsoft 365 names in its `Retry-After` header, or on the normal
+[retry schedule](../configuration/mail-queue.md#throttled-sender-mailboxes) if it names none. No mail
+is lost within the expiration window.
+
+A single *temporarily unavailable* warning followed shortly by *“Mailbox … accepts mail again”* is a
+short-lived Exchange Online condition and needs no action. If the hold lasts 15 minutes or more,
+GraphMailer logs *“Mailbox … has not accepted mail for …”*.
 
 If it keeps happening, look at the mailbox in Microsoft 365:
 

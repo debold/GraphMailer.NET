@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 2020 tests** (1930 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-09-22
+**Total: 2052 tests** (1962 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-10-12
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -299,6 +299,9 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 |---|---|---|
 | `NextRetryInterval_WithinTransientPhase_UsesTransientInterval` | retryCount 1 and 6, transientCount 6 | Transient interval (300 s) |
 | `NextRetryInterval_AfterTransientPhase_UsesSteadyInterval` | retryCount 7 and 50 | Steady interval (900 s) |
+| `NextAttempt_NoServerRetryAfter_UsesTheSchedule` | First failure, no `Retry-After` | now + transient interval (300 s) |
+| `NextAttempt_ServerRetryAfter_IsFollowedExactly` (Theory) | `Retry-After` 5 s (first failure — incident 2026-10-12), 20 s (steady phase), 0 s, 1800 s | now + exactly the server's wait — on every attempt, no floor, also when longer than the schedule |
+| `NextAttempt_ServerRetryAfterBeyondExpiration_IsCutToTheExpiration` | 10 min before expiry, `Retry-After` 1 h | Cut to receipt + 24 h, so the final attempt and the NDR stay on time |
 | `HasExpired_BeforeBudget_False` | received, now = +23 h, expiration 24 h | `false` |
 | `HasExpired_AtOrAfterBudget_True` | now = +24 h / +30 h, expiration 24 h | `true` |
 | `HasExpired_ZeroHours_AlwaysExpired` | expiration 0 h | `true` (give up on first failure) |
@@ -789,6 +792,9 @@ Backs the ConfigTool's **Test scanner** button. The vector now lives in `AmsiSel
 | `ProcessBatch_HeldMailbox_ExpiredMessageStillGetsItsFinalAttempt` | Mailbox held; a second message from it is past `MessageExpirationHours` | The expired message is still attempted and moves to `mail/failed/` (NDR), so a permanently throttled mailbox cannot keep mail from ever failing |
 | `ProcessBatch_NonThrottledFailure_DoesNotHoldTheMailbox` | HTTP 500 without throttling classification | Both messages from the sender are attempted — only throttling holds a mailbox |
 | `ProcessBatch_ThrottledMailboxRecovered_AllItsMessagesAreDelivered` | Throttled once, then Exchange accepts again | The retried message and the later ones from the same mailbox are delivered; queue empty |
+| `ProcessMessage_ServerSentRetryAfter_RetriesThenNotOnTheSchedule` | Steady phase (`RetryCount = 7`), rejection with `Retry-After` 20 s | `NextRetryAt` ≈ now + 20 s, not the 900 s steady interval |
+| `ProcessBatch_UnavailableMailboxWithRetryAfter_HoldEndsWhenTheServerSaid` | 503 `MailboxInfoStale` with `Retry-After` 0, default 300 s transient interval | Hold ends at once; the next message from the mailbox is attempted — regression: incident 2026-10-12, `Retry-After` 5 s was answered with a 5-min hold |
+| `ProcessBatch_UnavailableMailboxWithRetryAfter_OtherMessagesWaitUntilThen` | 503 `MailboxInfoStale` with `Retry-After` 30 s, second message from that mailbox + another sender | Mailbox held for the 30 s (`NextRetryAt` ≈ now + 30 s, held message untouched); the other sender is delivered |
 | `FormatDelay_RendersCompactDuration` (Theory) | 0 s, 42 s, 5 m 3 s, 1 h, 26 h 1 m 1 s, negative | `0s`, `42s`, `5m 3s`, `1h 0m 0s`, `26h 1m 1s` (no day unit, comparable to the expiration hours), `0s` — used by the *delivered on attempt n* log line |
 
 ---
@@ -797,7 +803,14 @@ Backs the ConfigTool's **Test scanner** button. The vector now lives in `AmsiSel
 
 | Test | Scenario | Expected result |
 |---|---|---|
-| `IsThrottlingRejection_BusyMailboxOrService_ReturnsTrue` (Theory) | 503 `ErrorDirectoryConcurrencyLimit` / `CommandConcurrencyLimitReached`, 504, 429 `ApplicationThrottled`, 503 generic, `ErrorServerBusy` / `MailboxConcurrency` by code | `true` |
+| `IsThrottlingRejection_BusyMailboxOrService_ReturnsTrue` (Theory) | 503 `ErrorDirectoryConcurrencyLimit` / `CommandConcurrencyLimitReached`, 504, 429 `ApplicationThrottled`, 503 generic, 503 `MailboxInfoStale`, `ErrorServerBusy` / `MailboxConcurrency` by code | `true` |
+| `IsRateLimitRejection_OnlyActualRateLimitsCount` (Theory) | 429, concurrency/busy codes vs. 503 `MailboxInfoStale` / generic 503, 504, 500 | `true` only for actual rate limits — a briefly unavailable mailbox is not reported as throttled |
+| `ParseRetryAfter_DelaySeconds_ReturnsThatDelay` (Theory) | `5`, `0`, `120`, repeated header `5 \| 30` | That delay; the first of repeated values |
+| `ParseRetryAfter_MissingOrUnreadable_ReturnsNull` (Theory) | null, empty, `soon`, `-5` | `null` — the retry schedule applies |
+| `ParseRetryAfter_HttpDate_IsMeasuredAgainstTheServersDate` | HTTP-date 30 s after the server's `Date`, local clock 10 min ahead | 30 s — clock skew does not shorten the wait |
+| `ParseRetryAfter_HttpDateWithoutServerDate_IsMeasuredAgainstLocalTime` | HTTP-date, no `Date` header | Difference to local time |
+| `ParseRetryAfter_HttpDateInThePast_MeansNow` | HTTP-date already passed | `TimeSpan.Zero` |
+| `ParseRetryAfter_HeadersReadThroughTheSdk_AreUnderstood` | 503 `MailboxInfoStale` through the SDK pipeline with HTTP-date `Retry-After` and `Date` | The header strings Kiota hands over parse to 45 s |
 | `IsThrottlingRejection_OtherFailures_ReturnsFalse` (Theory) | 500, 400, 403 SendAs, 404, 401 | `false` |
 | `TryReadApiFailure_RetryHandlerGaveUp_ReadsTheLastAttemptFromTheAggregate` | Real Kiota `RetryHandler` with Exchange-shaped 504 + 3 × 503 bodies | The thrown `AggregateException` is read as 503 `ErrorDirectoryConcurrencyLimit` with its message; throttled, not permanent — regression: the ODataError-only catch missed this shape |
 | `TryReadApiFailure_GatewayTimeoutBody_ReadsRequestIdFromInnerError` | 4 × 504 with Graph's `innerError.request-id` | Status 504, code `UnknownError`, request id extracted |

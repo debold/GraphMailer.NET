@@ -27,13 +27,29 @@ internal sealed class GraphDeliveryException : Exception
     /// </summary>
     public bool IsThrottled { get; }
 
+    /// <summary>
+    /// Of the <see cref="IsThrottled"/> failures, the ones that are actual rate limiting — Graph's
+    /// 429 or an Exchange concurrency limit — as opposed to a mailbox or backend that is briefly
+    /// unavailable (a plain 503/504 such as <c>MailboxInfoStale</c>). Only changes how the hold is
+    /// reported: both hold the mailbox the same way.
+    /// </summary>
+    public bool IsRateLimited { get; }
+
+    /// <summary>
+    /// How long the server asked us to wait before trying again (<c>Retry-After</c>), when it sent
+    /// one. Takes precedence over the queue's own retry schedule.
+    /// </summary>
+    public TimeSpan? RetryAfter { get; }
+
     public GraphDeliveryException(
         string message, bool isPermanent, Exception? innerException = null, string? errorCode = null,
-        bool isThrottled = false)
+        bool isThrottled = false, bool isRateLimited = false, TimeSpan? retryAfter = null)
         : base(message, innerException)
     {
         IsPermanent = isPermanent;
         ErrorCode = errorCode;
         IsThrottled = isThrottled;
+        IsRateLimited = isRateLimited;
+        RetryAfter = retryAfter;
     }
 }

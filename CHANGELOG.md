@@ -2,7 +2,26 @@
 
 ## Unreleased
 
+### Fixed
+
+- **GraphMailer now retries when Microsoft 365 says to.** When a rejection carried a `Retry-After`
+  header, GraphMailer ignored it and waited for its own retry schedule instead. In one case Exchange
+  Online answered `503 MailboxInfoStale` with `Retry-After: 5`, and the sender mailbox was held for 5
+  minutes instead of 5 seconds, which delayed two dozen messages. The server's `Retry-After` now sets
+  the next attempt and the mailbox hold, on every attempt and in both header forms (seconds or a
+  date, measured against the server's clock). The retry schedule only applies when no header is
+  sent. A wait reaching past the message expiration is cut to it, so the NDR stays on time.
+
 ### Changed
+
+- **A briefly unavailable mailbox is no longer reported as throttled.** A plain HTTP 503/504 such as
+  `MailboxInfoStale` says nothing about load. Until now it was logged as *“throttled by Exchange
+  Online … other clients or apps are overloading this mailbox”*, which sent admins looking for a
+  cause that did not exist. It is now logged as *“temporarily unavailable in Exchange Online”*.
+  Actual rate limits (HTTP 429, concurrency-limit codes) are still reported as throttling. Both
+  hold the mailbox as before. The hint about other clients loading the mailbox now comes only when
+  a hold lasts 15 minutes or more, as its own warning. The *“accepts mail again”* line shows how
+  long the mailbox was held.
 
 - **The help explains when the mail cleanup runs.** *Mail Queue → When the cleanup runs* now
   describes the schedule: once at service start, then every hour, counted from the start. It also

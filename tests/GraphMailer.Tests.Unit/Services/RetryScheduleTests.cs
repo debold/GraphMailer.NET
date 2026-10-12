@@ -32,6 +32,37 @@ public sealed class RetryScheduleTests
         RetrySchedule.NextRetryIntervalSeconds(50, o).Should().Be(900);
     }
 
+    private static readonly DateTime Received = new(2026, 10, 12, 9, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void NextAttempt_NoServerRetryAfter_UsesTheSchedule()
+    {
+        var now = Received.AddMinutes(1);
+        RetrySchedule.NextAttemptUtc(1, Opts(), now, Received, serverRetryAfter: null)
+            .Should().Be(now.AddSeconds(300));
+    }
+
+    [Theory]
+    [InlineData(1, 5)]       // incident 2026-10-12: Retry-After 5 s was answered with a 5-min hold
+    [InlineData(7, 20)]      // steady phase — the server still decides, not just on the first failure
+    [InlineData(1, 0)]       // "now" — no floor of our own
+    [InlineData(1, 1800)]    // longer than our schedule — followed as well
+    public void NextAttempt_ServerRetryAfter_IsFollowedExactly(int retryCount, int retryAfterSeconds)
+    {
+        var now = Received.AddMinutes(1);
+        RetrySchedule.NextAttemptUtc(retryCount, Opts(), now, Received, TimeSpan.FromSeconds(retryAfterSeconds))
+            .Should().Be(now.AddSeconds(retryAfterSeconds));
+    }
+
+    [Fact]
+    public void NextAttempt_ServerRetryAfterBeyondExpiration_IsCutToTheExpiration()
+    {
+        // The final attempt and the NDR must not slip behind MessageExpirationHours.
+        var now = Received.AddHours(23).AddMinutes(50);
+        RetrySchedule.NextAttemptUtc(30, Opts(), now, Received, TimeSpan.FromHours(1))
+            .Should().Be(Received.AddHours(24));
+    }
+
     [Fact]
     public void HasExpired_BeforeBudget_False()
     {

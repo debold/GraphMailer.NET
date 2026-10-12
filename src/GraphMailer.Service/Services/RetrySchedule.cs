@@ -24,6 +24,24 @@ internal static class RetrySchedule
             ? opts.TransientRetryIntervalSeconds
             : opts.RetryIntervalSeconds;
 
+    /// <summary>
+    /// When to try again after the failure with 1-based <paramref name="retryCount"/>. A server that
+    /// says when to come back (<c>Retry-After</c>) is followed exactly — on every attempt, with no
+    /// floor of our own; the polling interval is the only granularity. Without one, the two-phase
+    /// schedule applies. The one limit on the server's value is the expiration: a wait reaching
+    /// past it is cut to the expiration time, so the final attempt and the NDR stay on time.
+    /// </summary>
+    internal static DateTime NextAttemptUtc(
+        int retryCount, MailQueueOptions opts, DateTime nowUtc, DateTime receivedAtUtc, TimeSpan? serverRetryAfter)
+    {
+        if (serverRetryAfter is not { } wait)
+            return nowUtc.AddSeconds(NextRetryIntervalSeconds(retryCount, opts));
+
+        var expiresAt = receivedAtUtc.AddHours(opts.MessageExpirationHours);
+        var requested = nowUtc.Add(wait);
+        return requested > expiresAt && expiresAt > nowUtc ? expiresAt : requested;
+    }
+
     /// <summary>True when a message received at <paramref name="receivedAtUtc"/> has exceeded its expiration budget by <paramref name="nowUtc"/>.</summary>
     internal static bool HasExpired(DateTime receivedAtUtc, DateTime nowUtc, int expirationHours)
         => nowUtc - receivedAtUtc >= TimeSpan.FromHours(expirationHours);
