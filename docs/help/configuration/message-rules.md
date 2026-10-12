@@ -393,7 +393,9 @@ and is logged, so a costly expression cannot hold up mail delivery.
 
 ### Keep records for (days)
 
-How long the record of a discarded message is kept. Default **60 days**.
+How long the record of a discarded message is kept. Default **60 days**. Expired records (and a
+stored message, if any) are removed by the [hourly cleanup](mail-queue.md#when-the-cleanup-runs)
+of the mail queue; `0` keeps them forever.
 
 This is deliberately separate from the retention setting on the Malware Scan page, which also
 applies when scanning is switched off entirely.

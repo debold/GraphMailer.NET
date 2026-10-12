@@ -76,13 +76,43 @@ folders from the [Messages](../monitoring/messages.md) page.
 | Setting | Default | Range | Meaning |
 |---|---|---|---|
 | Enable archiving of sent mail | Off | — | When on, delivered messages are copied to `sent\` instead of being discarded. |
-| Retention (days) | `7` | 1–9125 | How long archived mail is kept before the hourly cleanup deletes it. |
-| Failed-mail retention (days) | `60` | 0–9125 | How long permanently failed messages are kept in `failed\` for diagnosis before the hourly cleanup deletes them. `0` keeps them forever. |
+| Retention (days) | `7` | 1–9125 | How long archived mail is kept before the [hourly cleanup](#when-the-cleanup-runs) deletes it. |
+| Failed-mail retention (days) | `60` | 0–9125 | How long permanently failed messages are kept in `failed\` for diagnosis before the [hourly cleanup](#when-the-cleanup-runs) deletes them. `0` keeps them forever. |
 
 > [!WARNING]
 > Archiving keeps a full copy of every delivered message on disk — including its content and
 > attachments. Make sure the retention period and disk capacity match your storage and data-
 > retention policy, and that the location is appropriately secured.
+
+### When the cleanup runs
+
+The service deletes expired mail itself. There is no Windows scheduled task to set up.
+
+- **Schedule:** once when the service **starts**, then **every hour**. The hour is counted from the
+  service start, not from a fixed time of day. A restart runs the cleanup immediately and starts a
+  new hourly cycle. While the service is stopped, nothing is deleted.
+- **Age of a message:** counted from the moment it was **moved** into `sent\` or `failed\` (the
+  modification time of its `.meta.json`), not from when it was received. A message is deleted by
+  the first run after it exceeds the retention period, so at most about an hour late. With the
+  default of 60 days, a message that failed on 1 March is deleted on 30 April.
+- **What is deleted:** the `.eml` and its `.meta.json` together.
+- **Changed retention values** apply from the next hourly run, without a restart. To apply them at
+  once, restart the service.
+- **Archiving switched off:** the cleanup no longer touches `sent\` at all. Messages that were
+  archived before you switched it off stay there until you delete them by hand.
+- **Failed-mail retention `0`:** `failed\` is never cleaned up. Keep an eye on its size (the
+  [failed-queue alert](notifications.md) and [disk-space monitoring](monitoring.md) help).
+
+The same hourly run also moves stray `.eml` files without a matching `.meta.json` (left behind by a
+crash while a message was being written, and older than 5 minutes) from `queue\` to `failed\`, and
+removes expired records from `mail\blocked\` according to the *Keep records for* settings on the
+[Malware Scan](malware-scan.md#limits) and [Message Rules](message-rules.md#keep-records-for-days)
+pages.
+
+The log shows one information line per run that deleted something, e.g.
+*“Retention cleanup: deleted 3 failed email(s) older than 60 day(s)”*. The individual message ids
+appear at Debug level. If a run fails (for example because a file is locked), an error is logged
+and the next hourly run tries again.
 
 ## Related
 

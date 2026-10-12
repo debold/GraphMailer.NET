@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **The help explains when the mail cleanup runs.** *Mail Queue → When the cleanup runs* now
+  describes the schedule: once at service start, then every hour, counted from the start. It also
+  explains that a message's age counts from when it was moved to `sent\` or `failed\`, and that
+  `sent\` is left alone once archiving is switched off. The same run also moves stray `.eml` files
+  out of the queue and deletes expired `mail\blocked\` records, which the Malware Scan and Message
+  Rules pages now point out.
+
 ## 1.5.1.1094 — 2026-09-22
 
 ### Fixed
