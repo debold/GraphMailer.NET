@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.2.1112 — 2026-10-13
 
 ### Security
 
