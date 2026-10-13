@@ -117,7 +117,7 @@ internal sealed class BlockedMessageRecorder
     /// <c>MessageRules.StoreDiscardedMessages</c> is on. Never passed for a malware finding.
     /// </param>
     public async Task RecordAsync(
-        BlockedMessageRecord record, CancellationToken ct = default, byte[]? emlBytes = null)
+        BlockedMessageRecord record, byte[]? emlBytes = null, CancellationToken ct = default)
     {
         var component = record.Source == BlockedMessageSources.MessageRule ? "MessageRules" : "MalwareScan";
         try

@@ -11,7 +11,13 @@ namespace GraphMailer.Service.Services;
 /// (GraphApiClient for mail delivery, GraphDirectoryGateway for sender lookups).
 /// The client is re-created when tenant, client id or auth method change.
 /// </summary>
-internal sealed class GraphClientProvider
+/// <remarks>
+/// A client replaced after a credential change is deliberately not disposed on the spot: a
+/// delivery that fetched it a moment earlier may still be mid-request. Credential changes are
+/// rare, and its idle pooled connections close on their own. The current client is disposed
+/// with the provider when the service stops.
+/// </remarks>
+internal sealed class GraphClientProvider : IDisposable
 {
     private readonly ILogger<GraphClientProvider> _logger;
 
@@ -46,6 +52,16 @@ internal sealed class GraphClientProvider
             _graphClient = new GraphServiceClient(CreateCredential(opts));
             _currentConfigKey = configKey;
             return _graphClient;
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_clientLock)
+        {
+            _graphClient?.Dispose();
+            _graphClient = null;
+            _currentConfigKey = null;
         }
     }
 

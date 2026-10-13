@@ -153,6 +153,8 @@ internal sealed class SetupStepViewModel : INotifyPropertyChanged
 
 // ── Window ─────────────────────────────────────────────────────────────────────
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001",
+    Justification = "WPF owns the Window lifetime; the cancellation source is disposed when the setup operation ends (Window_Loaded finally).")]
 public partial class EntraSetupProgressWindow : Window
 {
     private readonly string _appName;

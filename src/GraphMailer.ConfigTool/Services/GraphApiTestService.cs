@@ -43,7 +43,7 @@ internal static class GraphApiTestService
         var tokenResult = await AcquireTokenAsync(tenantId, clientId, clientSecret, certThumbprint, ct);
 
         // ── Build Graph client with static token ──────────────────────────
-        var graphClient = new GraphServiceClient(
+        using var graphClient = new GraphServiceClient(
             new BaseBearerTokenAuthenticationProvider(
                 new StaticBearerProvider(tokenResult.AccessToken)));
 

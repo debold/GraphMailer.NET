@@ -322,8 +322,8 @@ public sealed class RecommendationEngineTests
         }).Open;
 
         open.Select(r => r.Severity).Should().BeInAscendingOrder("High sorts before Medium before Low");
-        open.First().Severity.Should().Be(RecommendationSeverity.High);
-        open.Last().Severity.Should().Be(RecommendationSeverity.Low);
+        open[0].Severity.Should().Be(RecommendationSeverity.High);
+        open[^1].Severity.Should().Be(RecommendationSeverity.Low);
     }
 
     [Fact]

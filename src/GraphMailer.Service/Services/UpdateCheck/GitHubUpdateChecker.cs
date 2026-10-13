@@ -74,6 +74,8 @@ internal sealed class GitHubUpdateChecker : IUpdateChecker, IDisposable
     private readonly HttpClient _http;
     private readonly ILogger<GitHubUpdateChecker> _logger;
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000",
+        Justification = "Ownership passes to the HttpClient, which disposes its handler.")]
     public GitHubUpdateChecker(ILogger<GitHubUpdateChecker> logger)
         : this(logger, new HttpClientHandler()) { }
 

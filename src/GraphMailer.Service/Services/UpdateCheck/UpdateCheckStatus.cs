@@ -24,6 +24,8 @@ public sealed class UpdateCheckStatus
     /// <summary>Latest version an admin e-mail was sent for — one mail per new release.</summary>
     public string? LastNotifiedVersion { get; set; }
 
+    private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
+
     public static string StatusFilePath => Path.Combine(AppPaths.DataDir, "update-status.json");
 
     /// <summary>Presence of this file asks the update check service for an immediate check.</summary>
@@ -32,7 +34,7 @@ public sealed class UpdateCheckStatus
     public void Save(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(path, JsonSerializer.Serialize(this, WriteOptions));
     }
 
     /// <summary>Returns null when the file is missing, mid-write or corrupt.</summary>

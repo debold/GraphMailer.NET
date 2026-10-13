@@ -24,7 +24,6 @@ internal sealed class SmtpMessageStore : MessageStore
 {
     private readonly MailQueueWriter _queue;
     private readonly IpBlockingService _ipBlocking;
-    private readonly IOptionsMonitor<SmtpAccessOptions> _access;
     private readonly IMetricsService _metrics;
     private readonly IMailContentScanner _scanner;
     private readonly IOptionsMonitor<MalwareScanOptions> _scanOptions;
@@ -36,7 +35,6 @@ internal sealed class SmtpMessageStore : MessageStore
     public SmtpMessageStore(
         MailQueueWriter queue,
         IpBlockingService ipBlocking,
-        IOptionsMonitor<SmtpAccessOptions> access,
         IMetricsService metrics,
         IMailContentScanner scanner,
         IOptionsMonitor<MalwareScanOptions> scanOptions,
@@ -47,7 +45,6 @@ internal sealed class SmtpMessageStore : MessageStore
     {
         _queue = queue;
         _ipBlocking = ipBlocking;
-        _access = access;
         _metrics = metrics;
         _scanner = scanner;
         _scanOptions = scanOptions;
@@ -120,7 +117,7 @@ internal sealed class SmtpMessageStore : MessageStore
         try
         {
             meta = await _queue.WriteAsync(
-                from, recipients, remoteIp, emlBytes, cancellationToken, messageId: messageId);
+                from, recipients, remoteIp, emlBytes, messageId: messageId, ct: cancellationToken);
             sw.Stop();
         }
         catch (Exception ex)
@@ -286,7 +283,7 @@ internal sealed class SmtpMessageStore : MessageStore
             Mode = MessageRuleMode.Enforce.ToString(),
             Blocked = true,
             DetectedIn = "message",
-        }, ct, result.Eml);
+        }, result.Eml, ct);
     }
 
     /// <summary>Statistics must never change the SMTP outcome — swallow all errors.</summary>
@@ -419,7 +416,7 @@ internal sealed class SmtpMessageStore : MessageStore
             PartSizeBytes = result.PartSizeBytes,
             PartSha256 = result.Sha256,
             AmsiResult = result.ResultCode,
-        }, ct);
+        }, ct: ct);
 
         _ = _notifications.NotifyMalwareDetectedAsync(
             from, recipients, remoteIp, info.Subject, result.ThreatLocation ?? string.Empty,

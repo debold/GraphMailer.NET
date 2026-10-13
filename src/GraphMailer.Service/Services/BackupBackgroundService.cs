@@ -33,6 +33,8 @@ internal sealed class BackupBackgroundService : BackgroundService
     // Hot reload: an options change wakes the sleeping loop and forces a fresh re-schedule
     // so a changed time/frequency takes effect without a service restart.
     private volatile bool _configChanged;
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2213",
+        Justification = "Borrowed reference: SleepAsync owns the source and disposes it with 'using'.")]
     private volatile CancellationTokenSource? _wakeCts;
 
     internal enum TickAction { Idle, Wait, Run }

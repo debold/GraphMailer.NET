@@ -45,6 +45,8 @@ namespace GraphMailer.Service.Infrastructure.Metrics;
 ///     value        REAL  NOT NULL
 ///     recorded_at  TEXT  NOT NULL      – ISO 8601 UTC
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001",
+    Justification = "The only disposable field is a SemaphoreSlim that never allocates a wait handle; disposing it would only add ObjectDisposedException races during shutdown.")]
 internal sealed class MetricsService : IMetricsService
 {
     private readonly string _dbPath;

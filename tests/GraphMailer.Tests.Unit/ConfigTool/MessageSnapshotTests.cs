@@ -165,7 +165,7 @@ public sealed class MessageSnapshotTests
         var message = Message();
         var before = Capture(message);
 
-        ((TextPart)message.Body).Text = new string('x', 500);
+        message.Body.Should().BeOfType<TextPart>().Subject.Text = new string('x', 500);
         var change = MessageSnapshot.Diff(before, Capture(message)).Should().ContainSingle().Subject;
 
         change.Field.Should().Be("Text body");

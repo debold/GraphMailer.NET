@@ -1083,7 +1083,7 @@ public partial class MetricsPage : UserControl
             new SolidColorBrush(color));
     }
 
-    private long CountQueueFiles()
+    private static long CountQueueFiles()
     {
         try
         {

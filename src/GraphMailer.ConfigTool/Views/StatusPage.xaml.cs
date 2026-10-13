@@ -922,8 +922,12 @@ public partial class StatusPage : UserControl
             const int AF_INET = 2;
             const int tableClass = 3;
 
+            // Size probe: with no buffer the call is expected to fail (ERROR_INSUFFICIENT_BUFFER)
+            // and only fills bufLen. The real call below checks its result.
             int bufLen = 0;
-            NativeMethods.GetExtendedTcpTable(IntPtr.Zero, ref bufLen, false, AF_INET, tableClass, 0);
+            _ = NativeMethods.GetExtendedTcpTable(IntPtr.Zero, ref bufLen, false, AF_INET, tableClass, 0);
+            if (bufLen <= 0)
+                return result;
 
             var buf = System.Runtime.InteropServices.Marshal.AllocHGlobal(bufLen);
             try

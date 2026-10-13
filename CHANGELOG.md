@@ -14,6 +14,11 @@
   `certlm.msc` → *Personal* → *Certificates*, right-click *GraphMailer SMTP* → *All Tasks* →
   *Manage Private Keys*, and remove the NETWORK SERVICE entry.
 
+- **The ConfigTool loads `user32.dll` only from System32.** Its three window-handling calls
+  (bring to front, restore, minimised check) did not pin the DLL search path. Every other
+  native call in GraphMailer already did. The ConfigTool runs elevated, so a `user32.dll`
+  planted in a writable folder on the search path must never be loaded.
+
 ### Fixed
 
 - **Statistics work when the data folder's path contains a semicolon.** A semicolon is allowed

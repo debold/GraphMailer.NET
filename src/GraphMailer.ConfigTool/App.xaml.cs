@@ -11,6 +11,8 @@ using GraphMailer.Service.Infrastructure.Encryption;
 
 namespace GraphMailer.ConfigTool;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001",
+    Justification = "WPF owns the Application lifetime; the single-instance guard is disposed in OnExit.")]
 public partial class App : Application
 {
     private static readonly string CrashLogPath = ResolveCrashLogPath();
@@ -154,15 +156,20 @@ public partial class App : Application
     {
         public const int SW_RESTORE = 9;
 
+        // Pinned to System32 like every other P/Invoke in the solution: the ConfigTool runs
+        // elevated, so a user32.dll planted in a writable search-path folder must never load.
         [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetForegroundWindow(IntPtr hWnd);
 
         [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
         [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool IsIconic(IntPtr hWnd);
     }

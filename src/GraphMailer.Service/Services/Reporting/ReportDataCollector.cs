@@ -300,7 +300,7 @@ internal sealed class ReportDataCollector
         };
     }
 
-    private long? LastSentAgoMinutes(SqliteConnection conn, DateTimeOffset now)
+    private static long? LastSentAgoMinutes(SqliteConnection conn, DateTimeOffset now)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT MAX(occurred_at) FROM email_events WHERE event_type='sent'";

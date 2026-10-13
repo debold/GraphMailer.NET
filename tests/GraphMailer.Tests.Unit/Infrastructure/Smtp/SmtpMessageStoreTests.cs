@@ -122,7 +122,6 @@ public sealed class SmtpMessageStoreTests : IDisposable
         return new SmtpMessageStore(
             queue,
             ipBlocking,
-            Monitor(access ?? new SmtpAccessOptions()),
             metrics ?? Substitute.For<IMetricsService>(),
             scanner ?? NoScanner,
             Monitor(scanOptions),
@@ -215,7 +214,7 @@ public sealed class SmtpMessageStoreTests : IDisposable
             Monitor(new MailQueueOptions { MailDir = _tempDir }),
             NullLogger<MailQueueWriter>.Instance);
         var sut = new SmtpMessageStore(
-            queue, ipBlocking, Monitor(new SmtpAccessOptions()),
+            queue, ipBlocking,
             Substitute.For<IMetricsService>(), NoScanner, Monitor(new MalwareScanOptions()),
             CreateRecorder(), Substitute.For<IAdminNotificationService>(),
             CreateRuleProcessor(),

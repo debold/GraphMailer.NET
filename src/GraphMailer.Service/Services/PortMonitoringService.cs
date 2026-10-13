@@ -114,13 +114,14 @@ internal sealed class PortMonitoringService : BackgroundService
         }
         else
         {
-            if (!_outageSince.ContainsKey(port))
+            if (!_outageSince.TryGetValue(port, out var outageStart))
             {
-                _outageSince[port] = DateTime.UtcNow;
+                outageStart = DateTime.UtcNow;
+                _outageSince[port] = outageStart;
                 _logger.LogWarning("[PortMonitor] Port {Port} unreachable – outage started", port);
             }
 
-            var outageDuration = DateTime.UtcNow - _outageSince[port];
+            var outageDuration = DateTime.UtcNow - outageStart;
             _logger.LogDebug("[PortMonitor] Port {Port} still down – {Min:F0} min", port, outageDuration.TotalMinutes);
 
             // Below the threshold the port is down but not yet alert-worthy: neither raise nor

@@ -76,8 +76,11 @@ jobs:
 
       # -c Debug explicitly: without it the OutputPath redirect in src/Directory.Build.props
       # does not apply (see CLAUDE.md, "Build, run, versioning").
+      # -warnaserror keeps the build at zero warnings: any new compiler or analyzer warning
+      # fails CI. Local builds keep warnings as warnings so they never block work in progress.
+      # To silence a rule, fix the code or switch the rule off with a reason in .editorconfig.
       - name: Build
-        run: dotnet build GraphMailer.sln -c Debug --no-restore
+        run: dotnet build GraphMailer.sln -c Debug --no-restore -warnaserror
 
       - name: Unit tests
         run: dotnet test tests/GraphMailer.Tests.Unit -c Debug --no-build --logger trx --results-directory TestResults/Unit

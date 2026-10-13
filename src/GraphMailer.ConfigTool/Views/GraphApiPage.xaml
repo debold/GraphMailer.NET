@@ -28,15 +28,6 @@
                                 HorizontalAlignment="Left"
                                 Click="RunSetup_Click"/>
 
-                        <!-- Status / progress -->
-                        <Border x:Name="SetupStatusBox"
-                                Style="{StaticResource InfoBox}"
-                                Margin="0,12,0,0"
-                                Visibility="Collapsed">
-                            <TextBlock x:Name="SetupStatusText"
-                                       Style="{StaticResource HintText}"/>
-                        </Border>
-
                         <!-- Registration state. Shown for every configured registration, not just
                              one the wizard created, because a permission gap hits a hand-made
                              registration just as hard. The permission half is filled in by an

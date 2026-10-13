@@ -34,7 +34,7 @@ public sealed class SendAsScriptGeneratorTests
         var script = All();
 
         script.Should().Contain("-AccessRights SendAs");
-        script.Should().NotContain("FullAccess", "SendAs alone is enough when sending via /users/{relay}");
+        script.Should().NotContain("FullAccess", "SendAs alone is enough when sending via /users/{{relay}}");
     }
 
     [Fact]

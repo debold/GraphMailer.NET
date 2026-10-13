@@ -91,7 +91,7 @@ public partial class RuleTesterWindow : Window
 
         TestPort.ItemsSource = ports;
         TestPort.IsEnabled = ports.Count > 0;
-        TestPort.SelectedItem = ports.FirstOrDefault();
+        TestPort.SelectedItem = ports.Count > 0 ? ports[0] : null;
 
         if (ports.Count == 0)
             TransportHint.Text = "No listener is configured, so the test assumes port 25. "
@@ -458,7 +458,7 @@ public partial class RuleTesterWindow : Window
         }
 
         // Re-parsed on every run, so a second test against a loaded file behaves like the first.
-        var message = _loadedEml is { } eml
+        using var message = _loadedEml is { } eml
             ? MimeMessage.Load(new MemoryStream(eml, writable: false))
             : SampleMessageBuilder.Build(
                 TestFrom.Text.Trim(),

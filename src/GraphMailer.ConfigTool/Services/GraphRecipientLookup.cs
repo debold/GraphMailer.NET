@@ -31,7 +31,7 @@ internal static class GraphRecipientLookup
         string? certThumbprint,
         CancellationToken ct)
     {
-        var graph = await BuildClientAsync(tenantId, clientId, clientSecret, certThumbprint, ct);
+        using var graph = await BuildClientAsync(tenantId, clientId, clientSecret, certThumbprint, ct);
 
         var page = await graph.Groups.GetAsync(rc =>
         {

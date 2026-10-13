@@ -283,11 +283,17 @@ internal sealed class SmtpRelayService : BackgroundService
     /// TLS 1.3 reaches Schannel with Windows 11 / Server 2022 (build 20348); older builds are
     /// offered 1.2 only rather than a protocol flag their Schannel does not know.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5397",
+        Justification = "False positive: the analyzer reads the Windows build check (10, 0, 20348) as protocol versions.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5398",
+        Justification = "Deliberate pin: TLS 1.2 floor + 1.3, so a legacy Schannel config cannot lower it (see summary).")]
     internal static SslProtocols EffectiveSslProtocols() =>
         EffectiveSslProtocols(OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348));
 
     /// <param name="tls13Supported">Split out from the OS probe so both branches are testable.</param>
     /// <inheritdoc cref="EffectiveSslProtocols()"/>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5398",
+        Justification = "Deliberate pin: TLS 1.2 floor + 1.3, so a legacy Schannel config cannot lower it (see summary).")]
     internal static SslProtocols EffectiveSslProtocols(bool tls13Supported) =>
         tls13Supported
             ? SslProtocols.Tls12 | SslProtocols.Tls13

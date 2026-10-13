@@ -89,9 +89,9 @@ internal sealed class MailQueueWriter
         IReadOnlyList<string> recipients,
         string clientIp,
         ReadOnlyMemory<byte> emlData,
-        CancellationToken ct = default,
         bool isNotification = false,
-        string? messageId = null)
+        string? messageId = null,
+        CancellationToken ct = default)
     {
         messageId ??= Guid.NewGuid().ToString("N");
         var info = ExtractMessageInfo(emlData, recipients);

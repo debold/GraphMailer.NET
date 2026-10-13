@@ -16,6 +16,8 @@ using GraphMailer.Service.Services.UpdateCheck;
 
 namespace GraphMailer.ConfigTool;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001",
+    Justification = "WPF owns the Window lifetime; the config file watcher is disposed when the window closes.")]
 public partial class MainWindow : Window
 {
     private Border? _activeNavItem;

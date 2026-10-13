@@ -78,7 +78,8 @@ internal static class ServiceControl
         if (state == "RUNNING")
         {
             var pidMatch = PidRegex.Match(output);
-            if (pidMatch.Success) uint.TryParse(pidMatch.Groups[1].Value, out pid);
+            if (pidMatch.Success && uint.TryParse(pidMatch.Groups[1].Value, out var parsedPid))
+                pid = parsedPid;
         }
 
         // "Unknown" still counts as existing: the query reached a service entry,

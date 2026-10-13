@@ -34,8 +34,8 @@ internal sealed class EncryptedJsonConfigurationProvider : JsonConfigurationProv
     {
         var encryptedKeys = Data
             .Where(kv => kv.Value is not null
-                      && kv.Value.StartsWith(EncPrefix)
-                      && kv.Value.EndsWith(EncSuffix))
+                      && kv.Value.StartsWith(EncPrefix, StringComparison.Ordinal)
+                      && kv.Value.EndsWith(EncSuffix, StringComparison.Ordinal))
             .Select(kv => kv.Key)
             .ToList();
 

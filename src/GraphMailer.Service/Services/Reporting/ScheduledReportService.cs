@@ -24,6 +24,8 @@ internal sealed class ScheduledReportService : BackgroundService
     private DateTimeOffset? _nextRun;
     private bool _pausedWarned;
     private volatile bool _configChanged;
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2213",
+        Justification = "Borrowed reference: SleepAsync owns the source and disposes it with 'using'.")]
     private volatile CancellationTokenSource? _wakeCts;
 
     internal enum TickAction { Idle, Wait, Run }

@@ -19,6 +19,8 @@ namespace GraphMailer.Tests.Integration.Smtp;
 [Collection("SmtpIntegration")]
 public class SmtpFidelityTests
 {
+    private static readonly JsonSerializerOptions MetaJson = new() { PropertyNameCaseInsensitive = true };
+
     /// <summary>
     /// Delivers <paramref name="message"/> over a real SMTP session, optionally with envelope
     /// recipients that differ from the To:/Cc: headers, then returns the queued message
@@ -46,8 +48,7 @@ public class SmtpFidelityTests
         var metaPath = Path.ChangeExtension(emlPath, null) + ".meta.json";
 
         var meta = JsonSerializer.Deserialize<MailMetadata>(
-            await File.ReadAllTextAsync(metaPath),
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+            await File.ReadAllTextAsync(metaPath), MetaJson)!;
 
         // meta.To is what the client actually sent as RCPT TO — the envelope, not the headers.
         var queued = await MimeMessage.LoadAsync(emlPath);

@@ -56,4 +56,26 @@
     <WarningsAsErrors>$(WarningsAsErrors);NU1903;NU1904</WarningsAsErrors>
   </PropertyGroup>
 
+  <!--
+    Code analysis. The SDK default ("Default" mode) enables only a handful of rules, so the
+    build stayed quiet while real findings went unreported. The categories below were chosen
+    from a measured run (2026-10-13): security and reliability in full, the rest at Microsoft's
+    "Recommended" level. Rules that only produced noise for this codebase are switched off,
+    each with its reason, in the root .editorconfig — tune there, not here.
+
+    EnforceCodeStyleInBuild lets the IDE rules for unused code (IDE0051/IDE0052) run during the
+    build, so they show up in CI, not only in the editor.
+  -->
+  <PropertyGroup>
+    <AnalysisModeSecurity>All</AnalysisModeSecurity>
+    <AnalysisModeReliability>All</AnalysisModeReliability>
+    <AnalysisModeUsage>All</AnalysisModeUsage>
+    <AnalysisModeDesign>Recommended</AnalysisModeDesign>
+    <AnalysisModeGlobalization>Recommended</AnalysisModeGlobalization>
+    <AnalysisModePerformance>Recommended</AnalysisModePerformance>
+    <AnalysisModeMaintainability>Recommended</AnalysisModeMaintainability>
+    <AnalysisModeInteroperability>Recommended</AnalysisModeInteroperability>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
 </Project>

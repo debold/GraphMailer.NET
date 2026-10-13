@@ -345,7 +345,7 @@ public class SmtpFilterTests
 
         await writer.WriteLineAsync("EHLO test.local");
         string? line;
-        do { line = await reader.ReadLineAsync(); } while (line is not null && line.StartsWith("250-"));
+        do { line = await reader.ReadLineAsync(); } while (line is not null && line.StartsWith("250-", StringComparison.Ordinal));
         line.Should().StartWith("250");
 
         await writer.WriteLineAsync("MAIL FROM:<>");

@@ -20,6 +20,8 @@ namespace GraphMailer.Service.Infrastructure.Security;
 /// - Writing is serialised through a <see cref="SemaphoreSlim"/> to avoid concurrent edits
 ///   when two captures arrive at nearly the same time (unlikely but possible in theory).
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001",
+    Justification = "The only disposable field is a SemaphoreSlim that never allocates a wait handle; disposing it would only add ObjectDisposedException races during shutdown.")]
 internal sealed class PasswordCaptureService : IPasswordCaptureService
 {
     private readonly IOptionsMonitor<SmtpAccessOptions> _access;

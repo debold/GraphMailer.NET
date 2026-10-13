@@ -347,11 +347,9 @@ public partial class GraphApiPage : UserControl
             _markDirty();
         }
 
-        // Always refresh the display panel and hide the setup-prompt box.
-        // These are display-only TextBlocks / visibility toggles — no change events.
+        // Always refresh the display panel — display-only TextBlocks, no change events.
         ShowSetupInfo(AppRegistrationName, result.TenantId, result.ClientId,
                       result.CertSubject, result.CertThumbprint, result.CertNotAfter);
-        SetupStatusBox.Visibility = Visibility.Collapsed;
 
         // The wizard just granted whatever was missing — re-check so the box turns green now
         // instead of after the next config reload.
@@ -474,12 +472,6 @@ public partial class GraphApiPage : UserControl
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────────
-
-    private void ShowStatus(string message)
-    {
-        SetupStatusText.Text = message;
-        SetupStatusBox.Visibility = Visibility.Visible;
-    }
 
     private static string FormatThumbprint(string? thumb) =>
         thumb?.Length == 40

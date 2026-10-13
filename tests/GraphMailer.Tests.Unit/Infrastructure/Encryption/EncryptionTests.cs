@@ -88,5 +88,6 @@ public class EncryptionTests : IDisposable
         _sp.Dispose();
         if (Directory.Exists(_keysDir))
             Directory.Delete(_keysDir, recursive: true);
+        GC.SuppressFinalize(this);
     }
 }

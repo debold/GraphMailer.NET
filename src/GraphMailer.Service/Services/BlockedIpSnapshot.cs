@@ -29,6 +29,8 @@ public sealed class BlockedIpSnapshot
     public DateTime WrittenAtUtc { get; set; }
     public List<BlockedIpEntry> Entries { get; set; } = [];
 
+    private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
+
     public static string FilePath => Path.Combine(AppPaths.DataDir, "blocked-ips.json");
 
     public void Save(string path)
@@ -38,7 +40,7 @@ public sealed class BlockedIpSnapshot
 
         // Temp + move: the ConfigTool polls this file and must never read a half-written one
         var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(temp, JsonSerializer.Serialize(this, WriteOptions));
         File.Move(temp, path, overwrite: true);
     }
 

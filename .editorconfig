@@ -1,0 +1,72 @@
+# Analyzer configuration for GraphMailer.NET.
+#
+# Which rule *categories* are active is set in Directory.Build.props (AnalysisMode*). This file
+# switches off individual rules that only produced noise for this codebase, each with its reason,
+# and turns on the rules for unused code. It deliberately contains no formatting rules.
+#
+# Before switching a rule off, check whether its findings are real. A finding that is wrong in one
+# place is suppressed at that place with [SuppressMessage(..., Justification = "...")], not here.
+
+root = true
+
+[*.cs]
+
+# --- Unused code -------------------------------------------------------------------------------
+dotnet_diagnostic.IDE0051.severity = warning   # private member is never used
+dotnet_diagnostic.IDE0052.severity = warning   # private member is assigned but never read
+
+# --- Switched off: noise for this codebase ------------------------------------------------------
+
+# ConfigureAwait(false): the service has no SynchronizationContext, and the WPF ConfigTool needs
+# the UI context after most awaits. Adding it everywhere would be churn, and wrong in the UI.
+dotnet_diagnostic.CA2007.severity = none
+
+# LoggerMessage delegates / guarding expensive log arguments: a performance optimisation for
+# hot logging paths. At a relay's mail volume the gain is not measurable, and the structured
+# templates (CLAUDE.md, "Logging conventions") stay readable as they are.
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1873.severity = none
+
+# Culture-specific formatting: hits are Serilog sink set-up and UI/report text meant to follow the
+# server's culture. Culture-sensitive *comparisons* stay covered by CA1309/CA1310.
+dotnet_diagnostic.CA1305.severity = none
+
+# Explicit default initialisers (e.g. "Enabled = false") document the default in the *Options and
+# config classes on purpose.
+dotnet_diagnostic.CA1805.severity = none
+
+# Settable collection properties: the *Options and ConfigDocument classes are bound and written by
+# IConfiguration / System.Text.Json, which need the setters.
+dotnet_diagnostic.CA2227.severity = none
+
+# Uri overloads instead of strings: Graph and GitHub endpoints are built as strings throughout and
+# passed to APIs that take strings.
+dotnet_diagnostic.CA2234.severity = none
+
+# "Use the concrete type for performance": micro-optimisation that would leak implementation types
+# into signatures.
+dotnet_diagnostic.CA1859.severity = none
+
+# SQL from non-literal strings: every query in this codebase is a constant with $parameters; the
+# only interpolations are compile-time constants (table names, LIMIT). The rule cannot tell the
+# difference and flags every helper that takes the SQL as a parameter. Real SQL-injection data
+# flow is checked by CodeQL (cs/sql-injection) on every push.
+dotnet_diagnostic.CA2100.severity = none
+
+# --- Tests -------------------------------------------------------------------------------------
+[tests/**.cs]
+
+# Tests create MimeMessages, clients and streams freely; the test host reclaims them.
+dotnet_diagnostic.CA2000.severity = none
+
+# Tests deliberately use weak/old TLS settings and accept-all certificate callbacks to check that
+# the relay rejects or handles them, and pin protocol versions to make assertions deterministic.
+dotnet_diagnostic.CA5359.severity = none
+dotnet_diagnostic.CA5397.severity = none
+dotnet_diagnostic.CA5398.severity = none
+
+# Performance/design polish that does not matter in test code: inline expected-value arrays in
+# assertions, static-able helpers, unsealed nested test records.
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.CA1822.severity = none
+dotnet_diagnostic.CA1852.severity = none

@@ -86,6 +86,8 @@ internal interface ITenantSenderDirectory
 ///     never hangs on a slow Graph call.
 /// Fail-open: any Graph failure yields Indeterminate; the caller decides (FailClosed).
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001",
+    Justification = "The only disposable field is a SemaphoreSlim that never allocates a wait handle; disposing it would only add ObjectDisposedException races during shutdown.")]
 internal sealed class TenantSenderDirectory : ITenantSenderDirectory
 {
     private readonly IGraphDirectoryGateway _gateway;

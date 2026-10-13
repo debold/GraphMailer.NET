@@ -36,7 +36,7 @@ internal sealed record TenantUser(
     /// mail, which would be a misleading thing to show as an address.
     /// </summary>
     internal string? PrimaryOrFirstAddress()
-        => SmtpAddresses.FirstOrDefault() ?? UserPrincipalName;
+        => SmtpAddresses.Count > 0 ? SmtpAddresses[0] : UserPrincipalName;
 }
 
 /// <summary>

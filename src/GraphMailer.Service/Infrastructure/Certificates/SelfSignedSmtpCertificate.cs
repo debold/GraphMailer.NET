@@ -32,6 +32,8 @@ internal static class SelfSignedSmtpCertificate
     /// no longer done.
     /// </para>
     /// </remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5380",
+        Justification = "Deliberate: local SMTP clients must trust the self-signed listener cert. Only the public key is added, and the cert carries a critical BasicConstraints CA=false, so it cannot vouch for any other certificate.")]
     internal static string CreateAndInstall()
     {
         // GraphMailer ships win-x64 only; the LocalMachine store and FriendlyName are

@@ -98,7 +98,8 @@ internal static class AmsiSelfTest
         }
 
         using var buffer = new MemoryStream();
-        BuildProbeMessage().WriteTo(buffer, ct);
+        using (var probe = BuildProbeMessage())
+            probe.WriteTo(buffer, ct);
 
         return Interpret(await scanner.ScanAsync(buffer.ToArray(), "amsi-selftest", ct));
     }

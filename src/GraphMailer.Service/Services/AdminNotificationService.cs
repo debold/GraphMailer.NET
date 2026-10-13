@@ -556,7 +556,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
     {
         try
         {
-            var mime = new MimeKit.MimeMessage();
+            using var mime = new MimeKit.MimeMessage();
             mime.From.Add(MimeKit.MailboxAddress.Parse(from));
             foreach (var addr in to)
                 mime.To.Add(MimeKit.MailboxAddress.Parse(addr));
@@ -568,7 +568,7 @@ internal sealed class AdminNotificationService : IAdminNotificationService, IDis
             using var ms = new MemoryStream();
             await mime.WriteToAsync(ms, ct);
 
-            await _queueWriter.WriteAsync(from, to, "internal", ms.ToArray(), ct, isNotification: true);
+            await _queueWriter.WriteAsync(from, to, "internal", ms.ToArray(), isNotification: true, ct: ct);
         }
         catch (Exception ex)
         {
