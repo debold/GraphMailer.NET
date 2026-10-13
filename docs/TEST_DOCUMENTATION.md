@@ -5,6 +5,23 @@
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
 
+## Code coverage
+
+`.\tools\coverage.ps1` runs the unit and integration suites with the coverlet collector and
+prints line and branch coverage per assembly and per folder, plus the files with the most
+uncovered lines. `-IncludeLive` adds the live suite; without it the Graph path reads lower than
+it is. Results go to `C:\Build\GraphMailer.NET\Coverage\` (`summary.txt` + Cobertura XML).
+WPF code-behind is left out of the gap list (`-IncludeUi` lists it) because it is not
+realistically unit-testable.
+
+Coverage is a tool for finding untested code, not a quality score. There is no threshold that
+fails a build.
+
+> **Release rule**: run `.\tools\coverage.ps1 -IncludeLive` before every release and review the
+> gap list. Untested security or decision logic (authentication, encryption, IP blocking, retry and
+> give-up decisions, option validators, message rules) gets its tests before the release is
+> published. Other gaps are a judgement call and are noted rather than blocking.
+
 ---
 
 ## Unit Tests — `GraphMailer.Tests.Unit`
