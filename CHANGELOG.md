@@ -11,6 +11,10 @@
   `metrics.db` keeps its format and migrations. The installer already ships the newest .NET 10
   Desktop Runtime.
 
+- **MimeKit moved to 4.18.1**, which fixes integer overflows when reading corrupt TNEF content
+  (`winmail.dat` attachments). MimeKit parses every message GraphMailer receives. Message handling
+  is unchanged.
+
 ### Fixed
 
 - **GraphMailer now retries when Microsoft 365 says to.** When a rejection carried a `Retry-After`
