@@ -43,6 +43,13 @@
   out of the queue and deletes expired `mail\blocked\` records, which the Malware Scan and Message
   Rules pages now point out.
 
+- **Dependency round: all packages are current again.** Besides the two security updates above,
+  the runtime packages moved to their latest versions: Microsoft Graph SDK 6.8.0, MSAL 4.91.0,
+  SkiaSharp 4.153.1 and Application Insights 3.2.0. The test tooling and the help renderer's
+  Markdig moved too. Application Insights also brings a newer Azure.Core (1.63.0), which the
+  Graph token sign-in uses as well. No package in the tree has a known vulnerability, and
+  behaviour is unchanged.
+
 ## 1.5.1.1094 — 2026-09-22
 
 ### Fixed
