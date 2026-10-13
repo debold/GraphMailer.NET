@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
+using GraphMailer.Service.Infrastructure.Metrics;
 
 namespace GraphMailer.ConfigTool.Helpers;
 
@@ -31,7 +32,7 @@ internal static class MessageRuleStatsReader
 
         try
         {
-            using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
+            using var conn = new SqliteConnection(MetricsDatabase.ConnectionString(dbPath, readOnly: true));
             conn.Open();
             return Read(conn, sinceUtc);
         }

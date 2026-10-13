@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 2052 tests** (1962 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-10-12
+**Total: 2056 tests** (1966 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-10-13
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -2145,6 +2145,20 @@ comes from actual `RCPT TO` commands rather than a literal in the test. No tenan
 | `RecordRuleHit_RuleNameIsStoredVerbatimAndNotInterpreted` | Rule named with an SQL fragment | Stored verbatim — rule names are operator-authored and always travel as a bound parameter |
 | `RecordRuleHit_DoesNotTouchTheRejectionStatistics` | One rule hit with outcome `rejected` | `smtp_rejection_stats` stays empty — the store records the rejection separately, so the counters cannot double up |
 | `CleanupOldRecords_PrunesExpiredRuleHits` | Rule hit aged past the retention window | Row deleted by the retention sweep |
+
+---
+
+### MetricsDatabase (`Infrastructure/Metrics/MetricsDatabaseTests.cs`)
+
+A semicolon is legal in a Windows folder name, and the data directory can be moved
+(`GRAPHMAILER_DATA_DIR`, `Metrics:BasePath`). The fixture's temp folder contains one on purpose.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `ConnectionString_PathWithSemicolon_KeepsTheWholePathAsDataSource` | Path with a `;` in a folder name | Parsed `DataSource` equals the full path — an interpolated `Data Source=…` would cut it at the semicolon |
+| `ConnectionString_Default_OpensReadWriteCreate` | No `readOnly` argument | Mode `ReadWriteCreate` (the service creates the file on first use) |
+| `ConnectionString_ReadOnly_OpensReadOnly` | `readOnly: true` | Mode `ReadOnly` (statistics pages and reports never modify the file) |
+| `MetricsService_BasePathWithSemicolon_WritesEventsThatReadOnlyConnectionsCanRead` | `MetricsService` with a `BasePath` containing `;`, one received event | The event is written and read back through a read-only connection |
 
 ---
 

@@ -589,7 +589,7 @@ internal sealed class MetricsService : IMetricsService
 
     private SqliteConnection OpenConnection()
     {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
+        var conn = new SqliteConnection(MetricsDatabase.ConnectionString(_dbPath));
         conn.Open();
         return conn;
     }

@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using Microsoft.Data.Sqlite;
 using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Infrastructure;
+using GraphMailer.Service.Infrastructure.Metrics;
 using GraphMailer.Service.Configuration;
 using WpfShapes = System.Windows.Shapes;
 
@@ -191,7 +192,7 @@ public partial class MetricsPage : UserControl
             var cutoff = DateTime.UtcNow.AddDays(-_rangeDays).ToString("O");
             var cutoffBucket = DateTime.UtcNow.AddDays(-_rangeDays).ToString("yyyy-MM-dd'T'HH");
 
-            using var conn = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
+            using var conn = new SqliteConnection(MetricsDatabase.ConnectionString(DbPath, readOnly: true));
             conn.Open();
 
             LoadOverview(conn, cutoff);
@@ -223,7 +224,7 @@ public partial class MetricsPage : UserControl
 
         try
         {
-            using var conn = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
+            using var conn = new SqliteConnection(MetricsDatabase.ConnectionString(DbPath, readOnly: true));
             conn.Open();
             LoadActivity(conn, DateTime.UtcNow.AddDays(-_rangeDays).ToString("O"));
         }

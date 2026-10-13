@@ -5,6 +5,7 @@ using System.Text.Json;
 using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure;
 using GraphMailer.Service.Infrastructure.Encryption;
+using GraphMailer.Service.Infrastructure.Metrics;
 using GraphMailer.Service.Infrastructure.Security.Amsi;
 using GraphMailer.Service.Services.Advisor;
 using GraphMailer.Service.Services.UpdateCheck;
@@ -148,7 +149,7 @@ internal sealed class ReportDataCollector
 
         try
         {
-            using var conn = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
+            using var conn = new SqliteConnection(MetricsDatabase.ConnectionString(DbPath, readOnly: true));
             conn.Open();
 
             var startIso = start.UtcDateTime.ToString("O");
@@ -324,7 +325,7 @@ internal sealed class ReportDataCollector
 
         try
         {
-            using var conn = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
+            using var conn = new SqliteConnection(MetricsDatabase.ConnectionString(DbPath, readOnly: true));
             conn.Open();
 
             using var cmd = conn.CreateCommand();
@@ -699,7 +700,7 @@ internal sealed class ReportDataCollector
             if (!File.Exists(DbPath))
                 return new HealthItem("Graph API", HealthStatus.Unknown, "No delivery data");
 
-            using var conn = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
+            using var conn = new SqliteConnection(MetricsDatabase.ConnectionString(DbPath, readOnly: true));
             conn.Open();
             var ago = LastSentAgoMinutes(conn, now);
             if (ago is null)

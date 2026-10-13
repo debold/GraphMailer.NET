@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Statistics work when the data folder's path contains a semicolon.** A semicolon is allowed
+  in Windows folder names, and the data folder can be moved with `GRAPHMAILER_DATA_DIR` or
+  `Metrics:BasePath`. The connection string to `metrics.db` was assembled as plain text and was
+  cut off at the first semicolon. In that case the service recorded no metrics, the scheduled
+  report had no figures, and the ConfigTool's Metrics and Status pages stayed empty.
+
 ## 1.5.2.1112 — 2026-10-13
 
 ### Security

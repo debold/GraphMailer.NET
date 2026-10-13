@@ -17,6 +17,7 @@ using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure;
 using GraphMailer.Service.Infrastructure.Config;
 using GraphMailer.Service.Infrastructure.Encryption;
+using GraphMailer.Service.Infrastructure.Metrics;
 using GraphMailer.Service.Services;
 using GraphMailer.Service.Services.UpdateCheck;
 using static GraphMailer.ConfigTool.Helpers.ServiceControl;
@@ -75,7 +76,7 @@ public partial class StatusPage : UserControl
             {
                 try
                 {
-                    using var conn = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
+                    using var conn = new SqliteConnection(MetricsDatabase.ConnectionString(DbPath, readOnly: true));
                     conn.Open();
                     d = QueryScalar(conn, "SELECT COUNT(*) FROM email_events WHERE event_type='sent'   AND occurred_at >= $d", today);
                     f = QueryScalar(conn, "SELECT COUNT(*) FROM email_events WHERE event_type='failed' AND occurred_at >= $d", today);
@@ -1024,7 +1025,7 @@ public partial class StatusPage : UserControl
             if (!File.Exists(DbPath))
                 return new HealthRow("Graph API", "Unknown", "No delivery data", checkTime);
 
-            using var conn = new SqliteConnection($"Data Source={DbPath};Mode=ReadOnly");
+            using var conn = new SqliteConnection(MetricsDatabase.ConnectionString(DbPath, readOnly: true));
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT MAX(occurred_at) FROM email_events WHERE event_type='sent'";
