@@ -25,8 +25,8 @@
     <!-- All versions pinned (no floating "x.*") — see GraphMailer.Service.csproj.
          Shared packages must resolve identically in both projects (both publish
          into the same release folder). -->
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.12" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
     <!-- SQLitePCLRaw pin dropped alongside the one in GraphMailer.Service.csproj — see the
          comment there: Microsoft.Data.Sqlite 10.0.11 resolves 2.1.12 on its own. -->
     <PackageReference Include="Microsoft.Graph" Version="6.8.0" />

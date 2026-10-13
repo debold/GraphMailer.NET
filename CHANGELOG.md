@@ -4,6 +4,13 @@
 
 ### Security
 
+- **The `Microsoft.*` packages moved to the 10.0.13 servicing release.** It fixes four
+  denial-of-service vulnerabilities in the cryptography libraries that Data Protection and
+  MimeKit use: CVE-2026-84008 and CVE-2026-70162 (`System.Security.Cryptography.Pkcs`), and
+  CVE-2026-96958 and CVE-2026-96960 (`System.Security.Cryptography.Xml`). Microsoft published
+  them on 2026-10-13, after 1.5.2 was released. Behaviour is unchanged: existing `ENC[...]`
+  secrets still decrypt, and `metrics.db` keeps its format.
+
 - **The private key of the self-signed SMTP certificate is no longer readable by NETWORK
   SERVICE.** When GraphMailer created its self-signed certificate (on first start, or with the
   button on the SMTP page), it also gave the built-in NETWORK SERVICE account read access to the
