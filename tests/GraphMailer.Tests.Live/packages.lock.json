@@ -439,8 +439,8 @@
       },
       "Microsoft.Graph": {
         "type": "Transitive",
-        "resolved": "6.5.0",
-        "contentHash": "44GSZ/Tz2L3ABVec5wl4EinUsCRT/pYE/Msmz8m7Pp2AYTDj3iDjzDjVmcCRGazklrYA/Hens/IEcWWPTrvEwg==",
+        "resolved": "6.8.0",
+        "contentHash": "CBU0bRVkiYy8TLiGmGbIUTENCfPnXF+59FCZKCOATS+uN4RmoH350/2chiZheaWUWk22v7rOoWZaJWW4Qtbn7Q==",
         "dependencies": {
           "Microsoft.Graph.Core": "4.0.1"
         }
@@ -892,7 +892,7 @@
           "Microsoft.AspNetCore.DataProtection": "[10.0.12, )",
           "Microsoft.Data.Sqlite": "[10.0.12, )",
           "Microsoft.Extensions.Hosting.WindowsServices": "[10.0.12, )",
-          "Microsoft.Graph": "[6.5.0, )",
+          "Microsoft.Graph": "[6.8.0, )",
           "Microsoft.Identity.Client": "[4.88.0, )",
           "MimeKit": "[4.18.1, )",
           "Serilog": "[4.4.0, )",
