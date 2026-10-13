@@ -1,0 +1,99 @@
+# Build and test on every push to main, plus a weekly run that catches what changes without a
+# commit: new advisories against the pinned dependency graph, and runner image updates.
+#
+# The live suite is deliberately not run here — it needs M365 tenant credentials, which stay out
+# of this public repository (see CLAUDE.md / tests/GraphMailer.Tests.Live).
+#
+# Third-party actions are pinned to a full commit SHA (the tag in the comment is for humans):
+# a tag can be moved, a SHA cannot.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 1'   # Mondays 05:17 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest   # WPF ConfigTool and win-x64 service need Windows
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+        with:
+          # Full history: the build number is 1000 + git commit count
+          # (tools/Get-BuildFileVersion.ps1); a shallow clone would report a wrong version.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68   # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Show version
+        shell: pwsh
+        run: '& ./tools/Get-BuildFileVersion.ps1 | Format-List'
+
+      # Locked mode fails the run if the dependency graph no longer matches the committed
+      # packages.lock.json files instead of re-resolving it silently. Restore runs separately and
+      # the build uses --no-restore, so the locked-mode property does not reach the throwaway
+      # *_wpftmp project the WPF markup compiler creates (it has no lock file of its own).
+      - name: Restore (locked)
+        run: dotnet restore GraphMailer.sln -p:RestoreLockedMode=true
+
+      # NuGet audit during restore already fails on high/critical advisories (NU1903/NU1904).
+      # This check also fails on low and moderate ones, including transitive packages, which
+      # GitHub's dependency graph does not see (it only reads the direct references).
+      - name: Check for vulnerable packages
+        shell: pwsh
+        run: |
+          $json = dotnet list GraphMailer.sln package --vulnerable --include-transitive --format json | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "dotnet list package failed (exit $LASTEXITCODE)" }
+          $report = $json | ConvertFrom-Json
+          $affected = @($report.projects | Where-Object { $_.PSObject.Properties.Name -contains 'frameworks' })
+          if ($affected.Count -gt 0) {
+            dotnet list GraphMailer.sln package --vulnerable --include-transitive
+            throw "$($affected.Count) project(s) reference vulnerable packages."
+          }
+          Write-Host 'No vulnerable packages (direct or transitive).'
+
+      # -c Debug explicitly: without it the OutputPath redirect in src/Directory.Build.props
+      # does not apply (see CLAUDE.md, "Build, run, versioning").
+      - name: Build
+        run: dotnet build GraphMailer.sln -c Debug --no-restore
+
+      - name: Unit tests
+        run: dotnet test tests/GraphMailer.Tests.Unit -c Debug --no-build --logger trx --results-directory TestResults/Unit
+
+      - name: Integration tests
+        run: dotnet test tests/GraphMailer.Tests.Integration -c Debug --no-build --logger trx --results-directory TestResults/Integration
+
+      # Renders every help page and fails on broken relative links (Test-HelpLinks).
+      - name: Build help
+        shell: pwsh
+        run: ./build-help.ps1 -OutputDir "$env:RUNNER_TEMP/help"
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # v7.0.2
+        with:
+          name: test-results
+          path: TestResults/
+          retention-days: 14
