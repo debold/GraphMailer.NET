@@ -49,7 +49,7 @@
          one — two deps.json in the same flat publish folder disagreeing over a single shipped DLL,
          with the publish order deciding which MSAL the service actually loads. Same failure class
          as the Microsoft.Data.Sqlite mismatch above, on the library that fetches Graph tokens. -->
-    <PackageReference Include="Microsoft.Identity.Client" Version="4.88.0" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.91.0" />
     <!-- Transitive via Microsoft.Identity.Client.Extensions.Msal, which still asks for 4.5.0 —
          a 2018 build whose newest asset is netstandard2.0, so the DLL shipped next to a net10.0
          application was a framework generation behind. 10.0.11 carries a real net10.0 asset.
