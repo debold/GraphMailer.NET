@@ -58,21 +58,21 @@
          not changed in years. Only the Service resolves it — the ConfigTool never does, so
          there is no shared-folder version to keep in sync. Drop the pin once Extensions.Msal
          asks for a current version itself. -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
     <!-- Base SDK only (TelemetryClient) for the opt-in daily telemetry heartbeat —
          no ASP.NET/auto-collection packages. The 3.x line is a compatibility layer over
          OpenTelemetry, so it brings the OTel exporter and persistent-storage packages
          with it; that is expected, not accidental. -->
     <PackageReference Include="Microsoft.ApplicationInsights" Version="3.1.2" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <!-- No SQLitePCLRaw pin here any more: it existed because Microsoft.Data.Sqlite used to pull
          a bundled SQLite affected by CVE-2025-6965 (GHSA-2m69-gcr7-jv3q, memory corruption) —
          2.1.6 on the 8.0.x line, still 2.1.11 on 10.0.10. Microsoft.Data.Sqlite 10.0.11 depends
          on SQLitePCLRaw 2.1.12 itself, which is the condition the old pin named for its own
          removal. Should a future Microsoft.Data.Sqlite ever resolve below 2.1.12 again, put the
          pin back. -->
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
     <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
     <PackageReference Include="MimeKit" Version="4.17.0" />
     <!-- Explicit Serilog pin: keeps the shared DLL identical to the one the

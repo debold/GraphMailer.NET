@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Security
+
+- **The `Microsoft.*` packages moved to the 10.0.12 servicing release**, which fixes six .NET
+  security vulnerabilities (CVE-2026-69439, CVE-2026-71328, CVE-2026-69522, CVE-2026-69304,
+  CVE-2026-58649, CVE-2026-69806). This covers Data Protection, SQLite, the Windows Service host
+  and configuration loading. Behaviour is unchanged: existing `ENC[...]` secrets still decrypt, and
+  `metrics.db` keeps its format and migrations. The installer already ships the newest .NET 10
+  Desktop Runtime.
+
 ### Fixed
 
 - **GraphMailer now retries when Microsoft 365 says to.** When a rejection carried a `Retry-After`
