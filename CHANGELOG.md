@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Security
+
+- **The private key of the self-signed SMTP certificate is no longer readable by NETWORK
+  SERVICE.** When GraphMailer created its self-signed certificate (on first start, or with the
+  button on the SMTP page), it also gave the built-in NETWORK SERVICE account read access to the
+  private key. GraphMailer does not need that, because the service runs as LocalSystem. It let
+  any other service running as NETWORK SERVICE read the key of a certificate that this machine
+  trusts. New certificates keep the default key permissions (SYSTEM and Administrators).
+  Certificates created by earlier versions keep the extra access. To remove it, open
+  `certlm.msc` → *Personal* → *Certificates*, right-click *GraphMailer SMTP* → *All Tasks* →
+  *Manage Private Keys*, and remove the NETWORK SERVICE entry.
+
 ### Fixed
 
 - **Statistics work when the data folder's path contains a semicolon.** A semicolon is allowed

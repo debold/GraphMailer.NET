@@ -1,7 +1,5 @@
-using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Security.Principal;
 using GraphMailer.Service.Infrastructure.Config;
 
 namespace GraphMailer.Service.Infrastructure.Certificates;
@@ -13,28 +11,30 @@ namespace GraphMailer.Service.Infrastructure.Certificates;
 /// </summary>
 internal static class SelfSignedSmtpCertificate
 {
-    /// <summary>Result of <see cref="CreateAndInstall"/>.</summary>
-    /// <param name="Subject">The certificate's simple subject name (CN).</param>
-    /// <param name="AclGranted">
-    /// True when NETWORK SERVICE was granted read access to the private key container.
-    /// </param>
-    internal readonly record struct Result(string Subject, bool AclGranted);
-
     /// <summary>
     /// Creates a self-signed RSA-2048 certificate for SMTP Server Authentication
-    /// (CN = <see cref="DefaultConfiguration.SelfSignedSubjectName"/>), installs it into
+    /// (CN = <see cref="DefaultConfiguration.SelfSignedSubjectName"/>) and installs it into
     /// <c>LocalMachine\My</c> (with private key) and <c>LocalMachine\Root</c> (public key only,
-    /// so clients on this machine trust it), and tries to grant NETWORK SERVICE read access to
-    /// the private key container.
+    /// so clients on this machine trust it).
     /// </summary>
+    /// <returns>The certificate's simple subject name (CN).</returns>
     /// <remarks>
+    /// <para>
     /// Requires write access to the LocalMachine certificate stores (elevated process / service
     /// account). The caller is responsible for handling the exception thrown when that is not
     /// the case.
+    /// </para>
+    /// <para>
+    /// The private key keeps the default machine-key ACL (SYSTEM and Administrators), which is
+    /// exactly what the service needs: both install paths register it as LocalSystem. Earlier
+    /// versions also granted NETWORK SERVICE read access; that let every other service running
+    /// under that account read the key of a certificate this machine trusts as a root, so it is
+    /// no longer done.
+    /// </para>
     /// </remarks>
-    internal static Result CreateAndInstall()
+    internal static string CreateAndInstall()
     {
-        // GraphMailer ships win-x64 only; the LocalMachine store, ACLs and FriendlyName are
+        // GraphMailer ships win-x64 only; the LocalMachine store and FriendlyName are
         // Windows-only. The guard also tells the platform-compatibility analyzer (CA1416) that
         // everything below runs on Windows.
         if (!OperatingSystem.IsWindows())
@@ -50,37 +50,6 @@ internal static class SelfSignedSmtpCertificate
             X509KeyStorageFlags.Exportable);
         persistent.FriendlyName = "GraphMailer SMTP (self-signed)";
 
-        // Try to grant NETWORK SERVICE read access to the CNG key container file so a service
-        // running as NETWORK SERVICE can use the cert without manual ACL configuration. CNG
-        // machine keys are stored as files under %ALLUSERSPROFILE%\Microsoft\Crypto\Keys\.
-        // (LocalSystem already has access; this only matters for NETWORK SERVICE deployments.)
-        bool aclGranted = false;
-        try
-        {
-            if (persistent.GetRSAPrivateKey() is RSACng rsaCng)
-            {
-                var keyName = rsaCng.Key.UniqueName;
-                if (keyName is not null)
-                {
-                    var keyDir = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                        "Microsoft", "Crypto", "Keys");
-                    var keyFile = Path.Combine(keyDir, keyName);
-                    if (File.Exists(keyFile))
-                    {
-                        var fi = new FileSecurity(keyFile, AccessControlSections.Access);
-                        fi.AddAccessRule(new FileSystemAccessRule(
-                            new NTAccount("NT AUTHORITY", "NETWORK SERVICE"),
-                            FileSystemRights.Read,
-                            AccessControlType.Allow));
-                        FileSystemAclExtensions.SetAccessControl(new FileInfo(keyFile), fi);
-                        aclGranted = true;
-                    }
-                }
-            }
-        }
-        catch { /* Non-critical — user can set ACLs manually via certlm.msc */ }
-
         using var store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
         store.Open(OpenFlags.ReadWrite);
         store.Add(persistent);
@@ -93,7 +62,7 @@ internal static class SelfSignedSmtpCertificate
         using var publicOnly = X509CertificateLoader.LoadCertificate(persistent.RawData); // strips private key
         rootStore.Add(publicOnly);
 
-        return new Result(persistent.GetNameInfo(X509NameType.SimpleName, false), aclGranted);
+        return persistent.GetNameInfo(X509NameType.SimpleName, false);
     }
 
     /// <summary>

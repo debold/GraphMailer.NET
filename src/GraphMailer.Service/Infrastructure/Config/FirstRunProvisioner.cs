@@ -84,11 +84,9 @@ internal static class FirstRunProvisioner
 
         try
         {
-            var result = SelfSignedSmtpCertificate.CreateAndInstall();
-            Log.Information(
-                "[FirstRun] Created self-signed SMTP certificate '{Subject}' (NETWORK SERVICE key access: {Acl})",
-                result.Subject, result.AclGranted ? "granted" : "not granted");
-            return result.Subject;
+            var subject = SelfSignedSmtpCertificate.CreateAndInstall();
+            Log.Information("[FirstRun] Created self-signed SMTP certificate '{Subject}'", subject);
+            return subject;
         }
         catch (Exception ex)
         {

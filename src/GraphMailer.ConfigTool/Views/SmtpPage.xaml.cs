@@ -201,7 +201,7 @@ public partial class SmtpPage : UserControl
         btn.Content = "Creating\u2026";
         try
         {
-            var (subject, aclGranted) = await Task.Run(SelfSignedSmtpCertificate.CreateAndInstall);
+            var subject = await Task.Run(SelfSignedSmtpCertificate.CreateAndInstall);
 
             LoadCertificates(TlsCertList);
             foreach (var item in TlsCertList.Items.OfType<CertItem>())
@@ -210,16 +210,11 @@ public partial class SmtpPage : UserControl
                 { TlsCertList.SelectedItem = item; break; }
             }
 
-            var msg = aclGranted
-                ? $"Certificate \u2018{subject}\u2019 has been created and installed.\n\n" +
-                  "\u2022 LocalMachine\\My \u2014 used by the SMTP service\n" +
-                  "\u2022 LocalMachine\\Root \u2014 trusted by all applications on this machine\n\n" +
-                  "NETWORK SERVICE was granted read access to the private key.\n" +
-                  "If the service runs under a different account, open certlm.msc, right-click the certificate \u2192 All Tasks \u2192 Manage Private Keys and grant that account Read access."
-                : $"Certificate \u2018{subject}\u2019 has been created and installed.\n\n" +
-                  "\u2022 LocalMachine\\My \u2014 used by the SMTP service\n" +
-                  "\u2022 LocalMachine\\Root \u2014 trusted by all applications on this machine\n\n" +
-                  "Important: to let the service use this certificate, open certlm.msc, right-click the certificate \u2192 All Tasks \u2192 Manage Private Keys and grant the service account (e.g. NETWORK SERVICE) Read access.";
+            var msg = $"Certificate \u2018{subject}\u2019 has been created and installed.\n\n" +
+                      "\u2022 LocalMachine\\My \u2014 used by the SMTP service\n" +
+                      "\u2022 LocalMachine\\Root \u2014 trusted by all applications on this machine\n\n" +
+                      "The GraphMailer service (LocalSystem) can use the private key as is. " +
+                      "If you run the service under a different account, open certlm.msc, right-click the certificate \u2192 All Tasks \u2192 Manage Private Keys and grant that account Read access.";
 
             MessageBox.Show(msg, "Certificate created", MessageBoxButton.OK, MessageBoxImage.Information);
         }
