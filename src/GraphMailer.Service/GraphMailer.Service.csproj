@@ -63,7 +63,7 @@
          no ASP.NET/auto-collection packages. The 3.x line is a compatibility layer over
          OpenTelemetry, so it brings the OTel exporter and persistent-storage packages
          with it; that is expected, not accidental. -->
-    <PackageReference Include="Microsoft.ApplicationInsights" Version="3.1.2" />
+    <PackageReference Include="Microsoft.ApplicationInsights" Version="3.2.0" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.12" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <!-- No SQLitePCLRaw pin here any more: it existed because Microsoft.Data.Sqlite used to pull
