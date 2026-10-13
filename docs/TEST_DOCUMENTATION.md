@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 2056 tests** (1966 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-10-13
+**Total: 2085 tests** (1995 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-10-13
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -78,6 +78,27 @@ fails a build.
 | `SecondInstance_WithoutAWait_GivesUpImmediately` | Lock held, no grace period | Not primary |
 | `SecondInstance_WaitExpires_IsNotPrimary` | Lock held for longer than the grace period | Not primary — a genuinely running instance still wins |
 | `SecondInstance_HolderReleasesWithinTheWait_BecomesPrimary` | Holder releases 300 ms into a 10 s wait | Primary — the restart case: the outgoing process holds the lock past the point where Windows reports the service stopped, and without the wait that start is silently lost |
+
+---
+
+### PasswordCaptureService (`Infrastructure/Security/PasswordCaptureServiceTests.cs`)
+
+When an admin arms *Capture next password* for an SMTP user, the next successful AUTH stores that
+password. Every branch decides whether a password is written to disk. The tests use a real
+`graphmailer.json` in a temp folder (`ConfigPath` override) and an ephemeral Data Protection key.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `IsCaptureEnabled_FlagSet_ReturnsTrueIgnoringUsernameCase` | Runtime user `Relay` armed; asked for `relay` | `true` |
+| `IsCaptureEnabled_FlagNotSet_ReturnsFalse` | User present, flag off | `false` |
+| `IsCaptureEnabled_UnknownUser_ReturnsFalse` | Asked for a user not in the options | `false` |
+| `CaptureAsync_Armed_StoresThePasswordAndClearsTheFlag` | Armed user with an old password | New password stored; `CaptureNextPassword` cleared (one-shot) |
+| `CaptureAsync_Armed_WritesThePasswordEncrypted` | Armed user | Raw file contains `ENC[` and not the plaintext password |
+| `CaptureAsync_UsernameInDifferentCase_StillCaptures` | Stored `Relay`, captured as `relay` | Password stored on `Relay` |
+| `CaptureAsync_FlagAlreadyCleared_LeavesThePasswordUnchanged` | Flag already off (concurrent capture or admin disarmed it) | Existing password kept |
+| `CaptureAsync_UnknownUser_ChangesNothingAndWarns` | Capture for a user missing from the file | File byte-identical; Warning `"not found"` |
+| `CaptureAsync_OnlyTheCapturedUserChanges` | Two armed users, one captured | The other user's password and pending flag are untouched |
+| `CaptureAsync_UnreadableConfig_DoesNotThrowAndLogsAnError` | `graphmailer.json` is invalid JSON | No exception (the AUTH reply is already sent); Error `"Failed to persist"` logged |
 
 ---
 
@@ -196,6 +217,25 @@ fails a build.
 
 ---
 
+### MalwareScanOptionsValidator (`Infrastructure/Validation/MalwareScanOptionsValidatorTests.cs`)
+
+A setting under which no message could ever be scanned fails startup; one that scans less than it
+could is a warning, because the scan fails open. Those warnings are the operator's only signal that
+mail passes unscanned, so they are asserted.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Validate_Defaults_SucceedWithoutWarnings` | Default options (Audit, scan limit = message limit, no bypass) | Succeeds; no warning |
+| `Validate_ModeOff_SucceedsEvenWithUnusableValues` | `Mode = Off`, timeout 0, scan limit 0 | Succeeds — nothing is scanned, so nothing can fail |
+| `Validate_NonPositiveTimeout_Fails` (×2) | Timeout 0 (Audit) / −1 (Enforce) | Fails; message names `TimeoutSeconds` |
+| `Validate_NonPositiveMaxScanBytes_Fails` (×2) | Scan limit 0 (Audit) / −1 (Enforce) | Fails; message names `MaxScanBytes` |
+| `Validate_ScanLimitBelowMessageLimit_SucceedsAndWarnsThatPartsGoUnscanned` | Scan limit one byte below `Smtp.MaxSizeBytes` | Succeeds; Warning containing `"without being inspected"` |
+| `Validate_ScanLimitEqualToMessageLimit_DoesNotWarn` | Scan limit = message limit | Succeeds; no warning |
+| `Validate_EnforceWithBypassRules_SucceedsAndRestatesTheHoles` | Enforce, 1 bypass user + 2 bypass IP ranges | Succeeds; Warning `"3 scan bypass rule(s)"` — restated at every start |
+| `Validate_AuditWithBypassRules_DoesNotWarn` | Audit with a bypass user | Succeeds; no warning — nothing is blocked in Audit, so no hole in enforcement |
+
+---
+
 ### DataProtection / Encryption (`Infrastructure/Encryption/EncryptionTests.cs`)
 
 | Test | Scenario | Expected result |
@@ -204,6 +244,22 @@ fails a build.
 | `Protect_ProducesEncFormat_ThatProviderRecognises` | `ENC[<ciphertext>]` format | String starts with `ENC[` and ends with `]` |
 | `Unprotect_WithWrongKey_ThrowsCryptographicException` | Unprotect ciphertext using a different key ring | `CryptographicException` thrown |
 | `Protect_SameInput_ProducesDifferentCiphertexts` | Same plaintext protected twice | Two different ciphertexts (random nonce) |
+
+---
+
+### EncryptedJsonConfigurationProvider (`Infrastructure/Encryption/EncryptedJsonConfigurationProviderTests.cs`)
+
+The service reads `graphmailer.json` through this provider. A value that cannot be decrypted must
+never reach the service as the raw ciphertext, and the required file must fail loudly instead.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Load_EncValue_IsDecrypted` | `GraphApi:ClientSecret` stored as `ENC[…]` | Configuration returns the plaintext |
+| `Load_EncValueInsideAnArray_IsDecrypted` | Two SMTP users with encrypted passwords | `Access:Users:0/1:Password` both decrypted |
+| `Load_ValueNotInEncFormat_IsLeftUntouched` (×4) | Plain value, `ENC[` without `]`, `ENC[` not at the start, lower-case `enc[` | Value returned unchanged — only exact `ENC[…]` is treated as encrypted |
+| `Load_UndecryptableValue_OptionalFile_ClearsTheValueInsteadOfPassingTheCiphertext` | Value encrypted under another key ring; optional file | Value becomes empty (treated as unconfigured); other keys still load |
+| `Load_UndecryptableValue_RequiredFile_ThrowsAndNamesTheKey` | Same, required file | `InvalidOperationException` naming `GraphApi:ClientSecret`, inner `CryptographicException` |
+| `Load_UndecryptableValue_ErrorMessageContainsNeitherCiphertextNorSecret` | Same, required file | Message contains neither the plaintext nor the ciphertext — it ends up in logs and the event log |
 
 ---
 

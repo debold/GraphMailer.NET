@@ -29,6 +29,9 @@ internal sealed class PasswordCaptureService : IPasswordCaptureService
     private readonly ILogger<PasswordCaptureService> _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
+    // Overridable for unit tests (AppPaths is fixed per process).
+    internal string ConfigPath { get; set; } = AppPaths.ConfigFilePath;
+
     public PasswordCaptureService(
         IOptionsMonitor<SmtpAccessOptions> access,
         IDataProtectionProvider dpProvider,
@@ -51,7 +54,7 @@ internal sealed class PasswordCaptureService : IPasswordCaptureService
         {
             _logger.LogInformation("[PasswordCapture] Capturing password for user {Username}", username);
 
-            var svc = new ConfigService(AppPaths.ConfigFilePath, _protector);
+            var svc = new ConfigService(ConfigPath, _protector);
             var doc = svc.Load();
 
             var user = doc.Access.Users
