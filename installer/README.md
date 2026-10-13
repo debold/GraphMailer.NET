@@ -37,6 +37,52 @@ It first runs `build-release.ps1` (framework-dependent publish), then `build-hel
 | `GraphMailerSetup-<ver>.exe` + `windowsdesktop-runtime-*.exe` (side by side) | fully offline install (runtime bundled as an external payload, matched by hash) |
 | `GraphMailer-<ver>.msi` | the .NET 10 Desktop Runtime x64 is already guaranteed on the target (the MSI refuses to install without it) |
 
+## Releasing
+
+Releases are built by GitHub Actions, not on a workstation:
+
+1. Run `.\tools\coverage.ps1 -IncludeLive` and review the gap list (release rule, see
+   `docs/TEST_DOCUMENTATION.md` → *Code coverage*).
+2. `.\tools\New-Release.ps1 -CoverageReviewed [-Summary "…"] [-Push]` turns the `## Unreleased`
+   section of `CHANGELOG.md` into `## <version> — <date>`, commits `Release <version>` and tags
+   `v<version>`. It works out the release commit's own build number and checks it after the
+   commit, so the tag, the changelog and the binaries always agree.
+3. Pushing the tag starts `.github/workflows/release.yml`:
+   - checks that the tag matches the version the commit builds and that the changelog has the
+     section,
+   - builds, runs the unit and integration tests, builds the installer,
+   - runs `tools/Test-Installer.ps1` on two fresh runners: a **fresh install** and an **upgrade**
+     from the latest published release,
+   - creates a **draft** GitHub release with the setup, the MSI, release notes from the changelog
+     section and build-provenance attestations (`gh attestation verify <file> --repo debold/GraphMailer.NET`).
+4. Review the draft on GitHub (title, notes) and publish it.
+5. Bump `<Version>` in `src/Directory.Build.props` for the next development cycle.
+
+*Actions → Release → Run workflow* on `main` runs step 3 without creating a release: a dry run
+of the build and the installer tests.
+
+### What the installer tests check
+
+`tools/Test-Installer.ps1` installs, exercises and uninstalls GraphMailer. It changes the machine
+(service, certificate, firewall rule, `C:\ProgramData\GraphMailer`), so it runs on GitHub runners;
+on a test VM it needs `-AllowMachineChanges`.
+
+- **Install**: exactly one visible and one hidden *Programs and Features* entry with the expected
+  version; `GraphMailer.exe` has the expected FileVersion; the service is registered as
+  LocalSystem with automatic start and is running; ConfigTool, help, both Start-menu shortcuts and
+  the firewall rule are present; first-run provisioning created `graphmailer.json` and the
+  self-signed `GraphMailer SMTP` certificate; ports 25, 465 and 587 listen.
+- **Service**: a message sent unauthenticated from localhost on port 25 is accepted and stored;
+  implicit TLS on port 465 negotiates TLS 1.2+ and presents the self-signed certificate.
+- **Upgrade** (`-PreviousSetup`): before the upgrade the old version gets an SMTP banner marker,
+  an SMTP user whose password it captures and stores as `ENC[…]`, and a queued message. After
+  installing over it: the installation was replaced, not duplicated; the banner marker is served
+  (configuration kept and read by the new version); the captured password still authenticates and
+  a wrong one is rejected (the Data Protection key ring survived); the queued message is still
+  there.
+- **Uninstall**: service, program files, shortcuts, firewall rule and *Programs and Features*
+  entries are gone; `C:\ProgramData\GraphMailer` (configuration, keys, mail) is kept.
+
 ## Install / uninstall
 
 ### Interactive

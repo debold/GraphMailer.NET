@@ -22,6 +22,13 @@ fails a build.
 > give-up decisions, option validators, message rules) gets its tests before the release is
 > published. Other gaps are a judgement call and are noted rather than blocking.
 
+## Installer tests
+
+`tools/Test-Installer.ps1` tests the built setup end to end — fresh install and upgrade from the
+previous release, a message through the running service, TLS, uninstall. It changes the machine,
+so it runs in the release workflow on GitHub runners (*Actions → Release*), not with `dotnet test`.
+The list of checks is in `installer/README.md` → *What the installer tests check*.
+
 ---
 
 ## Unit Tests — `GraphMailer.Tests.Unit`

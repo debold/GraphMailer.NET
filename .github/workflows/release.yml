@@ -1,0 +1,229 @@
+# Release pipeline.
+#
+#   Tag push (v<FileVersion>, created by tools/New-Release.ps1):
+#     build + test -> installer -> install/upgrade tests on fresh runners -> DRAFT GitHub release
+#     with the setup, the MSI, release notes from CHANGELOG.md and build-provenance attestations.
+#     Publishing the draft stays a manual step.
+#
+#   Manual run (Actions -> Release -> Run workflow) on main:
+#     the same build and installer tests as a dry run, without a release. Use it to try the
+#     pipeline or an installer change before tagging.
+#
+# The installer tests (tools/Test-Installer.ps1) install a Windows service, a certificate and a
+# firewall rule, which is why they only run on the throwaway GitHub runners.
+#
+# Third-party actions are pinned to a full commit SHA (the tag in the comment is for humans).
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+        with:
+          fetch-depth: 0          # build number = 1000 + commit count
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68   # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # A release tag must name exactly the version this commit builds, and the changelog must
+      # have its section — otherwise the published version, the installer and the notes disagree.
+      - name: Determine and verify version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (& ./tools/Get-BuildFileVersion.ps1).FileVersion
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Build version: $version"
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            if ($env:GITHUB_REF_NAME -ne "v$version") {
+              throw "Tag $env:GITHUB_REF_NAME does not match the version this commit builds (v$version). Create release tags with tools/New-Release.ps1."
+            }
+            if (-not (Select-String -Path CHANGELOG.md -Pattern "^## $([regex]::Escape($version)) " -Quiet)) {
+              throw "CHANGELOG.md has no '## $version' section."
+            }
+          }
+
+      - name: Restore (locked)
+        run: dotnet restore GraphMailer.sln -p:RestoreLockedMode=true
+
+      - name: Build
+        run: dotnet build GraphMailer.sln -c Debug --no-restore -warnaserror
+
+      - name: Unit tests
+        run: dotnet test tests/GraphMailer.Tests.Unit -c Debug --no-build
+
+      - name: Integration tests
+        run: dotnet test tests/GraphMailer.Tests.Integration -c Debug --no-build
+
+      - name: Install WiX
+        run: dotnet tool install --global wix --version 5.0.2
+
+      - name: Build installer
+        shell: pwsh
+        run: ./build-installer.ps1 -OutputRoot "$env:RUNNER_TEMP/installers"
+
+      # Release notes = this version's CHANGELOG section (the Unreleased one on a dry run), plus
+      # install and verification instructions.
+      - name: Collect release files
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $src = Join-Path $env:RUNNER_TEMP "installers/$env:VERSION"
+          $dst = Join-Path $env:RUNNER_TEMP 'release'
+          New-Item -ItemType Directory -Path $dst -Force | Out-Null
+          Copy-Item (Join-Path $src "GraphMailerSetup-$env:VERSION.exe"), (Join-Path $src "GraphMailer-$env:VERSION.msi") $dst
+
+          $heading = if ($env:GITHUB_REF_TYPE -eq 'tag') { "^## $([regex]::Escape($env:VERSION)) " } else { '^## Unreleased' }
+          $lines = Get-Content CHANGELOG.md
+          $start = ($lines | Select-String -Pattern $heading | Select-Object -First 1).LineNumber
+          if (-not $start) { throw "No CHANGELOG section matching '$heading'." }
+          $end = ($lines | Select-Object -Skip $start | Select-String -Pattern '^## ' | Select-Object -First 1).LineNumber
+          $body = if ($end) { $lines[$start..($start + $end - 2)] } else { $lines[$start..($lines.Count - 1)] }
+
+          $notes = @(
+            ($body -join "`n").Trim()
+            ''
+            '## Install or upgrade'
+            ''
+            "Run ``GraphMailerSetup-$env:VERSION.exe`` (installs the .NET 10 Desktop Runtime if needed). Installing over an existing version keeps the configuration, secrets, queued mail and statistics."
+            ''
+            "Silent: ``GraphMailerSetup-$env:VERSION.exe /quiet /norestart``"
+            ''
+            'The binaries were built by GitHub Actions from the tagged commit. To verify that a downloaded file is unmodified:'
+            ''
+            "``gh attestation verify GraphMailerSetup-$env:VERSION.exe --repo $env:GITHUB_REPOSITORY``"
+          ) -join "`n"
+          Set-Content (Join-Path $dst 'release-notes.md') $notes -Encoding utf8
+          Get-ChildItem $dst | Format-Table Name, Length
+
+      - name: Upload release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # v7.0.2
+        with:
+          name: release
+          path: ${{ runner.temp }}/release/
+          retention-days: 30
+
+  installer-test:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [fresh, upgrade]
+    name: installer-test (${{ matrix.scenario }})
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333   # v8.0.2
+        with:
+          name: release
+          path: release
+
+      # The upgrade starts from the newest published release that is not this version.
+      - name: Fetch the previous release
+        if: matrix.scenario == 'upgrade'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $previous = gh release list --repo $env:GITHUB_REPOSITORY --exclude-drafts --exclude-pre-releases --limit 20 --json tagName --jq '.[].tagName' |
+            Where-Object { $_ -ne "v$env:VERSION" } | Select-Object -First 1
+          if (-not $previous) { throw 'No previous release found to upgrade from.' }
+          Write-Host "Upgrading from $previous"
+          gh release download $previous --repo $env:GITHUB_REPOSITORY --pattern 'GraphMailerSetup-*.exe' --dir previous
+          $setup = (Get-ChildItem previous -Filter 'GraphMailerSetup-*.exe' | Select-Object -First 1).FullName
+          "PREVIOUS_SETUP=$setup" >> $env:GITHUB_ENV
+
+      - name: Test the installer
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $test = @{
+            Setup           = (Resolve-Path "release/GraphMailerSetup-$env:VERSION.exe").Path
+            ExpectedVersion = $env:VERSION
+            ArtifactDir     = Join-Path $env:RUNNER_TEMP 'installer-test'
+          }
+          if ($env:PREVIOUS_SETUP) { $test.PreviousSetup = $env:PREVIOUS_SETUP }
+          ./tools/Test-Installer.ps1 @test
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # v7.0.2
+        with:
+          name: installer-test-${{ matrix.scenario }}
+          path: ${{ runner.temp }}/installer-test/
+          retention-days: 14
+
+  draft-release:
+    if: github.ref_type == 'tag'
+    needs: [build, installer-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write        # create the draft release
+      id-token: write        # sign the provenance attestation
+      attestations: write    # store it
+
+    steps:
+      - name: Download release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333   # v8.0.2
+        with:
+          name: release
+          path: release
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8   # v4.2.2
+        with:
+          subject-path: |
+            release/GraphMailerSetup-*.exe
+            release/GraphMailer-*.msi
+
+      # A draft: title and notes can be edited on GitHub before publishing, which stays manual.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "release/GraphMailerSetup-$VERSION.exe" \
+            "release/GraphMailer-$VERSION.msi" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft --verify-tag \
+            --title "GraphMailer $VERSION" \
+            --notes-file release/release-notes.md
