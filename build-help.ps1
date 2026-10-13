@@ -96,7 +96,7 @@ $SiteMap = @(
 
 # ── Resolve Markdig (download + cache the dependency-free DLL) ────────────────
 function Get-Markdig {
-    $mdVersion = '1.3.2'
+    $mdVersion = '1.4.0'
     $cache = Join-Path $env:TEMP "gm-markdig\$mdVersion"
 
     # Load the build that matches the host runtime: build-installer.ps1 runs under
