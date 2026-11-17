@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 2085 tests** (1995 unit · 90 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-10-13
+**Total: 2127 tests** (2034 unit · 93 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-11-17
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -565,6 +565,12 @@ Password-based container: PBKDF2-HMAC-SHA256 + AES-256-GCM (header authenticated
 
 ---
 
+### Recommendation page labels (`Services/Advisor/RecommendationTargetPageNameTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Every_target_shows_its_sidebar_label` | Every `RecommendationTarget` | `TargetPageName` is the sidebar label ("Malware Scan", not "MalwareScan") |
+
 ### DailyChartImage (`Services/Reporting/DailyChartImageTests.cs`)
 
 | Test | Scenario | Expected result |
@@ -878,6 +884,24 @@ Backs the ConfigTool's **Test scanner** button. The vector now lives in `AmsiSel
 | `FormatDelay_RendersCompactDuration` (Theory) | 0 s, 42 s, 5 m 3 s, 1 h, 26 h 1 m 1 s, negative | `0s`, `42s`, `5m 3s`, `1h 0m 0s`, `26h 1m 1s` (no day unit, comparable to the expiration hours), `0s` — used by the *delivered on attempt n* log line |
 
 ---
+
+### QueueProcessor — message history (`Services/QueueProcessorTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Trace_FirstTryDelivery_RecordsSentWithOneAttempt` | Delivered on the first try | One trace write: status `sent`, 1 attempt, "Delivered to Exchange Online" |
+| `Trace_FailedAttempt_RecordsRetryWithErrorAndNextAttempt` | Transient 503 | Status `queued`, 1 attempt, retry step "Attempt 1 failed" with the error and "next attempt in …" |
+| `Trace_DeliveryAfterRetries_NamesTheAttempt` | Delivered with `RetryCount = 3` | Status `sent`, 4 attempts, "Delivered to Exchange Online on attempt 4" |
+| `Trace_PermanentRejection_RecordsTheAttemptAndTheGiveUp` | Permanent 404 | Failed attempt step, then status `failed` with "Given up, moved to the failed folder" and the reason |
+| `Trace_FailingWrite_NeverChangesDelivery` | Trace write throws | Message still delivered and removed from the queue |
+
+### GraphApiClient — S/MIME and PGP warning (`Services/GraphApiClientProtectionWarningTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Plain_multipart_signed_body_raises_the_warning` | `multipart/signed` as a plain `Multipart` (no cryptography hooks) | Warning that the signature will not verify |
+| `Signed_part_nested_in_multipart_mixed_raises_the_warning` | Signed part inside `multipart/mixed` | Warning |
+| `Unprotected_message_raises_no_warning` | Plain text message | No warning |
 
 ### GraphApiClient — Exchange throttling (`Services/GraphApiClientThrottlingTests.cs`)
 
@@ -1525,6 +1549,32 @@ paths that need no tenant are covered here; acquiring a real token belongs to th
 
 ---
 
+### MessageTimeline — Messages page list and timeline (`ConfigTool/MessageTimelineTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Merge_keeps_history_rows_and_adds_folder_only_messages_as_legacy` | One message in history and folder, one only in the folder | History row enriched with the folder's live attempt count; folder-only row has `HasTrace = false` |
+| `Merge_applies_the_filter_to_folder_only_messages` | Folder-only rows, filter Delayed | Only the late delivery |
+| `Merge_pages_the_combined_list_newest_first` | Three history + three folder rows, limit 4 | Interleaved newest first, total 6, `HasMore` |
+| `Build_groups_steps_under_section_headings` | SMTP, scan, rules and Graph steps | Headings SMTP / Processing / Delivery only on the first step of each section |
+| `Build_shortens_a_long_run_of_failed_attempts` | Ten failed attempts in a row | First two, "6 more failed attempts", last two |
+| `Build_keeps_a_short_run_of_failed_attempts` | Failed attempts up to the threshold | All shown |
+| `Build_without_history_pieces_together_receipt_attempts_and_result` | Message from before 1.6.0 with receipt metrics | Receipt (port, TLS, user, size), failed attempts with last error, delivery |
+| `Summary_of_a_late_delivery_names_the_delay_and_the_last_error` | Delivered after two failed attempts | "Delivered on … at 10:50, 36 minutes after it arrived. 2 attempts failed before that, the last one with: 504 GatewayTimeout." |
+| `Summary_of_an_on_time_delivery_is_one_sentence` | Delivered on the first try | One sentence with time and delay |
+| `Summary_of_a_waiting_message_names_the_next_attempt` | Queued after one failed attempt | Error and time of the next attempt |
+| `Summary_of_a_rejected_message_says_why_and_that_the_sender_was_told` | Rejected by the malware scan | Reason, and that the device got an error reply |
+| `Summary_of_a_discarded_message_warns_that_the_sender_believes_it_was_sent` | Discarded by a rule | Says the device was told it was accepted |
+| `Copy_text_carries_the_facts_an_answer_needs` | "Copy summary" | Summary plus subject, sender, delivery time and GraphMailer id |
+| `Delay_reads_naturally` (Theory) | 12 s, 1 min, 36 min, 1 h, 2 h 5 min | "12 seconds", "1 minute", "36 minutes", "1 hour", "2 hours 5 min" |
+
+### RecommendationNavigation — recommendation links (`ConfigTool/RecommendationNavigationTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Every_target_maps_to_an_existing_sidebar_entry` | Every `RecommendationTarget` | Maps to an `x:Name` that exists on `MainWindow`, so a link never goes nowhere (the Malware Scan links did) |
+| `Targets_map_to_distinct_sidebar_entries` | All targets | No two targets share a sidebar entry |
+
 ### ActivityRow search — ConfigTool Metrics page (`ConfigTool/ActivityRowSearchTests.cs`)
 
 | Test | Scenario | Expected result |
@@ -1993,11 +2043,38 @@ thing to find, so each case has to yield what it does hold rather than being ref
 
 ---
 
+### Message history — service and reader (`Infrastructure/Metrics/MessageTraceTests.cs`)
+
+> Round trip through `metrics.db`: what `MetricsService.RecordTraceAsync` writes and what the ConfigTool's `MessageTraceReader` reads back.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Receipt_creates_a_list_entry_with_its_steps` | First trace write with three steps | One list entry (status, subject, recipients, `HasTrace`), steps read back in order |
+| `Later_updates_move_status_and_attempts_but_keep_what_was_known` | Receipt, then retry and delivery updates without subject/size | Status `sent`, subject and size kept, `FailedAttempts = 1`, "Sent late", three steps |
+| `Status_null_keeps_the_current_status` | Update with `status = null`, attempts 3 | Status unchanged, attempts updated |
+| `Filters_select_the_matching_messages` | Seven messages across all statuses | Queue / Delayed / Sent / Failed / Rejected / All each select exactly the right ones |
+| `Search_finds_messages_by_address_subject_and_by_their_steps` | Search by subject, by a step's detail, by recipient, with LIKE wildcards | Matches found; `%` and `_` in the term are literal |
+| `Newest_first_with_paging` | Five messages, limit 3 | Newest three, total 5, `HasMore` |
+| `Disabled_metrics_record_nothing` | `Metrics:Enabled = false` | No list entry |
+| `Cleanup_removes_history_not_touched_within_the_retention` | One entry last touched 40 days ago, retention 30 | Old entry and its steps removed, new one kept |
+| `Reader_returns_nothing_for_a_missing_database` | `metrics.db` does not exist | Empty list, no steps, no receipt — no exception |
+| `Receipt_facts_come_from_the_received_metrics_row` | `received` metrics row with port/TLS/user/size | `ReceiptFacts` for the reduced timeline of an older message |
+
 ## Integration Tests — `GraphMailer.Tests.Integration`
 
 > All SMTP integration tests run sequentially under the `"SmtpIntegration"` xUnit collection to avoid `Directory.SetCurrentDirectory` race conditions.
 
 ---
+
+### Message history over SMTP (`Smtp/SmtpMessageTraceTests.cs`)
+
+> The history the Messages page shows, as written by a real SMTP session: one trace write per message, once the SMTP outcome is decided.
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Accepted_message_is_traced_from_receipt_to_queue` | Clean message, scan in Enforce | One trace write, status `queued`; header carries sender, recipient, subject, client IP; steps SMTP → scan → SMTP in time order, receipt line names port/TLS/sign-in/recipients |
+| `Malware_rejection_is_traced_as_rejected_with_its_reason` | Scanner reports malware, Enforce | Status `rejected`; subject parsed although nothing was queued; last step failed, "Rejected: malware found in 'invoice.docm'", detail starts "554 sent." |
+| `Audit_mode_finding_is_traced_as_a_warning_and_the_message_continues` | Scanner reports malware, Audit | Status `queued`; a scan step with outcome warning "delivered anyway (audit mode)" |
 
 ### Malware scan over SMTP (`Smtp/SmtpMalwareScanTests.cs`)
 

@@ -1190,4 +1190,104 @@ public sealed class QueueProcessorTests : IDisposable
         File.Exists(metaPath).Should().BeFalse();
         File.Exists(emlPath).Should().BeFalse();
     }
+
+    // =========================================================================
+    // Message history (Messages page timeline)
+    // =========================================================================
+
+    private static List<(string? Status, int? Attempts, IReadOnlyList<MessageTraceEvent> Events)> TraceCalls(IMetricsService metrics)
+        => [.. metrics.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IMetricsService.RecordTraceAsync))
+            .Select(c => c.GetArguments())
+            .Select(a => ((string?)a[1], (int?)a[2], (IReadOnlyList<MessageTraceEvent>)a[3]!))];
+
+    [Fact]
+    public async Task Trace_FirstTryDelivery_RecordsSentWithOneAttempt()
+    {
+        var metrics = Substitute.For<IMetricsService>();
+        var sut = CreateProcessor(metrics: metrics);
+        await EnqueueMessageAsync("msg-trace-ok");
+
+        await sut.ProcessBatchAsync();
+
+        var call = TraceCalls(metrics).Should().ContainSingle().Subject;
+        call.Status.Should().Be(TraceStatuses.Sent);
+        call.Attempts.Should().Be(1);
+        call.Events.Should().ContainSingle().Which.Summary.Should().Be("Delivered to Exchange Online");
+    }
+
+    [Fact]
+    public async Task Trace_FailedAttempt_RecordsRetryWithErrorAndNextAttempt()
+    {
+        var metrics = Substitute.For<IMetricsService>();
+        var client = Substitute.For<IGraphApiClient>();
+        client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new GraphDeliveryException("HTTP 503 ServiceUnavailable", isPermanent: false));
+        var sut = CreateProcessor(graphClient: client, metrics: metrics);
+        await EnqueueMessageAsync("msg-trace-retry");
+
+        await sut.ProcessBatchAsync();
+
+        var call = TraceCalls(metrics).Should().ContainSingle().Subject;
+        call.Status.Should().Be(TraceStatuses.Queued);
+        call.Attempts.Should().Be(1);
+        var step = call.Events.Should().ContainSingle().Subject;
+        step.Outcome.Should().Be(TraceOutcomes.Retry);
+        step.Summary.Should().Be("Attempt 1 failed");
+        step.Attempt.Should().Be(1);
+        step.Detail.Should().StartWith("HTTP 503 ServiceUnavailable · next attempt in ");
+    }
+
+    [Fact]
+    public async Task Trace_DeliveryAfterRetries_NamesTheAttempt()
+    {
+        var metrics = Substitute.For<IMetricsService>();
+        var sut = CreateProcessor(metrics: metrics);
+        await EnqueueMessageAsync("msg-trace-late", retryCount: 3, receivedAt: DateTime.UtcNow.AddMinutes(-40));
+
+        await sut.ProcessBatchAsync();
+
+        var call = TraceCalls(metrics).Should().ContainSingle().Subject;
+        call.Status.Should().Be(TraceStatuses.Sent);
+        call.Attempts.Should().Be(4);
+        call.Events.Single().Summary.Should().Be("Delivered to Exchange Online on attempt 4");
+    }
+
+    [Fact]
+    public async Task Trace_PermanentRejection_RecordsTheAttemptAndTheGiveUp()
+    {
+        var metrics = Substitute.For<IMetricsService>();
+        var client = Substitute.For<IGraphApiClient>();
+        client.SendAsync(Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new GraphDeliveryException("HTTP 404 ErrorInvalidUser", isPermanent: true));
+        var sut = CreateProcessor(graphClient: client, metrics: metrics);
+        await EnqueueMessageAsync("msg-trace-perm");
+
+        await sut.ProcessBatchAsync();
+
+        var calls = TraceCalls(metrics);
+        calls.Should().HaveCount(2);
+        calls[0].Events.Single().Outcome.Should().Be(TraceOutcomes.Failed);
+        calls[1].Status.Should().Be(TraceStatuses.Failed);
+        calls[1].Events.Single().Summary.Should().Be("Given up, moved to the failed folder");
+        calls[1].Events.Single().Detail.Should().Contain("rejected the message permanently").And.Contain("ErrorInvalidUser");
+    }
+
+    [Fact]
+    public async Task Trace_FailingWrite_NeverChangesDelivery()
+    {
+        var metrics = Substitute.For<IMetricsService>();
+        metrics.RecordTraceAsync(Arg.Any<MessageTraceHeader>(), Arg.Any<string?>(), Arg.Any<int?>(),
+                Arg.Any<IReadOnlyList<MessageTraceEvent>>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("metrics db locked"));
+        var client = SucceedingClient();
+        var sut = CreateProcessor(graphClient: client, metrics: metrics);
+        await EnqueueMessageAsync("msg-trace-throws");
+
+        await sut.ProcessBatchAsync();
+
+        Directory.GetFiles(Path.Combine(_tempDir, "queue"), "*").Should().BeEmpty("the message was delivered and completed");
+    }
 }

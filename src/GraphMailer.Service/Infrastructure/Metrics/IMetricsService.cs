@@ -190,4 +190,20 @@ internal interface IMetricsService
 
     /// <summary>Aggregated counters since <paramref name="sinceUtc"/>. Returns zeros on error.</summary>
     Task<MetricsAggregates> GetAggregatesAsync(DateTime sinceUtc, CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds steps to a message's history (the ConfigTool's message timeline) and updates its
+    /// list entry. Like every other method here it never throws and never changes how the
+    /// message is handled.
+    /// </summary>
+    /// <param name="header">Creates the list entry on first use; later calls only fill gaps.</param>
+    /// <param name="status">New <see cref="TraceStatuses"/> value, or null to keep the current one.</param>
+    /// <param name="attempts">Graph delivery attempts so far, or null to keep the stored count.</param>
+    /// <param name="events">The steps to append, oldest first.</param>
+    Task RecordTraceAsync(
+        MessageTraceHeader header,
+        string? status,
+        int? attempts,
+        IReadOnlyList<MessageTraceEvent> events,
+        CancellationToken ct = default) => Task.CompletedTask;
 }

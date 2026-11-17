@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Added
+
+- **Every message now has a timeline: was it delivered, and when?** After a Microsoft 365 outage
+  the question is always the same, and until now the answer had to be pieced together from the log.
+  The **Messages** page shows the recent messages on the left and, for the selected one, a timeline
+  on the right: the SMTP receipt (client, port, TLS, sign-in), the malware scan and the message
+  rules, every delivery attempt with the error Microsoft 365 returned and when the next one was
+  due, and the delivery or the reason it stopped. A sentence on top answers the question in plain
+  words (*Delivered on 12.11. at 10:50, 36 minutes after it arrived. 2 attempts failed before
+  that …*), and **Copy summary** puts it on the clipboard for the reply. New filters show
+  **Delayed** messages (delivered late or still retrying) and **Rejected** ones (refused during the
+  SMTP session or discarded by a rule), which the page could not show before because they never
+  reached the mail folders. The search also finds messages by the errors they hit.
+
+  The service records each step in `metrics.db` (schema v5, two new tables) and keeps the history
+  for the metrics retention, 90 days by default, so it outlives the `.eml` files in `sent\`.
+  Messages handled before this version get a shortened timeline from their `.meta.json` and the
+  receipt statistics, marked as incomplete. With metrics switched off nothing is recorded and the
+  page shows the mail folders as before.
+
 ### Security
 
 - **The `Microsoft.*` packages moved to the 10.0.13 servicing release.** It fixes four

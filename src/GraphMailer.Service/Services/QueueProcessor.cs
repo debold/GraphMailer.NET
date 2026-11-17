@@ -407,6 +407,14 @@ internal sealed class QueueProcessor : BackgroundService
                         meta.MessageId, mex.Message);
                 }
 
+                await TraceAsync(meta, TraceStatuses.Sent, meta.RetryCount + 1, emlBytes.Length,
+                    new MessageTraceEvent(meta.SentAt.Value, TraceStages.Graph, TraceOutcomes.Ok,
+                        meta.RetryCount == 0
+                            ? "Delivered to Exchange Online"
+                            : $"Delivered to Exchange Online on attempt {meta.RetryCount + 1}",
+                        DescribeDelivery(delivery, route, sw.ElapsedMilliseconds),
+                        meta.RetryCount + 1));
+
                 await ArchiveOrDeleteAsync(emlPath, metaPath, meta, opts);
             }
             catch (Exception commitEx)
@@ -446,8 +454,14 @@ internal sealed class QueueProcessor : BackgroundService
             if (!permanentRejection && ex is GraphDeliveryException { IsThrottled: true } throttled)
                 HoldMailbox(route.GraphUserKey, throttled, nextAttempt, now);
 
+            var attemptEvent = new MessageTraceEvent(now, TraceStages.Graph, TraceOutcomes.Retry,
+                $"Attempt {meta.RetryCount} failed", ex.Message, meta.RetryCount);
+
             if (permanentRejection || RetrySchedule.HasExpired(meta.ReceivedAt, now, opts.MessageExpirationHours))
             {
+                await TraceAsync(meta, status: null, meta.RetryCount, emlBytes.Length,
+                    attemptEvent with { Outcome = TraceOutcomes.Failed });
+
                 if (permanentRejection)
                     _logger.LogError(ex,
                         "[QueueProcessor] {MessageId} permanently rejected by Graph API — failing immediately without further retries",
@@ -456,13 +470,23 @@ internal sealed class QueueProcessor : BackgroundService
                     _logger.LogError(ex,
                         "[QueueProcessor] {MessageId} permanently failed after {Hours}h ({Attempts} attempt(s)), moving to failed",
                         meta.MessageId, opts.MessageExpirationHours, meta.RetryCount);
-                await QuarantineAsync(metaPath, emlPath, meta, ex.Message, ct, permanentRejection);
+                await QuarantineAsync(metaPath, emlPath, meta, ex.Message, ct, permanentRejection,
+                    traceDetail: permanentRejection
+                        ? $"Microsoft 365 rejected the message permanently: {ex.Message}"
+                        : $"Still not delivered after {opts.MessageExpirationHours} hours ({meta.RetryCount} attempts): {ex.Message}");
             }
             else
             {
                 // Server's Retry-After, else two-phase interval (fast transient retries, then steady).
                 meta.NextRetryAt = nextAttempt;
                 meta.Status = "queued";
+
+                await TraceAsync(meta, TraceStatuses.Queued, meta.RetryCount, emlBytes.Length,
+                    attemptEvent with
+                    {
+                        Detail = $"{ex.Message} · next attempt in {FormatDelay(nextAttempt - now)}" +
+                                 (serverRetryAfter is not null ? " (Retry-After from Microsoft 365)" : string.Empty),
+                    });
 
                 // A classified Graph rejection carries everything that matters in its message
                 // (status, code, request id) and GraphApiClient has logged it already — its stack
@@ -552,6 +576,46 @@ internal sealed class QueueProcessor : BackgroundService
                 mailbox, failure.ErrorCode, ToLocal(until));
     }
 
+    /// <summary>
+    /// Adds delivery steps to the message's timeline. The list entry is created here when the
+    /// message was queued before tracing existed or by the service itself (NDRs, notifications).
+    /// The metrics service swallows its own errors; this guard covers anything around it.
+    /// </summary>
+    private async Task TraceAsync(
+        MailMetadata meta, string? status, int attempts, long sizeBytes, params MessageTraceEvent[] events)
+    {
+        try
+        {
+            await _metrics.RecordTraceAsync(new MessageTraceHeader
+            {
+                MessageId = meta.MessageId,
+                ReceivedAtUtc = meta.ReceivedAt == default ? DateTime.UtcNow : meta.ReceivedAt,
+                From = meta.From,
+                To = meta.To,
+                Subject = meta.Subject,
+                ClientIp = meta.ClientIp,
+                SizeBytes = sizeBytes,
+            }, status, attempts, events, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[QueueProcessor] Failed to record the message trace for {MessageId}", meta.MessageId);
+        }
+    }
+
+    /// <summary>Second timeline line of a delivery: how the message went out.</summary>
+    private static string DescribeDelivery(GraphDeliveryResult delivery, SenderRoute route, long elapsedMs)
+    {
+        var parts = new List<string>
+        {
+            delivery.Variant == GraphDeliveryResult.VariantDraftUpload ? "large attachments uploaded separately" : "sendMail",
+            $"{elapsedMs / 1000.0:0.0} s",
+        };
+        if (delivery.Relayed || route.IsRelay)
+            parts.Add($"sent through the relay mailbox {(route.IsRelay ? route.GraphUserKey : route.FallbackRelayMailbox)}");
+        return string.Join(" · ", parts);
+    }
+
     /// <summary>Queue delay for the log, e.g. <c>1h 12m 5s</c>; leading zero units are left out.</summary>
     internal static string FormatDelay(TimeSpan delay)
     {
@@ -619,11 +683,16 @@ internal sealed class QueueProcessor : BackgroundService
     /// </summary>
     private async Task QuarantineAsync(
         string metaPath, string? emlPath, MailMetadata meta, string reason, CancellationToken ct,
-        bool permanentRejection = false)
+        bool permanentRejection = false, string? traceDetail = null)
     {
         await MoveToFailedAsync(metaPath, emlPath, meta, ct);
         await _metrics.RecordEmailFailedAsync(meta.MessageId, reason, meta.From, meta.Subject,
             retryCount: meta.RetryCount, permanent: permanentRejection, ct: ct);
+        // The timeline may say more than the reason: the NDR and the admin notification below
+        // keep the exact wording they always had.
+        await TraceAsync(meta, TraceStatuses.Failed, meta.RetryCount, sizeBytes: 0,
+            new MessageTraceEvent(DateTime.UtcNow, TraceStages.Queue, TraceOutcomes.Failed,
+                "Given up, moved to the failed folder", traceDetail ?? reason));
         await _notify.NotifyEmailDeliveryFailedAsync(meta.MessageId, reason, ct);
         if (!meta.IsNotification)
             await _notify.SendNdrAsync(meta, reason, ct);

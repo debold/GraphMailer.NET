@@ -14,23 +14,43 @@ public sealed class MessageRow
     public string Subject { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
 
-    /// <summary>Status pill in the "All" view — capitalised label plus its colours.</summary>
-    public string StatusLabel => string.IsNullOrEmpty(Status)
-        ? "—"
-        : char.ToUpperInvariant(Status[0]) + Status[1..];
+    /// <summary>Delivery attempts that failed (for a delivered message: before the one that worked).</summary>
+    public int FailedAttempts { get; init; }
+
+    /// <summary>
+    /// The service recorded this message's full history (version 1.6.0 and later). False for
+    /// messages known only from their <c>.meta.json</c>, whose timeline is pieced together.
+    /// </summary>
+    public bool HasTrace { get; init; }
+
+    /// <summary>Message size in bytes, when known.</summary>
+    public long SizeBytes { get; init; }
+
+    /// <summary>Delivered, but only after at least one failed attempt.</summary>
+    public bool IsSentLate => Status == "sent" && FailedAttempts > 0;
+
+    /// <summary>Status pill — capitalised label plus its colours.</summary>
+    public string StatusLabel => Status switch
+    {
+        "" => "—",
+        "sent" when IsSentLate => "Sent late",
+        _ => char.ToUpperInvariant(Status[0]) + Status[1..],
+    };
 
     public string StatusBg => Status switch
     {
+        "sent" when IsSentLate => "#FFFFF4CE",   // delivered, but late — amber like waiting
         "sent" => "#FFDCEEFB",      // delivered — blue, matching the metrics charts
-        "failed" => "#FFFDE7E9",    // danger
+        "failed" or "rejected" or "discarded" => "#FFFDE7E9",    // danger
         "queued" => "#FFFFF4CE",    // waiting
         _ => "#FFF0F0F0",
     };
 
     public string StatusFg => Status switch
     {
+        "sent" when IsSentLate => "#FF7A5700",
         "sent" => "#FF0F5A9C",
-        "failed" => "#FFC42B1C",
+        "failed" or "rejected" or "discarded" => "#FFC42B1C",
         "queued" => "#FF7A5700",
         _ => "#FF616161",
     };
@@ -149,6 +169,7 @@ internal static class MailFolderReader
                     Subject = meta.Subject,
                     Status = meta.Status,
                     Attempts = attemptsUsed.ToString(),
+                    FailedAttempts = meta.RetryCount,
                     LastAttemptAt = meta.LastAttemptAt?.ToLocalTime(),
                     LastError = meta.LastError ?? string.Empty,
                     NextRetryAt = meta.NextRetryAt?.ToLocalTime(),

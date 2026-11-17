@@ -128,7 +128,9 @@ required permissions are present.
 ## Metrics Storage
 
 Records email and performance statistics to the local SQLite database that feeds the
-[Metrics](../monitoring/metrics.md) page and the scheduled report.
+[Metrics](../monitoring/metrics.md) page and the scheduled report. Since 1.6.0 it also records the
+history of every message for the timeline on the [Messages](../monitoring/messages.md) page, kept
+for the same retention.
 
 | Setting | Default | Range | Meaning |
 |---|---|---|---|

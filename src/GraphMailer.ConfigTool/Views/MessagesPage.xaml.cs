@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.ConfigTool.Services;
@@ -9,30 +10,39 @@ using GraphMailer.Service.Infrastructure;
 namespace GraphMailer.ConfigTool.Views;
 
 /// <summary>
-/// Read-only browser for the mail directories (queue / failed / sent).
-/// Reads the *.meta.json files directly from disk; refreshes every 5 seconds
-/// while visible. Retry details live in the details panel below the list, which
-/// follows the selection. Not part of the config load/save cycle.
+/// The Messages page: recent messages on the left, the selected one's details and timeline on
+/// the right. The list combines the message history the service records in <c>metrics.db</c>
+/// (every step since 1.6.0, kept for the metrics retention) with the mail folders (queue, failed,
+/// sent), so messages from before the history existed still show up, with a reduced timeline.
+/// Refreshes every 5 seconds while visible. Read-only; not part of the config load/save cycle.
 /// </summary>
 public partial class MessagesPage : UserControl
 {
-    // "All" first and preselected: the merged view is the useful default, the single
-    // folders are the drill-down.
-    private static readonly string[] Folders = ["All", "Queue", "Failed", "Sent"];
-
-    private const int AllIndex = 0;
-    private const int SentIndex = 3;
+    // "All" first and preselected: the merged view is the useful default, the rest are drill-downs.
+    private static readonly (string Label, MessageListFilter Filter)[] Filters =
+    [
+        ("All", MessageListFilter.All),
+        ("Queue", MessageListFilter.Queue),
+        ("Delayed", MessageListFilter.Delayed),
+        ("Failed", MessageListFilter.Failed),
+        ("Rejected", MessageListFilter.Rejected),
+        ("Sent", MessageListFilter.Sent),
+    ];
 
     // Live view of the relevant Mail Queue settings (MailDir, ArchiveSentEmails)
     private readonly Func<(string? MailDir, bool ArchiveSent)> _queueSettings;
+    private readonly Func<string> _dataDir;
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _searchDebounce;
+    private readonly DispatcherTimer _copyConfirm;
     private bool _loadInProgress;
     private int _limit = MailFolderReader.PageSize;
+    private string _copyText = string.Empty;
 
-    internal MessagesPage(Func<(string? MailDir, bool ArchiveSent)> queueSettings)
+    internal MessagesPage(Func<(string? MailDir, bool ArchiveSent)> queueSettings, Func<string> dataDir)
     {
         _queueSettings = queueSettings;
+        _dataDir = dataDir;
 
         // Built before InitializeComponent(): the search box raises TextChanged while the XAML
         // is being parsed, and the handler must not find a null timer.
@@ -44,9 +54,12 @@ public partial class MessagesPage : UserControl
             LoadData();
         };
 
+        _copyConfirm = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _copyConfirm.Tick += (_, _) => { _copyConfirm.Stop(); CopyConfirm.Visibility = Visibility.Collapsed; };
+
         InitializeComponent();
 
-        FolderSelect.ItemsSource = Folders;
+        FolderSelect.ItemsSource = Filters.Select(f => f.Label).ToList();
         FolderSelect.SelectedIndex = 0;
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
@@ -58,16 +71,18 @@ public partial class MessagesPage : UserControl
         };
     }
 
+    private string DbPath => Path.Combine(_dataDir(), "metrics.db");
+
     private void Folder_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!IsLoaded) return;   // ignore the initial selection during construction
-        _limit = MailFolderReader.PageSize;   // a different folder starts at the first page
+        _limit = MailFolderReader.PageSize;   // a different filter starts at the first page
         LoadData();
     }
 
     private void Search_Changed(object sender, TextChangedEventArgs e)
     {
-        // Restart the window: only the last keystroke of a burst re-reads the folder
+        // Restart the window: only the last keystroke of a burst re-reads the data
         _searchDebounce.Stop();
         _searchDebounce.Start();
     }
@@ -80,7 +95,7 @@ public partial class MessagesPage : UserControl
 
     /// <summary>
     /// Pages in another block. The raised limit survives the 5 s auto-refresh and is reset only by
-    /// a folder change or a new search term.
+    /// a filter change or a new search term.
     /// </summary>
     private void LoadMore_Click(object sender, RoutedEventArgs e)
     {
@@ -96,29 +111,24 @@ public partial class MessagesPage : UserControl
         try
         {
             var (mailDir, archiveSent) = _queueSettings();
-            var folderIndex = FolderSelect.SelectedIndex;
+            var filter = Filters[Math.Max(0, FolderSelect.SelectedIndex)].Filter;
             var baseDir = string.IsNullOrEmpty(mailDir) ? AppPaths.MailDir : mailDir;
-            var isAll = folderIndex == AllIndex;
-
-            // The status only tells the folders apart in the merged view
-            StatusColumn.Visibility = isAll ? Visibility.Visible : Visibility.Collapsed;
-
             var search = SearchBox.Text.Trim();
             var limit = _limit;
+            var dbPath = DbPath;
 
-            var result = await Task.Run(() => isAll
-                ? MailFolderReader.ReadFolders(
-                    limit, search,
+            var (rows, total, hasMore) = await Task.Run(() =>
+            {
+                var traced = MessageTraceReader.ReadList(dbPath, filter, search, limit);
+                // Folders are read whole anyway (see MailFolderReader); the merge pages the result.
+                var folders = MailFolderReader.ReadFolders(int.MaxValue, null,
                     Path.Combine(baseDir, "queue"),
                     Path.Combine(baseDir, "failed"),
-                    Path.Combine(baseDir, "sent"))
-                : MailFolderReader.ReadFolder(
-                    Path.Combine(
-                        baseDir,
-                        folderIndex switch { 2 => "failed", SentIndex => "sent", _ => "queue" }),
-                    limit, search));
-
-            var rows = result.Rows;
+                    Path.Combine(baseDir, "sent")).Rows;
+                var merged = MessageTimeline.Merge(traced.Rows, traced.Total, folders, filter, search, limit,
+                    out var mergedTotal, out var mergedHasMore);
+                return (merged, mergedTotal, mergedHasMore || traced.HasMore);
+            });
 
             // Replacing the ItemsSource must not throw away user-resized column
             // widths or the current selection (the details panel depends on it).
@@ -137,17 +147,15 @@ public partial class MessagesPage : UserControl
                     MessagesGrid.SelectedItem = restored;
             }
 
-            CountText.Text = ListCountLabel.Build(
-                rows.Count, result.Total, "messages", search.Length > 0, result.HasMore);
+            CountText.Text = ListCountLabel.Build(rows.Count, total, "messages", search.Length > 0, hasMore);
 
             LoadMoreButton.Content = $"Load {MailFolderReader.PageSize:N0} more";
-            LoadMoreButton.Visibility = result.HasMore ? Visibility.Visible : Visibility.Collapsed;
+            LoadMoreButton.Visibility = hasMore ? Visibility.Visible : Visibility.Collapsed;
 
-            if (folderIndex == SentIndex && rows.Count == 0 && !archiveSent && search.Length == 0)
+            if (filter == MessageListFilter.Sent && rows.Count == 0 && !archiveSent && search.Length == 0)
             {
-                EmptyHint.Text = "Sent archiving is disabled — delivered messages are deleted immediately. " +
-                                 "Enable “Archive sent emails” on the Mail Queue page to keep them here. " +
-                                 "The Metrics page shows the delivery history regardless of this setting.";
+                EmptyHint.Text = "No delivered messages recorded yet. Delivered messages appear here once the service " +
+                                 "has handled them (history is kept for the Metrics retention period).";
                 EmptyHint.Visibility = Visibility.Visible;
             }
             else
@@ -161,7 +169,7 @@ public partial class MessagesPage : UserControl
         }
     }
 
-    // ── Details panel (same pattern as the Metrics page's Activity tab) ───────
+    // ── Details panel ─────────────────────────────────────────────────────────
 
     /// <summary>
     /// Closes the details panel. Dropping the selection is what hides it — keeping the
@@ -169,7 +177,7 @@ public partial class MessagesPage : UserControl
     /// </summary>
     private void MessageDetailsClose_Click(object sender, RoutedEventArgs e) => MessagesGrid.UnselectAll();
 
-    private void MessagesGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void MessagesGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (MessagesGrid.SelectedItem is not MessageRow row)
         {
@@ -180,19 +188,58 @@ public partial class MessagesPage : UserControl
         MessageDetails.Visibility = Visibility.Visible;
 
         DetailSubjectValue.Text = Show(row.Subject);
+        DetailSubjectValue.ToolTip = row.Subject;
+        DetailStatus.Text = row.StatusLabel;
+        DetailStatus.Foreground = Brush(row.StatusFg);
+        DetailStatusPill.Background = Brush(row.StatusBg);
         DetailReceived.Text = row.ReceivedAt.ToString("yyyy-MM-dd HH:mm:ss");
-        DetailStatus.Text = Show(row.Status);
         DetailFrom.Text = Show(row.From);
         DetailTo.Text = Show(row.To);
         DetailSent.Text = Show(row.SentAt?.ToString("yyyy-MM-dd HH:mm:ss"));
         DetailClientIp.Text = Show(row.ClientIp);
         DetailAttempts.Text = Show(row.Attempts);
-        DetailLastAttempt.Text = Show(row.LastAttemptAt?.ToString("yyyy-MM-dd HH:mm:ss"));
         DetailNextRetry.Text = Show(row.NextRetryAt?.ToString("yyyy-MM-dd HH:mm:ss"));
         DetailMessageId.Text = Show(row.SmtpMessageId);
         DetailQueueId.Text = Show(row.MessageId);
-        DetailLastError.Text = Show(row.LastError);
+
+        // The history is read on every selection change (also by the 5 s refresh restoring the
+        // selection), so a message still being retried shows its newest attempt.
+        var dbPath = DbPath;
+        var messageId = row.MessageId;
+        var (events, receipt) = await Task.Run(() =>
+        {
+            var ev = MessageTraceReader.ReadEvents(dbPath, messageId);
+            return (ev, ev.Count == 0 ? MessageTraceReader.ReadReceipt(dbPath, messageId) : null);
+        });
+
+        // The user may have moved on while the read was running.
+        if (!ReferenceEquals(MessagesGrid.SelectedItem, row)) return;
+
+        var summary = MessageTimeline.Summarize(row, events);
+        DetailSummary.Text = summary;
+        _copyText = MessageTimeline.BuildCopyText(row, summary);
+        HistoryHint.Visibility = events.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        TimelineList.ItemsSource = MessageTimeline.Build(row, events, receipt);
     }
+
+    private void CopySummary_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_copyText)) return;
+        try
+        {
+            Clipboard.SetText(_copyText);
+            CopyConfirm.Visibility = Visibility.Visible;
+            _copyConfirm.Stop();
+            _copyConfirm.Start();
+        }
+        catch (Exception ex)
+        {
+            // The clipboard can be locked by another process — never take down the page for it
+            ConfigToolLog.ErrorOnChange("MessagesPage", ex, "Could not copy the message summary to the clipboard");
+        }
+    }
+
+    private static SolidColorBrush Brush(string argb) => new((Color)ColorConverter.ConvertFromString(argb));
 
     /// <summary>Empty fields become an em dash, so every row keeps its place in the raster.</summary>
     private static string Show(string? value) => string.IsNullOrEmpty(value) ? "—" : value;

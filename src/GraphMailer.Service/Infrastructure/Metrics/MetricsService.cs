@@ -39,6 +39,12 @@ namespace GraphMailer.Service.Infrastructure.Metrics;
 ///   smtp_rejection_stats               – hourly aggregate, one row per bucket key
 ///     bucket_hour TEXT · listener_port INT · client_ip TEXT · reason TEXT · count INT
 ///
+///   message_traces / message_trace_events  – per-message history (v5), see MessageTrace.cs
+///     message_traces: message_id PK · received_at · from_addr · to_addrs · subject · client_ip
+///       size_bytes · status ('queued'|'sent'|'failed'|'rejected'|'discarded') · attempts
+///       finished_at · updated_at
+///     message_trace_events: message_id · occurred_at · stage · outcome · summary · detail · attempt
+///
 ///   perf_metrics
 ///     id           INT   PRIMARY KEY AUTOINCREMENT
 ///     metric_type  TEXT  NOT NULL      – 'memory_mb' | 'cpu_percent' | 'disk_free_percent'
@@ -298,6 +304,99 @@ internal sealed class MetricsService : IMetricsService
     }
 
     // -------------------------------------------------------------------------
+    // Public API — message trace (ConfigTool message timeline)
+    // -------------------------------------------------------------------------
+
+    public async Task RecordTraceAsync(
+        MessageTraceHeader header,
+        string? status,
+        int? attempts,
+        IReadOnlyList<MessageTraceEvent> events,
+        CancellationToken ct = default)
+    {
+        if (!_options.CurrentValue.Enabled) return;
+
+        // Not cancellable once started: a trace written halfway (list entry without its last
+        // step) would tell the operator a wrong story, and the write is a few small rows.
+        await _writeLock.WaitAsync(CancellationToken.None);
+        try
+        {
+            await using var conn = OpenConnection();
+            await using var tx = await conn.BeginTransactionAsync(CancellationToken.None);
+            var now = DateTime.UtcNow.ToString("O");
+
+            await using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = (SqliteTransaction)tx;
+                // First write creates the list entry; later writes only move the status and the
+                // attempt count, and fill fields an earlier writer could not know (a message
+                // queued by an older version reaches the trace only at its first delivery attempt).
+                cmd.CommandText = """
+                    INSERT INTO message_traces
+                        (message_id, received_at, from_addr, to_addrs, subject, client_ip, size_bytes,
+                         status, attempts, finished_at, updated_at)
+                    VALUES ($id, $received, $from, $to, $subject, $ip, $size,
+                            COALESCE($status, 'queued'), COALESCE($attempts, 0), $finished, $now)
+                    ON CONFLICT(message_id) DO UPDATE SET
+                        from_addr   = CASE WHEN from_addr = '' THEN excluded.from_addr ELSE from_addr END,
+                        to_addrs    = COALESCE(to_addrs, excluded.to_addrs),
+                        subject     = COALESCE(subject, excluded.subject),
+                        client_ip   = COALESCE(client_ip, excluded.client_ip),
+                        size_bytes  = CASE WHEN size_bytes = 0 THEN excluded.size_bytes ELSE size_bytes END,
+                        status      = COALESCE($status, status),
+                        attempts    = COALESCE($attempts, attempts),
+                        finished_at = COALESCE($finished, finished_at),
+                        updated_at  = $now
+                    """;
+                var toAddrs = header.To.Count > 0 ? string.Join(", ", header.To) : null;
+                cmd.Parameters.AddWithValue("$id", header.MessageId);
+                cmd.Parameters.AddWithValue("$received", header.ReceivedAtUtc.ToString("O"));
+                cmd.Parameters.AddWithValue("$from", header.From);
+                cmd.Parameters.AddWithValue("$to", (object?)toAddrs ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$subject", header.Subject.Length > 0 ? header.Subject : DBNull.Value);
+                cmd.Parameters.AddWithValue("$ip", header.ClientIp.Length > 0 ? header.ClientIp : DBNull.Value);
+                cmd.Parameters.AddWithValue("$size", header.SizeBytes);
+                cmd.Parameters.AddWithValue("$status", (object?)status ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$attempts", (object?)attempts ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$finished", IsFinal(status) ? now : DBNull.Value);
+                cmd.Parameters.AddWithValue("$now", now);
+                await cmd.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+
+            foreach (var e in events)
+            {
+                await using var cmd = conn.CreateCommand();
+                cmd.Transaction = (SqliteTransaction)tx;
+                cmd.CommandText = """
+                    INSERT INTO message_trace_events (message_id, occurred_at, stage, outcome, summary, detail, attempt)
+                    VALUES ($id, $at, $stage, $outcome, $summary, $detail, $attempt)
+                    """;
+                cmd.Parameters.AddWithValue("$id", header.MessageId);
+                cmd.Parameters.AddWithValue("$at", e.OccurredAtUtc.ToString("O"));
+                cmd.Parameters.AddWithValue("$stage", e.Stage);
+                cmd.Parameters.AddWithValue("$outcome", e.Outcome);
+                cmd.Parameters.AddWithValue("$summary", e.Summary);
+                cmd.Parameters.AddWithValue("$detail", (object?)e.Detail ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$attempt", (object?)e.Attempt ?? DBNull.Value);
+                await cmd.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+
+            await tx.CommitAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Metrics] Failed to record the message trace for {MessageId}", header.MessageId);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+
+        static bool IsFinal(string? status) => status is TraceStatuses.Sent or TraceStatuses.Failed
+            or TraceStatuses.Rejected or TraceStatuses.Discarded;
+    }
+
+    // -------------------------------------------------------------------------
     // Public API — aggregate read (telemetry heartbeat)
     // -------------------------------------------------------------------------
 
@@ -460,6 +559,20 @@ internal sealed class MetricsService : IMetricsService
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = $"DELETE FROM {table} WHERE {column} {op} $cutoff";   // names/operators are compile-time constants
                 cmd.Parameters.AddWithValue("$cutoff", value);
+                removed += await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            // Message history: an entry goes when it was last touched before the cutoff, so a
+            // message still being retried keeps its whole story. Its steps go with it.
+            await using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = """
+                    DELETE FROM message_trace_events
+                    WHERE message_id IN (SELECT message_id FROM message_traces WHERE updated_at < $cutoff)
+                       OR (occurred_at < $cutoff AND message_id NOT IN (SELECT message_id FROM message_traces));
+                    DELETE FROM message_traces WHERE updated_at < $cutoff;
+                    """;
+                cmd.Parameters.AddWithValue("$cutoff", cutoff);
                 removed += await cmd.ExecuteNonQueryAsync(ct);
             }
 
@@ -700,6 +813,40 @@ internal sealed class MetricsService : IMetricsService
                 CREATE INDEX IF NOT EXISTS idx_rule_hits_bucket
                     ON message_rule_hits(bucket_hour);
 
+                -- Message history for the ConfigTool's timeline: one list entry per message plus
+                -- its steps. Kept as long as the other metrics (Metrics:RetentionDays), so the
+                -- history outlives the .eml files in mail\sent\ and mail\failed\.
+                CREATE TABLE IF NOT EXISTS message_traces (
+                    message_id  TEXT NOT NULL PRIMARY KEY,
+                    received_at TEXT NOT NULL,
+                    from_addr   TEXT NOT NULL DEFAULT '',
+                    to_addrs    TEXT,
+                    subject     TEXT,
+                    client_ip   TEXT,
+                    size_bytes  INT  NOT NULL DEFAULT 0,
+                    status      TEXT NOT NULL,
+                    attempts    INT  NOT NULL DEFAULT 0,
+                    finished_at TEXT,
+                    updated_at  TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_message_traces_received
+                    ON message_traces(received_at);
+
+                CREATE TABLE IF NOT EXISTS message_trace_events (
+                    id          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    message_id  TEXT    NOT NULL,
+                    occurred_at TEXT    NOT NULL,
+                    stage       TEXT    NOT NULL,
+                    outcome     TEXT    NOT NULL,
+                    summary     TEXT    NOT NULL,
+                    detail      TEXT,
+                    attempt     INT
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_message_trace_events_msg
+                    ON message_trace_events(message_id, occurred_at);
+
                 CREATE TABLE IF NOT EXISTS perf_metrics (
                     id          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                     metric_type TEXT    NOT NULL,
@@ -727,7 +874,7 @@ internal sealed class MetricsService : IMetricsService
     // -------------------------------------------------------------------------
 
     /// <summary>metrics.db schema version understood by this build.</summary>
-    internal const int SchemaVersion = 4;
+    internal const int SchemaVersion = 5;
 
     /// <summary>
     /// Brings an existing database up to <see cref="SchemaVersion"/> via idempotent, forward-only
@@ -770,6 +917,7 @@ internal sealed class MetricsService : IMetricsService
         // v2 → v3: the malware_detections table, created by InitialiseSchema (IF NOT EXISTS)
         // like the other stats tables — nothing to transform, only the version to record.
         // v3 → v4: the message_rule_hits table, likewise created by InitialiseSchema.
+        // v4 → v5: message_traces and message_trace_events (message timeline), likewise.
 
         SetUserVersion(conn, SchemaVersion);
         if (migrated)

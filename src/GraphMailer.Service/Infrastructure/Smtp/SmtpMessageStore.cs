@@ -60,6 +60,7 @@ internal sealed class SmtpMessageStore : MessageStore
         ReadOnlySequence<byte> buffer,
         CancellationToken cancellationToken)
     {
+        var receivedAt = DateTime.UtcNow;
         var remoteIp = IpFilterService.GetRemoteIp(context) ?? "unknown";
         var listenerPort = GetListenerPort(context);
         var sizeBytes = buffer.Length;
@@ -86,12 +87,25 @@ internal sealed class SmtpMessageStore : MessageStore
         var emlBytes = buffer.ToArray();
         var messageId = Guid.NewGuid().ToString("N");
 
+        // The message's history for the ConfigTool timeline. Collected here and written once the
+        // SMTP outcome is decided, in one transaction — so a message never shows up half-told.
+        var trace = new List<MessageTraceEvent>
+        {
+            new(receivedAt, TraceStages.Smtp, TraceOutcomes.Ok,
+                $"Received from {remoteIp} on port {listenerPort}",
+                DescribeSession(context, sizeBytes, recipients.Count)),
+        };
+
         // Last and most expensive gate. Sender/recipient policy already ran in SmtpMailboxFilter,
         // so nothing cheap is left to reject on by the time we start decoding attachments.
         var scanRejection = await ScanForMalwareAsync(
-            context, emlBytes, messageId, from, recipients, remoteIp, listenerPort, cancellationToken);
+            context, emlBytes, messageId, from, recipients, remoteIp, listenerPort, trace, cancellationToken);
         if (scanRejection is not null)
+        {
+            await RecordTraceSafeAsync(messageId, receivedAt, from, recipients, remoteIp, emlBytes,
+                subject: null, TraceStatuses.Rejected, trace);
             return scanRejection;
+        }
 
         // Message rules run last, after the scan, and never before it. The scanner has to see
         // the message exactly as the client sent it: a rule that strips attachments would
@@ -99,13 +113,21 @@ internal sealed class SmtpMessageStore : MessageStore
         // make the rule engine an antivirus bypass. A malware verdict also has to outrank a
         // policy verdict — that path already writes evidence and notifies.
         var gate = await ApplyMessageRulesAsync(
-            context, emlBytes, messageId, from, recipients, remoteIp, listenerPort, cancellationToken);
+            context, emlBytes, messageId, from, recipients, remoteIp, listenerPort, trace, cancellationToken);
 
         if (gate.Gate == RuleGate.Reject)
+        {
+            await RecordTraceSafeAsync(messageId, receivedAt, gate.From, gate.Recipients, remoteIp, gate.Eml,
+                subject: null, TraceStatuses.Rejected, trace);
             return gate.Response;
+        }
 
         if (gate.Gate == RuleGate.Discard)
+        {
+            await RecordTraceSafeAsync(messageId, receivedAt, gate.From, gate.Recipients, remoteIp, gate.Eml,
+                subject: null, TraceStatuses.Discarded, trace);
             return SmtpResponse.Ok;
+        }
 
         emlBytes = gate.Eml;
         from = gate.From;
@@ -124,6 +146,11 @@ internal sealed class SmtpMessageStore : MessageStore
         {
             _logger.LogError(ex, "[SmtpRelay] Failed to queue message from {From}: {Error}", from, ex.Message);
             await RecordRejectionSafeAsync(RejectionReasons.QueueError, remoteIp, listenerPort);
+            trace.Add(new(DateTime.UtcNow, TraceStages.Smtp, TraceOutcomes.Failed,
+                "Not accepted: the message could not be written to the queue",
+                $"451 sent, so the client keeps the message and tries again. {ex.Message}"));
+            await RecordTraceSafeAsync(messageId, receivedAt, from, recipients, remoteIp, emlBytes,
+                subject: null, TraceStatuses.Rejected, trace);
             // A failed local queue write (disk full, IO error, ACL problem) is transient
             // from the client's point of view: answer 451 so the client keeps the message
             // and retries later. A permanent 554 would make conforming clients discard
@@ -162,7 +189,61 @@ internal sealed class SmtpMessageStore : MessageStore
                 meta.MessageId, ex.Message);
         }
 
+        trace.Add(new(DateTime.UtcNow, TraceStages.Smtp, TraceOutcomes.Ok,
+            "Accepted and queued (250 OK)",
+            meta.To.Count == 1 ? $"1 recipient: {meta.To[0]}" : $"{meta.To.Count} recipients: {string.Join(", ", meta.To)}"));
+        await RecordTraceSafeAsync(meta.MessageId, receivedAt, meta.From, meta.To, remoteIp, emlBytes,
+            meta.Subject, TraceStatuses.Queued, trace);
+
         return SmtpResponse.Ok;
+    }
+
+    /// <summary>Second timeline line of the receipt: how the client connected and what it sent.</summary>
+    private static string DescribeSession(ISessionContext context, long sizeBytes, int recipientCount)
+    {
+        var tls = context.Pipe?.IsSecure ?? false;
+        var user = context.Authentication?.IsAuthenticated == true ? context.Authentication.User : null;
+        return string.Join(" · ",
+            tls ? "TLS" : "no TLS",
+            user is null ? "not signed in" : $"signed in as {user}",
+            FormatSize(sizeBytes),
+            recipientCount == 1 ? "1 recipient" : $"{recipientCount} recipients");
+    }
+
+    internal static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 => $"{bytes / (1024.0 * 1024.0):0.#} MB",
+        >= 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes} bytes",
+    };
+
+    /// <summary>
+    /// Writes the message's receipt history. Like every statistic it must never change the SMTP
+    /// outcome, so all errors are swallowed. The subject is parsed from the message only on the
+    /// rare paths that end before the queue writer has done it.
+    /// </summary>
+    private async Task RecordTraceSafeAsync(
+        string messageId, DateTime receivedAt, string from, IReadOnlyList<string> recipients,
+        string remoteIp, byte[] eml, string? subject, string status, List<MessageTraceEvent> trace)
+    {
+        try
+        {
+            subject ??= MailQueueWriter.ExtractMessageInfo(eml, recipients).Subject;
+            await _metrics.RecordTraceAsync(new MessageTraceHeader
+            {
+                MessageId = messageId,
+                ReceivedAtUtc = receivedAt,
+                From = from,
+                To = recipients,
+                Subject = subject,
+                ClientIp = remoteIp,
+                SizeBytes = eml.LongLength,
+            }, status, attempts: 0, trace);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[SmtpRelay] Failed to record the message trace for {MessageId}", messageId);
+        }
     }
 
     /// <summary>What the rule engine decided about a message.</summary>
@@ -193,6 +274,7 @@ internal sealed class SmtpMessageStore : MessageStore
         IReadOnlyList<string> recipients,
         string remoteIp,
         int listenerPort,
+        List<MessageTraceEvent> trace,
         CancellationToken ct)
     {
         if (!_rules.IsActive)
@@ -213,7 +295,19 @@ internal sealed class SmtpMessageStore : MessageStore
 
         // One row per (rule, message) — a rule with five actions counts once.
         foreach (var rule in outcome.Matched)
+        {
             await RecordRuleHitSafeAsync(rule.Name, rule.Mode.ToString(), rule.Outcome, listenerPort);
+            trace.Add(DescribeRuleHit(rule));
+        }
+
+        if (outcome.Verdict == RuleVerdict.Reject)
+            trace.Add(new(DateTime.UtcNow, TraceStages.Rules, TraceOutcomes.Failed,
+                $"Rejected by rule '{outcome.DecidingRule ?? "(unknown)"}'",
+                $"{outcome.SmtpCode} {outcome.SmtpText}"));
+        else if (outcome.Verdict == RuleVerdict.Discard)
+            trace.Add(new(DateTime.UtcNow, TraceStages.Rules, TraceOutcomes.Failed,
+                $"Discarded by rule '{outcome.DecidingRule ?? "(unknown)"}'",
+                "The client was told 250 OK, but the message was not queued"));
 
         switch (outcome.Verdict)
         {
@@ -286,6 +380,23 @@ internal sealed class SmtpMessageStore : MessageStore
         }, result.Eml, ct);
     }
 
+    /// <summary>Timeline line for one matched rule.</summary>
+    internal static MessageTraceEvent DescribeRuleHit(MatchedRule rule)
+    {
+        var audit = rule.Mode == MessageRuleMode.Audit ? " (audit mode, nothing changed)" : string.Empty;
+        var what = rule.Outcome switch
+        {
+            RuleOutcomes.Modified => "changed the message",
+            RuleOutcomes.Rejected => "rejects the message",
+            RuleOutcomes.Discarded => "discards the message",
+            RuleOutcomes.Skipped => "matched, but its actions were skipped",
+            _ => rule.Outcome,
+        };
+        return new MessageTraceEvent(DateTime.UtcNow, TraceStages.Rules,
+            rule.Outcome == RuleOutcomes.Skipped || rule.Mode == MessageRuleMode.Audit ? TraceOutcomes.Info : TraceOutcomes.Ok,
+            $"Rule '{rule.Name}' {what}{audit}");
+    }
+
     /// <summary>Statistics must never change the SMTP outcome — swallow all errors.</summary>
     private async Task RecordRuleHitSafeAsync(string ruleName, string mode, string outcome, int listenerPort)
     {
@@ -320,10 +431,17 @@ internal sealed class SmtpMessageStore : MessageStore
         IReadOnlyList<string> recipients,
         string remoteIp,
         int listenerPort,
+        List<MessageTraceEvent> trace,
         CancellationToken ct)
     {
         var opts = _scanOptions.CurrentValue;
-        if (opts.Mode == MalwareScanMode.Off || !_scanner.IsAvailable) return null;
+        if (opts.Mode == MalwareScanMode.Off) return null;
+        if (!_scanner.IsAvailable)
+        {
+            trace.Add(new(DateTime.UtcNow, TraceStages.Scan, TraceOutcomes.Warning,
+                "Not scanned for malware: no AMSI-capable antivirus is available"));
+            return null;
+        }
 
         // Audit mode exists to be watched: an operator runs it to see what the scanner does to
         // real mail before letting it reject any, and "no detections" is only reassuring once the
@@ -337,6 +455,7 @@ internal sealed class SmtpMessageStore : MessageStore
         if (TryGetBypassReason(opts, authUser, remoteIp) is { } bypass)
         {
             _logger.Log(auditLevel, "[MalwareScan] {MessageId}: scan skipped – {Reason}", messageId, bypass);
+            trace.Add(new(DateTime.UtcNow, TraceStages.Scan, TraceOutcomes.Info, "Malware scan skipped", bypass));
             return null;
         }
 
@@ -352,6 +471,9 @@ internal sealed class SmtpMessageStore : MessageStore
             _logger.Log(auditLevel,
                 "[MalwareScan] {MessageId}: scan incomplete ({Outcome}) after {Elapsed}ms – message is delivered unscanned",
                 messageId, result.Outcome, sw.ElapsedMilliseconds);
+            trace.Add(new(DateTime.UtcNow, TraceStages.Scan, TraceOutcomes.Warning,
+                "Malware scan incomplete, delivered unscanned",
+                result.Error ?? $"Part '{result.ThreatLocation}' exceeded the scan size limit"));
 
             // Fire-and-forget: the notification is threshold-based, so a single hiccup stays
             // quiet while a scanner that is consistently failing gets reported.
@@ -365,10 +487,15 @@ internal sealed class SmtpMessageStore : MessageStore
             // Clean only — anything else reached one of the branches above, and reporting an
             // unavailable scanner as "no detection" would claim coverage that never happened.
             if (result.Outcome == ScanOutcome.Clean)
+            {
                 _logger.Log(auditLevel,
                     "[MalwareScan] {MessageId}: scanned {Parts} part(s) of message from {From} ({Ip}) " +
                     "in {Elapsed}ms – no detection",
                     messageId, result.PartsScanned, from, remoteIp, sw.ElapsedMilliseconds);
+                trace.Add(new(DateTime.UtcNow, TraceStages.Scan, TraceOutcomes.Ok,
+                    "Malware scan: clean",
+                    $"{result.PartsScanned} part(s) scanned in {sw.ElapsedMilliseconds} ms"));
+            }
 
             return null;
         }
@@ -380,6 +507,9 @@ internal sealed class SmtpMessageStore : MessageStore
             _logger.LogInformation(
                 "[MalwareScan] {MessageId}: detection in '{Part}' from {Ip} allowed by hash allowlist ({Hash})",
                 messageId, result.ThreatLocation, remoteIp, result.Sha256);
+            trace.Add(new(DateTime.UtcNow, TraceStages.Scan, TraceOutcomes.Info,
+                $"Malware finding in '{result.ThreatLocation}' allowed by the hash allowlist",
+                result.Sha256));
             return null;
         }
 
@@ -422,8 +552,16 @@ internal sealed class SmtpMessageStore : MessageStore
             from, recipients, remoteIp, info.Subject, result.ThreatLocation ?? string.Empty,
             result.Sha256, blocked: enforcing, ct);
 
-        if (!enforcing) return null;
+        var findingDetail = $"AMSI result {result.ResultCode}" + (result.Sha256 is null ? string.Empty : $", SHA-256 {result.Sha256}");
+        if (!enforcing)
+        {
+            trace.Add(new(DateTime.UtcNow, TraceStages.Scan, TraceOutcomes.Warning,
+                $"Malware found in '{result.ThreatLocation}', delivered anyway (audit mode)", findingDetail));
+            return null;
+        }
 
+        trace.Add(new(DateTime.UtcNow, TraceStages.Scan, TraceOutcomes.Failed,
+            $"Rejected: malware found in '{result.ThreatLocation}'", $"554 sent. {findingDetail}"));
         await RecordRejectionSafeAsync(RejectionReasons.MalwareDetected, remoteIp, listenerPort);
 
         // Permanent 554: the content is the problem, so a retry of the same message is pointless.
