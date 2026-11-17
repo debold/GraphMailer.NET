@@ -335,17 +335,20 @@ public partial class MainWindow : Window
     /// <summary>Opens the ConfigTool page that holds the setting behind a recommendation.</summary>
     private void NavigateToRecommendationTarget(RecommendationTarget target)
     {
-        var e = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left);
-        switch (target)
+        // Raise the sidebar entry's own click so the jump runs the same handler as a real click.
+        // The target → entry mapping lives in RecommendationNavigation, where a unit test checks
+        // that every target resolves to an existing entry.
+        if (FindName(RecommendationNavigation.NavItemName(target)) is not UIElement navItem)
         {
-            case RecommendationTarget.ServersAndTls: NavSmtp_Click(this, e); break;
-            case RecommendationTarget.AccessControl: NavAccess_Click(this, e); break;
-            case RecommendationTarget.GraphApi: NavGraphApi_Click(this, e); break;
-            case RecommendationTarget.MailQueue: NavQueue_Click(this, e); break;
-            case RecommendationTarget.Monitoring: NavMonitoring_Click(this, e); break;
-            case RecommendationTarget.Notifications: NavNotifications_Click(this, e); break;
-            case RecommendationTarget.BackupAndRestore: NavBackup_Click(this, e); break;
+            ConfigToolLog.Info("Recommendations", $"Recommendation target {target} has no sidebar entry");
+            return;
         }
+
+        navItem.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+        {
+            RoutedEvent = UIElement.MouseLeftButtonUpEvent,
+            Source = navItem,
+        });
     }
 
     // ── Config file watcher ─────────────────────────────────────────────────────

@@ -135,6 +135,7 @@ internal sealed record Recommendation(
         RecommendationTarget.Monitoring => "Monitoring",
         RecommendationTarget.Notifications => "Notifications",
         RecommendationTarget.BackupAndRestore => "Backup & Restore",
+        RecommendationTarget.MalwareScan => "Malware Scan",
         _ => Target.ToString(),
     };
 }
