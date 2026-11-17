@@ -28,11 +28,30 @@
 
 ### Fixed
 
+- **The Malware Scan recommendations open their page again.** On the Recommendations page, a
+  click on *Switch malware scanning to Enforce* or *Install an AMSI-capable antivirus product*
+  did nothing: the jump to the Malware Scan page was missing. The report email and the card also
+  showed the page as *MalwareScan* instead of *Malware Scan*. A unit test now checks that every
+  recommendation target has a page label and opens an existing sidebar entry.
+
 - **Statistics work when the data folder's path contains a semicolon.** A semicolon is allowed
   in Windows folder names, and the data folder can be moved with `GRAPHMAILER_DATA_DIR` or
   `Metrics:BasePath`. The connection string to `metrics.db` was assembled as plain text and was
   cut off at the first semicolon. In that case the service recorded no metrics, the scheduled
   report had no figures, and the ConfigTool's Metrics and Status pages stayed empty.
+
+### Changed
+
+- **Dependency round.** The `Microsoft.*` packages moved to the 10.0.15 servicing release,
+  matching the newest .NET 10 runtime. Microsoft Graph SDK moved to 6.10.0, MSAL to 4.92.0,
+  SkiaSharp to 4.156.1 and MimeKit/MailKit to 4.18.2. The test tooling, the help renderer's
+  Markdig (1.6.0) and the `setup-dotnet` action (6.1.0) moved too. No package in the tree has a
+  known vulnerability, and behaviour is unchanged.
+
+- **S/MIME and PGP detection before Graph delivery no longer relies on MimeKit's cryptography
+  classes.** The warning that the relay breaks a message's signature now checks the content
+  types, as the message rules already did. It also catches a signed part nested inside a
+  `multipart/mixed` message, which it missed before.
 
 ## 1.5.2.1112 — 2026-10-13
 

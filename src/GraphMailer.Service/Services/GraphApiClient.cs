@@ -10,6 +10,7 @@ using Microsoft.Kiota.Abstractions;
 using Microsoft.Kiota.Http.HttpClientLibrary.Middleware.Options;
 using MimeKit;
 using GraphMailer.Service.Configuration;
+using GraphMailer.Service.Infrastructure.Rules;
 
 namespace GraphMailer.Service.Services;
 
@@ -1096,11 +1097,13 @@ internal sealed class GraphApiClient : IGraphApiClient
     /// degradation is visible instead of silent. S/MIME and PGP are a Warning: the relay
     /// rebuilds the message, which invalidates the signature the sender relied on.
     /// </summary>
-    private void WarnAboutUnrelayableContent(
+    internal void WarnAboutUnrelayableContent(
         MimeMessage mime, MimeMessageSplitter.SplitResult split, string messageId)
     {
-        if (mime.Body is MimeKit.Cryptography.MultipartSigned or MimeKit.Cryptography.MultipartEncrypted
-            || (mime.Body?.ContentType.IsMimeType("application", "pkcs7-mime") ?? false))
+        // Content-type based (MimeProtection), not MimeKit's MultipartSigned/MultipartEncrypted
+        // classes: those only appear when the cryptography assembly has registered its parser
+        // hooks, so a type check would silently stop warning if that ever changes.
+        if (MimeProtection.Classify(mime) != MimeProtectionKind.None)
             _logger.LogWarning(
                 "[GraphApi] {MessageId} is S/MIME/PGP protected — Graph delivery rebuilds the message, " +
                 "so the signature will not verify at the recipient (encrypted parts arrive as an attachment)",
