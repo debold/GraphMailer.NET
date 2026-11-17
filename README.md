@@ -1,76 +1,76 @@
-# GraphMailer
+<p align="center">
+  <img src="docs/help/assets/graphmailer-base.png" width="88" alt="GraphMailer logo">
+</p>
 
-**A Windows SMTP relay that delivers mail through Microsoft 365 via the Graph API.**
+<h1 align="center">GraphMailer</h1>
 
-Legacy applications, scanners, and appliances that can only speak SMTP keep working —
-GraphMailer accepts their mail on a local SMTP port and hands it to Exchange Online
-through the Microsoft Graph API, using modern app-only authentication instead of
-deprecated Basic Auth / SMTP AUTH.
+<p align="center">
+  <b>Keep your scanners, printers and old applications sending mail through Microsoft 365.</b><br>
+  A Windows SMTP relay that delivers through the Microsoft Graph API. Free and open source.
+</p>
 
-## Features
+<p align="center">
+  <a href="https://github.com/debold/GraphMailer.NET/releases/latest"><img src="https://img.shields.io/github/v/release/debold/GraphMailer.NET?label=release&color=0078D4" alt="Latest release"></a>
+  <a href="https://github.com/debold/GraphMailer.NET/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debold/GraphMailer.NET/ci.yml?branch=main&label=CI" alt="CI"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011%20%7C%20Server%202016%E2%80%932025-151B24" alt="Windows 10, 11 and Server 2016 to 2025">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
+</p>
 
-- **Runs as a Windows service** — install once, survives reboots, no console window.
-- **Standard SMTP listeners** on ports 25, 465 (implicit TLS), and 587 (STARTTLS),
-  freely configurable. TLS certificates are picked straight from the Windows
-  certificate store — renewal-safe, no PFX juggling.
-- **Access control**: SMTP authentication with per-user sender restrictions,
-  IP whitelist/blacklist, and automatic blocking of brute-force clients.
-- **Reliable delivery**: incoming mail is persisted to a disk queue first, then sent
-  via Graph with an Exchange-aligned retry schedule. Internet or Graph outages never
-  lose mail; permanently rejected messages produce a non-delivery report (NDR).
-- **Large attachments** are handled automatically via Graph upload sessions.
-- **Graphical ConfigTool** (no config files to hand-edit): guided **Entra ID setup
-  wizard** that registers the app and permissions for you, live service status,
-  delivery statistics, message tracking, and log viewer.
-- **Operations reports by email** (daily/weekly/monthly) plus admin notifications
-  for failures, certificate expiry, and disk space.
-- **Secrets stay encrypted** — passwords and client secrets are stored encrypted at
-  rest (Windows Data Protection), never in plaintext.
-- **MSI installer** with a bootstrapper that brings the .NET 10 runtime along;
-  bundled offline HTML help for every screen.
+![The GraphMailer ConfigTool](docs/help/assets/screenshots/overview.png)
 
-## Requirements
+Microsoft is retiring Basic Auth for SMTP in Exchange Online. Devices and applications that only speak plain SMTP stop sending. GraphMailer takes their mail on ports 25, 465 and 587 on a Windows machine in your network and delivers it through the Microsoft Graph API with app-only sign-in. Nothing changes on the devices except the server name.
 
-- Windows x64 (server or client), Windows Server 2016+ recommended
-- Microsoft 365 tenant with Exchange Online mailboxes
-- .NET 10 Desktop Runtime (installed automatically by the setup bundle)
+> [!NOTE]
+> **[GraphMailer 1.5.2](https://github.com/debold/GraphMailer.NET/releases/latest) is out.** It follows Microsoft 365's `Retry-After`, so a briefly unavailable mailbox no longer holds mail for minutes. See the [changelog](CHANGELOG.md).
 
-## Getting started
+## What makes it different
 
-1. Download `GraphMailerSetup-<version>.exe` from the
-   [Releases](../../releases) page and run it.
-2. Open the **GraphMailer ConfigTool** from the Start menu and run the
-   **Entra ID setup wizard** (Graph API page) — it registers the app in your tenant
-   and grants the required permissions (`Mail.Send`, `Mail.ReadWrite`, `User.Read.All`).
-3. Configure listeners, allowed senders, and SMTP users to match your environment,
-   then point your applications at the relay.
+<table>
+  <tr>
+    <td width="45%">
+      <h3>Set up in minutes, not in the Entra portal</h3>
+      A wizard registers the app in your tenant, grants the Graph permissions and creates a certificate for sign-in. No secrets to copy, no PowerShell.
+    </td>
+    <td><img src="docs/help/assets/screenshots/entra-setup-2.png" alt="Entra ID setup wizard"></td>
+  </tr>
+  <tr>
+    <td width="45%"><img src="docs/help/assets/screenshots/graph-api.png" alt="Graph API page"></td>
+    <td>
+      <h3>No mail lost when Microsoft has a bad day</h3>
+      Every message lands in a disk queue first. GraphMailer retries on the Exchange schedule, follows <code>Retry-After</code> and holds only the affected mailbox. Senders get a proper bounce only when Microsoft rejects a message for good.
+    </td>
+  </tr>
+  <tr>
+    <td width="45%">
+      <h3>A relay you can leave open to the network</h3>
+      TLS from the Windows certificate store, SMTP users with allowed senders, IP filtering, brute-force blocking, a malware scan through your antivirus (AMSI, e.g. Microsoft Defender) and rules that change recipients or subjects, or reject messages.
+    </td>
+    <td><img src="docs/help/assets/screenshots/recommendations.png" alt="Recommendations page"></td>
+  </tr>
+  <tr>
+    <td width="45%"><img src="docs/help/assets/screenshots/metrics.png" alt="Metrics page"></td>
+    <td>
+      <h3>You know before your users call</h3>
+      Delivery metrics, a searchable message list and logs in the ConfigTool. Reports by email every day, week or month, and alerts for failed delivery, expiring certificates, a full disk or an unreachable Graph.
+    </td>
+  </tr>
+</table>
 
-The bundled help (Start menu → *GraphMailer Help*) walks through every page,
-including a quickstart and troubleshooting guide. You can also read the same help
-online before installing — it is browsable right here on GitHub:
-**[GraphMailer Help](docs/help/index.md)** (installation, Entra setup, a reference
-page for every ConfigTool screen, troubleshooting, FAQ, and glossary).
+## How it works
 
-## Silent install
+| Your devices | GraphMailer | Microsoft 365 | You |
+|---|---|---|---|
+| Scanners, printers, ERP and monitoring send plain SMTP, as today. | A Windows service queues each message on disk and checks it. | Graph sends it as the sender's mailbox, like any other Microsoft 365 mail. | Set up and watch everything in the ConfigTool. No config files to edit. |
 
-```
-GraphMailerSetup-<version>.exe /quiet /norestart
-```
+## Quick start
 
-## Changelog
+1. Download `GraphMailerSetup-<version>.exe` from the [latest release](https://github.com/debold/GraphMailer.NET/releases/latest) and run it. It brings the .NET 10 runtime along.
+2. Open the **GraphMailer ConfigTool** and run the **Entra ID setup** on the Graph API page.
+3. Add the SMTP users or IP ranges that may send, and the addresses they may send as.
+4. Point your devices at the relay. Silent install: `GraphMailerSetup-<version>.exe /quiet /norestart`.
 
-Every user-visible change is recorded in **[CHANGELOG.md](CHANGELOG.md)** — new features, fixes,
-and behavioural changes, newest first.
-
-## Testing
-
-GraphMailer ships with an extensive automated test suite — unit tests, SMTP/HTTP
-integration tests, and opt-in live tests against a real Microsoft 365 tenant. Every
-single test is catalogued, with its scenario and expected result, in
-**[docs/TEST_DOCUMENTATION.md](docs/TEST_DOCUMENTATION.md)** — a useful map of exactly
-which behaviours (security decisions, retry logic, config schema, delivery paths) are
-covered.
+[Help](docs/help/index.md) · [Changelog](CHANGELOG.md) · [Releases](https://github.com/debold/GraphMailer.NET/releases) · [Test documentation](docs/TEST_DOCUMENTATION.md) · [Security](SECURITY.md)
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © Marc Debold.
