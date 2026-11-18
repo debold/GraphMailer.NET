@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 2127 tests** (2034 unit · 93 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-11-17
+**Total: 2141 tests** (2048 unit · 93 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-11-18
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
