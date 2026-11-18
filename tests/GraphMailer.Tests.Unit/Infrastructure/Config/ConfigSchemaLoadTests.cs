@@ -539,6 +539,28 @@ public sealed class ConfigSchemaLoadTests : IDisposable
     }
 
     [Fact]
+    public void Load_LogFiles_RetentionDays_AppearInDocLogging()
+    {
+        WriteJson("""{ "LogFiles": { "RetentionDays": 14, "ErrorRetentionDays": 90 } }""");
+
+        var logging = _sut.Load().Logging;
+
+        logging.RetentionDays.Should().Be(14);
+        logging.ErrorRetentionDays.Should().Be(90);
+    }
+
+    [Fact]
+    public void Load_LogFiles_Absent_FallsBackToTheDefaults()
+    {
+        WriteJson("""{ "Metrics": { "RetentionDays": 30 } }""");
+
+        var logging = _sut.Load().Logging;
+
+        logging.RetentionDays.Should().Be(7);
+        logging.ErrorRetentionDays.Should().Be(30);
+    }
+
+    [Fact]
     public void Load_Metrics_RetentionDays_AppearsInDocMetricsRetentionDays()
     {
         WriteJson("""{ "Metrics": { "RetentionDays": 30 } }""");

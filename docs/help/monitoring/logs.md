@@ -9,15 +9,15 @@ tagged with the component that produced it (for example `[SmtpRelay]`, `[QueuePr
 
 | File | Contents |
 |---|---|
-| `graphmailer-*.log` | The service log — everything at or above the configured log level. |
-| `error-*.log` | Service errors only (a filtered copy, kept longer for post-incident review). |
+| `graphmailer-*.log` | The service log — everything at or above the configured log level. Kept 7 days by default. |
+| `error-*.log` | Service errors only (a filtered copy, kept longer for post-incident review). Kept 30 days by default. |
 | `startup-*.log` | The few messages from before the service log is open — a config it could not read, a key ring it could not reach, another instance already running. Normally almost empty; the place to look when the service will not start and `graphmailer-*.log` shows nothing. |
 | `configtool-*.log` | Diagnostic log of the Config Tool — errors shown in its UI, with full detail. |
 | `configtool-crash.log` | Written only if the Config Tool itself crashes. |
 
 > [!NOTE]
-> This page is **read-only**. The minimum level that gets *written* is set by the **Log level** on
-> the [Monitoring](../configuration/monitoring.md) page.
+> This page is **read-only**. The minimum level that gets *written* and how many days the files are
+> kept are set under **Logging** on the [Monitoring](../configuration/monitoring.md) page.
 
 ## Filtering
 

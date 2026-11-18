@@ -850,6 +850,9 @@ public partial class MainWindow : Window
             doc.Certificate.FailClosed,
             doc.MailQueue.MailDir,
             doc.MailQueue.PollingIntervalSeconds,
+            // The log file sinks are built once at service startup.
+            doc.Logging.RetentionDays,
+            doc.Logging.ErrorRetentionDays,
             Servers = doc.Servers
                 .Select(e => new { e.Enabled, e.Port, e.Mode, e.AuthMode, e.Name })
                 .OrderBy(e => e.Port).ThenBy(e => e.Name)

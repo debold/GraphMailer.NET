@@ -123,6 +123,13 @@ try
         options.ShutdownTimeout = TimeSpan.FromSeconds(30);
     });
 
+    // Log retention is read once here: the file sinks are built at startup, so a changed value
+    // takes effect after a service restart (the ConfigTool shows its restart badge for it).
+    // Retention is by age — a file older than the configured days is deleted on the next roll —
+    // with a file-count cap so a log flood rolling many size-limited files cannot fill the disk.
+    var logFiles = builder.Configuration.GetSection(LogFilesOptions.SectionName).Get<LogFilesOptions>()
+                   ?? new LogFilesOptions();
+
     builder.Services.AddSerilog((services, lc) => lc
         .ReadFrom.Configuration(builder.Configuration)
         .ReadFrom.Services(services)
@@ -132,13 +139,15 @@ try
         .WriteTo.File(
             Path.Combine(AppPaths.LogsDir, "graphmailer-.log"),
             rollingInterval: Serilog.RollingInterval.Day,
-            retainedFileCountLimit: 7,
+            retainedFileCountLimit: LogFilesOptions.FileCountLimit(logFiles.RetentionDays),
+            retainedFileTimeLimit: LogFilesOptions.TimeLimit(logFiles.RetentionDays),
             fileSizeLimitBytes: 104_857_600,
             rollOnFileSizeLimit: true)
         .WriteTo.File(
             Path.Combine(AppPaths.LogsDir, "error-.log"),
             rollingInterval: Serilog.RollingInterval.Day,
-            retainedFileCountLimit: 30,
+            retainedFileCountLimit: LogFilesOptions.FileCountLimit(logFiles.ErrorRetentionDays),
+            retainedFileTimeLimit: LogFilesOptions.TimeLimit(logFiles.ErrorRetentionDays),
             fileSizeLimitBytes: 104_857_600,
             rollOnFileSizeLimit: true,
             restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Error));

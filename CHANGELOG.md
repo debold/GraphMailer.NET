@@ -22,6 +22,16 @@
   receipt statistics, marked as incomplete. With metrics switched off nothing is recorded and the
   page shows the mail folders as before.
 
+- **How long log files are kept is now a setting, in days.** **Monitoring › Logging** has two new
+  fields: *Log retention* for `graphmailer-*.log` (default 7 days) and *Error log retention* for
+  `error-*.log` (default 30 days), each 1–3650 days. The config keys are `LogFiles.RetentionDays`
+  and `LogFiles.ErrorRetentionDays` (config schema v13, additive). Until now the service kept a
+  fixed number of *files*, so a busy day that rolled over the 100 MB size limit shortened the history
+  below a week; retention now counts days, with a cap of four files per day as a guard against a log
+  flood. The defaults match the previous behaviour. A change takes effect after a service restart,
+  and the Config Tool shows its restart badge for it. The message history on the Messages page is
+  not affected: it lives in `metrics.db` and follows the metrics retention.
+
 ### Security
 
 - **The `Microsoft.*` packages moved to the 10.0.13 servicing release.** It fixes four

@@ -1277,6 +1277,16 @@ synced when it is.
 
 ---
 
+### LogFilesOptions — log file retention (`Configuration/LogFilesOptionsTests.cs`)
+
+> The values the service hands to Serilog's file sinks for `LogFiles.RetentionDays` / `ErrorRetentionDays`.
+
+| Test | Scenario | Expected |
+|---|---|---|
+| `Defaults_MatchTheFixedRetentionOfEarlierVersions` | New options | 7 and 30 days |
+| `TimeLimit_IsTheClampedNumberOfDays` | −5, 0, 1, 14, 3650, 99999 | Clamped to 1 – 3650 days |
+| `FileCountLimit_AllowsFourSizeRolledFilesPerRetainedDay` | 0, 7, 30 | 4, 28, 120 files |
+
 ### ConfigService — secret decryption resilience (`Infrastructure/Config/ConfigServiceTests.cs`)
 
 | Test | Scenario | Expected result |
@@ -2624,6 +2634,7 @@ Daily opt-in heartbeat scheduler: persists cadence + install id + counter waterm
 | `Migrate_V8_ToV9_NoAdminNotificationsSection_IsLeftAlone` | v8 doc without `AdminNotifications` | Section not created; version stamped to current |
 | `Migrate_V11_ToV12_IsAdditiveOnly_ContentUnchangedExceptVersion` | v11 doc with `SenderValidation.Enabled` | Version stamped, existing content untouched, `SenderRouting` section not created (binder default = routing off) |
 | `Migrate_V11_ToV12_LeavesTheNewSenderValidationFlagAbsent_SoItDefaultsToOff` | v11 doc with `SenderValidation.Enabled` | `AcceptMailboxlessSenders` stays absent — it needs an extra Graph permission, so an upgrade must never turn it on |
+| `Migrate_V12_ToV13_IsAdditiveOnly_LeavesTheLogFilesSectionAbsent` | v12 doc with `Serilog.MinimumLevel` | Version stamped, existing content untouched, `LogFiles` section not created (binder defaults = 7 / 30 days) |
 | `Migrate_AlreadyCurrent_IsNoOp` | Doc already at current version | `false` (no change) |
 | `Migrate_Idempotent` | Migrate twice | First `true`, second `false` |
 | `Migrate_NewerThanBuild_LeavesFileAlone` | `SchemaVersion = Current + 1` | `false`; version left untouched |
@@ -2683,6 +2694,8 @@ Verifies that every JSON key written by the service (`graphmailer.json`) is corr
 | `Load_MailQueue_RetryPolicy_AppearsInDocMailQueue` | `MailQueue` transient/steady/expiration keys | `doc.MailQueue.{TransientRetryCount,TransientRetryIntervalSeconds,RetryIntervalSeconds,MessageExpirationHours}` match |
 | `Load_Metrics_Enabled_False_AppearsInDocMetricsEnabled_False` | `Metrics.Enabled = false` | `doc.Metrics.Enabled == false` |
 | `Load_Metrics_RetentionDays_AppearsInDocMetricsRetentionDays` | `Metrics.RetentionDays = 30` | `doc.Metrics.RetentionDays == 30` |
+| `Load_LogFiles_RetentionDays_AppearInDocLogging` | `LogFiles.RetentionDays = 14`, `ErrorRetentionDays = 90` | `doc.Logging.RetentionDays == 14`, `ErrorRetentionDays == 90` |
+| `Load_LogFiles_Absent_FallsBackToTheDefaults` | No `LogFiles` section | `doc.Logging.RetentionDays == 7`, `ErrorRetentionDays == 30` |
 | `Load_Metrics_CleanupIntervalHours_AppearsInDocMetricsCleanupIntervalHours` | `Metrics.CleanupIntervalHours = 12` | `doc.Metrics.CleanupIntervalHours == 12` |
 | `Load_Metrics_PerformanceMetrics_Enabled_False_AppearsInDocMetricsPerfMetricsEnabled_False` | `Metrics.PerformanceMetrics.Enabled = false` | `doc.Metrics.PerfMetricsEnabled == false` |
 | `Load_Metrics_PerformanceMetrics_MemoryIntervalSeconds_AppearsInDocMetricsPerfMemoryIntervalSeconds` | `PerformanceMetrics.MemoryIntervalSeconds = 120` | `doc.Metrics.PerfMemoryIntervalSeconds == 120` |
@@ -2779,6 +2792,7 @@ Verifies that `ConfigService.Save()` writes the correct JSON keys so that `Micro
 | `Save_MailQueueRetryPolicy_BindsToMailQueueOptions` | `doc.MailQueue` transient/steady/expiration set | `MailQueueOptions.{TransientRetryCount,TransientRetryIntervalSeconds,RetryIntervalSeconds,MessageExpirationHours}` bind correctly |
 | `Save_MetricsEnabled_False_BindsToMetricsOptionsEnabled_False` | `Metrics.Enabled = false` | `MetricsOptions.Enabled == false` |
 | `Save_MetricsRetentionDays_BindsToMetricsOptionsRetentionDays` | `Metrics.RetentionDays = 30` | `MetricsOptions.RetentionDays == 30` |
+| `Save_LoggingRetentionDays_BindsToLogFilesOptions` | `doc.Logging.RetentionDays = 21`, `ErrorRetentionDays = 120` saved | `LogFilesOptions.RetentionDays == 21`, `ErrorRetentionDays == 120` |
 | `Save_MetricsCleanupIntervalHours_BindsToMetricsOptionsCleanupIntervalHours` | `Metrics.CleanupIntervalHours = 12` | `MetricsOptions.CleanupIntervalHours == 12` |
 | `Save_MetricsPerfEnabled_False_BindsToPerformanceMetricsOptionsEnabled_False` | `Metrics.PerfMetricsEnabled = false` | `PerformanceMetricsOptions.Enabled == false` |
 | `Save_MetricsPerfMemoryIntervalSeconds_BindsToPerformanceMetricsOptionsMemoryIntervalSeconds` | `PerfMemoryIntervalSeconds = 120` | `PerformanceMetricsOptions.MemoryIntervalSeconds == 120` |

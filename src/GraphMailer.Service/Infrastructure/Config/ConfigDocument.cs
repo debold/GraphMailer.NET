@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using GraphMailer.Service.Configuration;
 
 namespace GraphMailer.Service.Infrastructure.Config;
 
@@ -209,6 +210,12 @@ internal sealed class ConfigDocument
     internal sealed class LoggingSection
     {
         public string DefaultLevel { get; set; } = "Information";
+
+        /// <summary><c>LogFiles.RetentionDays</c>: days to keep graphmailer-*.log.</summary>
+        public int RetentionDays { get; set; } = LogFilesOptions.DefaultRetentionDays;
+
+        /// <summary><c>LogFiles.ErrorRetentionDays</c>: days to keep error-*.log.</summary>
+        public int ErrorRetentionDays { get; set; } = LogFilesOptions.DefaultErrorRetentionDays;
     }
 
     internal sealed class RecommendationsSection

@@ -552,6 +552,23 @@ public sealed class ConfigMigratorTests : IDisposable
     }
 
     [Fact]
+    public void Migrate_V12_ToV13_IsAdditiveOnly_LeavesTheLogFilesSectionAbsent()
+    {
+        // v13 introduced LogFiles.RetentionDays / ErrorRetentionDays. The defaults (7 / 30 days)
+        // match the fixed retention of earlier versions, so nothing has to be written.
+        var root = JsonNode.Parse(
+            """{ "SchemaVersion": 12, "Serilog": { "MinimumLevel": { "Default": "Debug" } } }""")!.AsObject();
+
+        var changed = ConfigSchema.Migrate(root);
+
+        changed.Should().BeTrue();
+        ConfigSchema.ReadVersion(root).Should().Be(ConfigSchema.Current);
+        root["Serilog"]!["MinimumLevel"]!["Default"]!.GetValue<string>().Should().Be("Debug");
+        root.ContainsKey("LogFiles").Should().BeFalse(
+            "the absent section is valid — the options binder falls back to the defaults");
+    }
+
+    [Fact]
     public void Migrate_V11_ToV12_IsAdditiveOnly_ContentUnchangedExceptVersion()
     {
         // v12 introduced the SenderRouting section plus SenderValidation.AcceptMailboxlessSenders.

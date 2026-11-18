@@ -10,8 +10,9 @@ When a check fails, GraphMailer raises an admin notification (if configured on t
 the [Status](../monitoring/status.md) page.
 
 > [!NOTE]
-> Changes on this page apply to the running service **without a restart**. The log level in
-> particular takes effect immediately.
+> Changes on this page apply to the running service **without a restart**, with one exception:
+> the two log retention settings take effect after the service restarts (the restart badge in the
+> header shows when one is due). The log level takes effect immediately.
 
 ## Update Check
 
@@ -154,14 +155,27 @@ Periodically samples the service's resource usage (memory, CPU, disk) into the m
 | Setting | Default | Meaning |
 |---|---|---|
 | Log level | `Information` | Minimum level written to the log files. Lower it to `Debug` for detailed per-request troubleshooting; raise it to `Warning` to log only problems. |
+| Log retention (days) | `7` | How long `graphmailer-*.log` is kept, 1–3650 days. Config key `LogFiles.RetentionDays`. |
+| Error log retention (days) | `30` | How long `error-*.log` (errors only) is kept, 1–3650 days. Config key `LogFiles.ErrorRetentionDays`. |
 
 > [!NOTE]
 > The log level changes **immediately**, no restart needed. Microsoft and System framework logs are
 > always kept at `Warning` regardless of this setting, to keep the logs readable. View the files on
 > the [Logs](../monitoring/logs.md) page.
 
+> [!NOTE]
+> The **retention** settings take effect after a **service restart**. A log file older than the
+> retention is deleted when the log rolls over to the next day, so on a quiet error log an old file
+> can stay until the next error is written. As a guard against a log flood filling the disk, at most
+> four files per retained day are kept (a day that exceeds 100 MB continues in `_001`, `_002` …).
+>
+> The retention covers the service logs only. The message history on the
+> [Messages](../monitoring/messages.md) page is stored in `metrics.db` and follows the metrics
+> retention above, and the `.eml` files follow the retention on the
+> [Mail Queue](mail-queue.md) page.
+
 ## Related
 
 - [Notifications](notifications.md) — where alerts from these checks are delivered
 - [Metrics](../monitoring/metrics.md) — the statistics this page records
-- [Logs](../monitoring/logs.md) — the log files the log level controls
+- [Logs](../monitoring/logs.md) — the log files the log level and retention control

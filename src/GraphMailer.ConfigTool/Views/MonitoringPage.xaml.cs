@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using GraphMailer.ConfigTool.Helpers;
+using GraphMailer.Service.Configuration;
 using GraphMailer.Service.Infrastructure.Config;
 using GraphMailer.Service.Services.Advisor;
 
@@ -86,6 +87,8 @@ public partial class MonitoringPage : UserControl
         var idx = Array.FindIndex(LogLevels,
             l => l.Equals(doc.Logging.DefaultLevel, StringComparison.OrdinalIgnoreCase));
         LogLevel.SelectedIndex = idx >= 0 ? idx : 2;
+        LogRetentionDays.Text = doc.Logging.RetentionDays.ToString();
+        ErrorLogRetentionDays.Text = doc.Logging.ErrorRetentionDays.ToString();
     }
 
     internal void CollectTo(ConfigDocument doc)
@@ -114,7 +117,14 @@ public partial class MonitoringPage : UserControl
 
         if (LogLevel.SelectedIndex >= 0)
             doc.Logging.DefaultLevel = LogLevels[LogLevel.SelectedIndex];
+        doc.Logging.RetentionDays = ParseRetention(LogRetentionDays.Text, LogFilesOptions.DefaultRetentionDays);
+        doc.Logging.ErrorRetentionDays = ParseRetention(ErrorLogRetentionDays.Text, LogFilesOptions.DefaultErrorRetentionDays);
     }
+
+    // Unparsable input falls back to the default; out-of-range input is clamped, matching what
+    // the service does with a hand-edited value.
+    private static int ParseRetention(string text, int fallback)
+        => int.TryParse(text, out var days) ? LogFilesOptions.Clamp(days) : fallback;
 
     /// <summary>Transparency line: install id + last heartbeat from the service-written status file.</summary>
     private static string DescribeTelemetryStatus()

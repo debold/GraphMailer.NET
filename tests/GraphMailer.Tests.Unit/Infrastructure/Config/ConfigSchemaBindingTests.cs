@@ -622,6 +622,17 @@ public sealed class ConfigSchemaBindingTests : IDisposable
     }
 
     [Fact]
+    public void Save_LoggingRetentionDays_BindsToLogFilesOptions()
+    {
+        _sut.Save(new ConfigDocument { Logging = new() { RetentionDays = 21, ErrorRetentionDays = 120 } });
+
+        var opts = Bind<LogFilesOptions>(LoadServiceConfig(), LogFilesOptions.SectionName);
+
+        opts.RetentionDays.Should().Be(21);
+        opts.ErrorRetentionDays.Should().Be(120);
+    }
+
+    [Fact]
     public void Save_MetricsRetentionDays_BindsToMetricsOptionsRetentionDays()
     {
         _sut.Save(new ConfigDocument { Metrics = new() { RetentionDays = 30 } });

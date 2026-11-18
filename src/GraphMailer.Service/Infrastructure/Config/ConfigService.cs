@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using GraphMailer.Service.Configuration;
 using Microsoft.AspNetCore.DataProtection;
 
 namespace GraphMailer.Service.Infrastructure.Config;
@@ -1054,14 +1055,21 @@ internal sealed class ConfigService
             JsonValue v when v.TryGetValue<string>(out var str) => str,
             _ => null,
         };
+        var files = root[LogFilesOptions.SectionName] as JsonObject ?? new JsonObject();
         return new ConfigDocument.LoggingSection
         {
             DefaultLevel = level ?? "Information",
+            RetentionDays = files["RetentionDays"]?.GetValue<int>() ?? LogFilesOptions.DefaultRetentionDays,
+            ErrorRetentionDays = files["ErrorRetentionDays"]?.GetValue<int>() ?? LogFilesOptions.DefaultErrorRetentionDays,
         };
     }
 
     private static void WriteLogging(JsonObject root, ConfigDocument.LoggingSection s)
     {
+        var files = EnsureSection(root, LogFilesOptions.SectionName);
+        files["RetentionDays"] = s.RetentionDays;
+        files["ErrorRetentionDays"] = s.ErrorRetentionDays;
+
         // When no MinimumLevel is configured yet, don't materialize one just to store
         // the default — graphmailer.json is loaded after appsettings.json and the new
         // entry would permanently shadow a level configured there.

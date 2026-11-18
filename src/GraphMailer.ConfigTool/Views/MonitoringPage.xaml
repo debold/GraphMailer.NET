@@ -160,7 +160,7 @@
                             </Border>
                         </StackPanel>
                     </Border>
-                    <Grid Margin="16,12,16,16">
+                    <Grid Margin="16,12,16,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="200"/>
                             <ColumnDefinition Width="24"/>
@@ -179,6 +179,50 @@
                         <TextBlock Grid.Column="2"
                                    Margin="0,18,0,0"
                                    Text="Minimum log level written to the log files. Changes take effect immediately without restarting the service. Microsoft and System framework logs always use Warning."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                    <Grid Margin="16,4,16,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Log retention (days)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="LogRetentionDays"
+                                     Text="7"
+                                     h:NumericField.Min="1"
+                                     h:NumericField.Max="3650"
+                                     ToolTip="How many days the service log files (graphmailer-*.log) are kept.&#x0a;Range: 1 – 3650 days (10 years)."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="Log files older than this many days are deleted when the log rolls over to a new day. Takes effect after a service restart."
+                                   Style="{StaticResource HintText}"/>
+                    </Grid>
+                    <Grid Margin="16,4,16,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Error log retention (days)"
+                                       Style="{StaticResource LabelText}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="ErrorLogRetentionDays"
+                                     Text="30"
+                                     h:NumericField.Min="1"
+                                     h:NumericField.Max="3650"
+                                     ToolTip="How many days the error log files (error-*.log, errors only) are kept.&#x0a;Range: 1 – 3650 days (10 years)."
+                                     TextChanged="AnyField_Changed"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Margin="0,18,0,0"
+                                   Text="The error log holds only errors, so it can be kept longer than the full log at little cost. Takes effect after a service restart."
                                    Style="{StaticResource HintText}"/>
                     </Grid>
                 </StackPanel>
