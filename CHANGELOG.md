@@ -75,6 +75,12 @@
 
 ### Changed
 
+- **The ConfigTool opens where you left it.** It remembers its size, position and whether it was
+  maximized, instead of starting at the default size in the middle of the screen every time. The
+  placement is kept per Windows user in `%LOCALAPPDATA%\GraphMailer\configtool-window.json`, not in
+  the service configuration. If the saved position is no longer on any screen (a monitor was
+  disconnected), the window opens centred as before.
+
 - **Dependency round.** The `Microsoft.*` packages moved to the 10.0.15 servicing release,
   matching the newest .NET 10 runtime. Microsoft Graph SDK moved to 6.10.0, MSAL to 4.92.0,
   SkiaSharp to 4.156.1 and MimeKit/MailKit to 4.18.2. The test tooling, the help renderer's

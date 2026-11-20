@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 2153 tests** (2060 unit · 93 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-11-20
+**Total: 2164 tests** (2071 unit · 93 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-11-20
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -1559,6 +1559,20 @@ paths that need no tenant are covered here; acquiring a real token belongs to th
 | `ReadFolder_StoredMessageFile_IsReportedWithItsPath` | One message with its `.eml`, one with only the `.meta.json` | `EmlPath`/`HasFile` set only for the stored one — drives the envelope icon and "Stored file" |
 
 ---
+
+### WindowPlacementStore — ConfigTool window position (`ConfigTool/WindowPlacementStoreTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Save_and_load_round_trip` | Placement saved into a folder that does not exist yet | Folder created, the same placement loads back |
+| `Missing_or_corrupt_file_loads_nothing` | No file / invalid JSON | `null` — the default placement is used, no exception |
+| `Placement_on_the_screen_is_kept` | Window fully on the screen | Kept unchanged |
+| `Placement_on_a_disconnected_monitor_falls_back_to_the_default` | Saved on a second monitor that is gone | `null` — opens centred instead of off-screen |
+| `Title_bar_above_the_screen_falls_back_to_the_default` | Title bar above the top edge | `null` — the window could not be grabbed |
+| `Placement_partly_off_screen_is_kept_while_the_title_bar_can_be_grabbed` | Right part beyond the screen edge | Kept |
+| `Size_is_capped_at_the_screen_and_kept_above_the_minimum` | Too large / too small size | Capped at the screen, raised to the window minimum |
+| `Nonsense_values_fall_back_to_the_default` (Theory) | NaN position, zero width, negative height | `null` |
+| `Second_monitor_left_of_the_primary_is_a_valid_place` | Monitor at negative x | Kept |
 
 ### MessageTimeline — Messages page list and timeline (`ConfigTool/MessageTimelineTests.cs`)
 

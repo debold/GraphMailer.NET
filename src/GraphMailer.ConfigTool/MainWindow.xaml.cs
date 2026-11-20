@@ -66,6 +66,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         ClampToWorkArea();
+        RestorePlacement();
 
         // Initialise ConfigService using the same Data Protection key ring as the service
         var configPath = AppPaths.ConfigFilePath;
@@ -177,6 +178,40 @@ public partial class MainWindow : Window
         MinHeight = Math.Min(MinHeight, workArea.Height);
         Width = Math.Min(Width, workArea.Width);
         Height = Math.Min(Height, workArea.Height);
+    }
+
+    /// <summary>
+    /// Reopens the window where it was closed: same size and position, maximized if it was.
+    /// Without a usable saved placement the XAML default (centred, clamped above) stays.
+    /// </summary>
+    private void RestorePlacement()
+    {
+        var virtualScreen = new Rect(
+            SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+        var placement = WindowPlacementStore.Fit(
+            WindowPlacementStore.Load(WindowPlacementStore.DefaultPath), virtualScreen, MinWidth, MinHeight);
+        if (placement is null) return;
+
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Left = placement.Left;
+        Top = placement.Top;
+        Width = placement.Width;
+        Height = placement.Height;
+        // Maximized after the normal bounds are set: un-maximizing then returns to them, and the
+        // window maximizes on the screen it was on.
+        if (placement.Maximized)
+            WindowState = WindowState.Maximized;
+    }
+
+    /// <summary>Remembers size, position and maximized state for the next start.</summary>
+    private void SavePlacement()
+    {
+        // RestoreBounds holds the normal-state bounds while maximized or minimized.
+        var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        if (bounds.IsEmpty) return;
+        WindowPlacementStore.Save(WindowPlacementStore.DefaultPath, new WindowPlacement(
+            bounds.Left, bounds.Top, bounds.Width, bounds.Height, WindowState == WindowState.Maximized));
     }
 
     private ConfigDocument LoadConfig()
@@ -883,6 +918,8 @@ public partial class MainWindow : Window
         }
 
         base.OnClosing(e);
+        if (!e.Cancel)
+            SavePlacement();
         _configWatcher?.Dispose();
     }
 }

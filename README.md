@@ -21,7 +21,7 @@
 Microsoft is retiring Basic Auth for SMTP in Exchange Online. Devices and applications that only speak plain SMTP stop sending. GraphMailer takes their mail on ports 25, 465 and 587 on a Windows machine in your network and delivers it through the Microsoft Graph API with app-only sign-in. Nothing changes on the devices except the server name.
 
 > [!NOTE]
-> **[GraphMailer 1.5.2](https://github.com/debold/GraphMailer.NET/releases/latest) is out.** It follows Microsoft 365's `Retry-After`, so a briefly unavailable mailbox no longer holds mail for minutes. See the [changelog](CHANGELOG.md).
+> **[GraphMailer 1.6.0](https://github.com/debold/GraphMailer.NET/releases/latest) is out.** Every message now has a timeline on the Messages page: received, scanned, each delivery attempt and the result, with a one-line answer to "was it delivered, and when?". See the [changelog](CHANGELOG.md).
 
 ## What makes it different
 
@@ -51,7 +51,7 @@ Microsoft is retiring Basic Auth for SMTP in Exchange Online. Devices and applic
     <td width="45%"><img src="docs/help/assets/screenshots/metrics.png" alt="Metrics page"></td>
     <td>
       <h3>You know before your users call</h3>
-      Delivery metrics, a searchable message list and logs in the ConfigTool. Reports by email every day, week or month, and alerts for failed delivery, expiring certificates, a full disk or an unreachable Graph.
+      Delivery metrics, a timeline for every message from receipt to delivery, and logs in the ConfigTool. Reports by email every day, week or month, and alerts for failed delivery, expiring certificates, a full disk or an unreachable Graph.
     </td>
   </tr>
 </table>
