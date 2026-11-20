@@ -18,9 +18,12 @@
 
   The service records each step in `metrics.db` (schema v5, two new tables) and keeps the history
   for the metrics retention, 90 days by default, so it outlives the `.eml` files in `sent\`.
-  Messages handled before this version get a shortened timeline from their `.meta.json` and the
-  receipt statistics, marked as incomplete. With metrics switched off nothing is recorded and the
-  page shows the mail folders as before.
+  Messages handled before this version are rebuilt from the receipt statistics in `metrics.db`
+  (and the `.meta.json`, if a file is still stored), so they show up even when sent mail is not
+  archived; their timeline is shortened and marked as incomplete. An envelope in the list marks
+  messages whose `.eml` file is stored, and the details show its path. An empty list now says why
+  (metrics off, no archive, nothing recorded yet, or an unreadable database). With metrics switched
+  off nothing is recorded and the page shows the mail folders as before.
 
 - **How long log files are kept is now a setting, in days.** **Monitoring › Logging** has two new
   fields: *Log retention* for `graphmailer-*.log` (default 7 days) and *Error log retention* for

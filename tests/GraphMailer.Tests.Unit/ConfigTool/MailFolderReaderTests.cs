@@ -39,6 +39,22 @@ public sealed class MailFolderReaderTests : IDisposable
     // =========================================================================
 
     [Fact]
+    public void ReadFolder_StoredMessageFile_IsReportedWithItsPath()
+    {
+        WriteMeta("with", new MailMetadata { MessageId = "with", Status = "sent", ReceivedAt = DateTime.UtcNow });
+        WriteMeta("without", new MailMetadata { MessageId = "without", Status = "sent", ReceivedAt = DateTime.UtcNow.AddMinutes(-1) });
+        var eml = Path.Combine(_dir, "with.eml");
+        File.WriteAllText(eml, "Subject: x\r\n\r\nbody");
+
+        var rows = Read(_dir).ToDictionary(r => r.MessageId);
+
+        rows["with"].EmlPath.Should().Be(eml);
+        rows["with"].HasFile.Should().BeTrue();
+        rows["without"].EmlPath.Should().BeNull("only the sidecar is left, so there is no message to open");
+        rows["without"].HasFile.Should().BeFalse();
+    }
+
+    [Fact]
     public void ReadFolder_MissingDirectory_ReturnsEmpty()
     {
         Read(Path.Combine(_dir, "does-not-exist")).Should().BeEmpty();

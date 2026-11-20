@@ -32,6 +32,8 @@ public partial class MessagesPage : UserControl
     // Live view of the relevant Mail Queue settings (MailDir, ArchiveSentEmails)
     private readonly Func<(string? MailDir, bool ArchiveSent)> _queueSettings;
     private readonly Func<string> _dataDir;
+    // Live Monitoring setting: the service records message history only while metrics are on.
+    private readonly Func<bool> _metricsEnabled;
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _searchDebounce;
     private readonly DispatcherTimer _copyConfirm;
@@ -39,10 +41,12 @@ public partial class MessagesPage : UserControl
     private int _limit = MailFolderReader.PageSize;
     private string _copyText = string.Empty;
 
-    internal MessagesPage(Func<(string? MailDir, bool ArchiveSent)> queueSettings, Func<string> dataDir)
+    internal MessagesPage(
+        Func<(string? MailDir, bool ArchiveSent)> queueSettings, Func<string> dataDir, Func<bool> metricsEnabled)
     {
         _queueSettings = queueSettings;
         _dataDir = dataDir;
+        _metricsEnabled = metricsEnabled;
 
         // Built before InitializeComponent(): the search box raises TextChanged while the XAML
         // is being parsed, and the handler must not find a null timer.
@@ -116,18 +120,24 @@ public partial class MessagesPage : UserControl
             var search = SearchBox.Text.Trim();
             var limit = _limit;
             var dbPath = DbPath;
+            var metricsEnabled = _metricsEnabled();
 
-            var (rows, total, hasMore) = await Task.Run(() =>
+            var (rows, total, hasMore, readError, dbExists) = await Task.Run(() =>
             {
-                var traced = MessageTraceReader.ReadList(dbPath, filter, search, limit);
+                var traced = MessageTraceReader.ReadList(dbPath, filter, search, limit, out var traceError);
+                // Messages from before 1.6.0 have no history, only their receipt/delivery metrics.
+                // Without archived mail those rows are the only trace of them left.
+                var legacy = MessageTraceReader.ReadMetricsList(dbPath, filter, search, limit, out var legacyError);
                 // Folders are read whole anyway (see MailFolderReader); the merge pages the result.
                 var folders = MailFolderReader.ReadFolders(int.MaxValue, null,
                     Path.Combine(baseDir, "queue"),
                     Path.Combine(baseDir, "failed"),
                     Path.Combine(baseDir, "sent")).Rows;
-                var merged = MessageTimeline.Merge(traced.Rows, traced.Total, folders, filter, search, limit,
+                var recorded = traced.Rows.Concat(legacy.Rows).ToList();
+                var merged = MessageTimeline.Merge(recorded, traced.Total + legacy.Total, folders, filter, search, limit,
                     out var mergedTotal, out var mergedHasMore);
-                return (merged, mergedTotal, mergedHasMore || traced.HasMore);
+                return (merged, mergedTotal, mergedHasMore || traced.HasMore || legacy.HasMore,
+                        traceError ?? legacyError, File.Exists(dbPath));
             });
 
             // Replacing the ItemsSource must not throw away user-resized column
@@ -152,16 +162,10 @@ public partial class MessagesPage : UserControl
             LoadMoreButton.Content = $"Load {MailFolderReader.PageSize:N0} more";
             LoadMoreButton.Visibility = hasMore ? Visibility.Visible : Visibility.Collapsed;
 
-            if (filter == MessageListFilter.Sent && rows.Count == 0 && !archiveSent && search.Length == 0)
-            {
-                EmptyHint.Text = "No delivered messages recorded yet. Delivered messages appear here once the service " +
-                                 "has handled them (history is kept for the Metrics retention period).";
-                EmptyHint.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                EmptyHint.Visibility = Visibility.Collapsed;
-            }
+            var hint = MessageListHint.Build(rows.Count, search.Length > 0, filter, archiveSent,
+                metricsEnabled, dbExists, readError);
+            EmptyHint.Text = hint ?? string.Empty;
+            EmptyHint.Visibility = hint is null ? Visibility.Collapsed : Visibility.Visible;
         }
         finally
         {
@@ -201,6 +205,7 @@ public partial class MessagesPage : UserControl
         DetailNextRetry.Text = Show(row.NextRetryAt?.ToString("yyyy-MM-dd HH:mm:ss"));
         DetailMessageId.Text = Show(row.SmtpMessageId);
         DetailQueueId.Text = Show(row.MessageId);
+        DetailFile.Text = row.EmlPath ?? "Not stored (only the recorded facts are kept)";
 
         // The history is read on every selection change (also by the 5 s refresh restoring the
         // selection), so a message still being retried shows its newest attempt.

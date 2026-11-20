@@ -1,6 +1,6 @@
 # GraphMailer.NET – Test Documentation
 
-**Total: 2141 tests** (2048 unit · 93 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-11-18
+**Total: 2153 tests** (2060 unit · 93 integration) plus **13 opt-in live tests** against a real M365 test tenant — last updated 2026-11-20
 
 > **Maintenance rule**: Every new test must be documented in this file before the PR/commit is considered complete.  
 > Add a row to the matching section. If a new section is needed, follow the existing heading pattern.
@@ -1556,6 +1556,7 @@ paths that need no tenant are covered here; acquiring a real token belongs to th
 | `Matches_TermInAnySearchedField_ReturnsTrue` (Theory) | Term in sender / recipient / subject / status / client IP / failure reason | `true` for each |
 | `Matches_EmptySearch_MatchesEveryRow` | Whitespace-only search | `true` |
 | `Matches_TermInNoField_ReturnsFalse` | Term in no field | `false` |
+| `ReadFolder_StoredMessageFile_IsReportedWithItsPath` | One message with its `.eml`, one with only the `.meta.json` | `EmlPath`/`HasFile` set only for the stored one — drives the envelope icon and "Stored file" |
 
 ---
 
@@ -1577,6 +1578,17 @@ paths that need no tenant are covered here; acquiring a real token belongs to th
 | `Summary_of_a_discarded_message_warns_that_the_sender_believes_it_was_sent` | Discarded by a rule | Says the device was told it was accepted |
 | `Copy_text_carries_the_facts_an_answer_needs` | "Copy summary" | Summary plus subject, sender, delivery time and GraphMailer id |
 | `Delay_reads_naturally` (Theory) | 12 s, 1 min, 36 min, 1 h, 2 h 5 min | "12 seconds", "1 minute", "36 minutes", "1 hour", "2 hours 5 min" |
+
+### MessageListHint — note above an empty Messages list (`ConfigTool/MessageListHintTests.cs`)
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| `Read_error_is_shown_even_when_rows_are_listed` | `metrics.db` could not be read ("database is locked"), 12 rows listed | Note with the reason — the list may be incomplete |
+| `Switched_off_metrics_explain_the_empty_list` | Empty list, metrics off, archive off | Points to Monitoring and to the Mail Queue archive setting |
+| `Switched_off_metrics_with_archive_do_not_mention_the_archive` | Empty list, metrics off, archive on | Mentions metrics only |
+| `Missing_database_says_nothing_was_recorded_yet` | Metrics on, no `metrics.db` yet | "No message history recorded yet" |
+| `Empty_list_with_recording_on_says_so` | Metrics on, database present, filter All | "No messages recorded yet" |
+| `Listed_rows_or_a_search_need_no_hint` | Rows listed, a search that matches nothing, or an empty Failed filter | No note |
 
 ### RecommendationNavigation — recommendation links (`ConfigTool/RecommendationNavigationTests.cs`)
 
@@ -2069,6 +2081,11 @@ thing to find, so each case has to yield what it does hold rather than being ref
 | `Cleanup_removes_history_not_touched_within_the_retention` | One entry last touched 40 days ago, retention 30 | Old entry and its steps removed, new one kept |
 | `Reader_returns_nothing_for_a_missing_database` | `metrics.db` does not exist | Empty list, no steps, no receipt — no exception |
 | `Receipt_facts_come_from_the_received_metrics_row` | `received` metrics row with port/TLS/user/size | `ReceiptFacts` for the reduced timeline of an older message |
+| `Metrics_list_rebuilds_messages_that_have_no_history` | `received`/`sent`/`failed` rows from before 1.6.0, no archive | List entries with status sent / failed / unknown, attempts and last error, `HasTrace = false` |
+| `Metrics_list_leaves_out_messages_that_have_a_history` | Same message in `message_traces` and `email_events` | Only the history entry — no duplicate |
+| `Metrics_list_applies_filter_and_search` | Sent / Delayed / Failed / Queue filters and a search term | Matching rebuilt entries only; Queue and Rejected return none |
+| `Metrics_list_returns_nothing_for_a_missing_database` | `metrics.db` does not exist | Empty list, no error |
+| `Unreadable_database_reports_the_reason` | `metrics.db` is not a SQLite database (`ReadList`) | Empty list and the error message, not a silent empty page |
 
 ## Integration Tests — `GraphMailer.Tests.Integration`
 

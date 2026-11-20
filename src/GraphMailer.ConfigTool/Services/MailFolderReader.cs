@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using GraphMailer.ConfigTool.Helpers;
 using GraphMailer.Service.Services;
 
 namespace GraphMailer.ConfigTool.Services;
@@ -66,6 +67,12 @@ public sealed class MessageRow
     public DateTime? SentAt { get; init; }
     public string ClientIp { get; init; } = string.Empty;
     public string SmtpMessageId { get; init; } = string.Empty;
+
+    /// <summary>Full path of the message file (.eml) when it is still on disk; null otherwise.</summary>
+    public string? EmlPath { get; init; }
+
+    /// <summary>Shown as the envelope in the list: the message itself, not only its facts, is available.</summary>
+    public bool HasFile => EmlPath is not null;
 
     /// <summary>
     /// Free-text search across every displayed field, including the ones only the details panel
@@ -176,6 +183,7 @@ internal static class MailFolderReader
                     SentAt = meta.SentAt?.ToLocalTime(),
                     ClientIp = meta.ClientIp,
                     SmtpMessageId = meta.SmtpMessageId,
+                    EmlPath = MailPairLocator.EmlPathFor(metaPath) is { } eml && File.Exists(eml) ? eml : null,
                 });
             }
             catch

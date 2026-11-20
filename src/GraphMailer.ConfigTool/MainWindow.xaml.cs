@@ -525,7 +525,8 @@ public partial class MainWindow : Window
     private void NavMessages_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
         => NavigateTo(NavMessages, "Messages", "monitoring/messages.html", () => _messagesPage ??= new MessagesPage(
             () => (_currentDoc.MailQueue.MailDir, _currentDoc.MailQueue.ArchiveSentEmails),
-            () => AppPaths.DataDir));
+            () => AppPaths.DataDir,
+            () => _currentDoc.Metrics.Enabled));
 
     private void NavLogs_Click(object s, System.Windows.Input.MouseButtonEventArgs e)
         => NavigateTo(NavLogs, "Logs", "monitoring/logs.html",

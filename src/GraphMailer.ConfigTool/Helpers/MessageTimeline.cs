@@ -94,8 +94,10 @@ internal static class MessageTimeline
         SentAt = f.SentAt ?? t.SentAt,
         ClientIp = Pick(t.ClientIp, f.ClientIp),
         SmtpMessageId = f.SmtpMessageId,
+        EmlPath = f.EmlPath,
         SizeBytes = t.SizeBytes,
-        HasTrace = true,
+        // A row rebuilt from the metrics (before 1.6.0) has no history of its own.
+        HasTrace = t.HasTrace,
     };
 
     private static string Pick(string first, string second) => string.IsNullOrEmpty(first) ? second : first;
@@ -184,7 +186,9 @@ internal static class MessageTimeline
             items.Add(new TimelineItem(row.LastAttemptAt, TraceOutcomes.Retry,
                 row.FailedAttempts == 1
                     ? "1 delivery attempt failed"
-                    : $"{row.FailedAttempts} delivery attempts failed, the last one at {row.LastAttemptAt:HH:mm}",
+                    : row.LastAttemptAt is { } last
+                        ? $"{row.FailedAttempts} delivery attempts failed, the last one at {last:HH:mm}"
+                        : $"{row.FailedAttempts} delivery attempts failed",
                 string.IsNullOrEmpty(row.LastError) ? null : row.LastError,
                 "Delivery"));
         }
@@ -239,6 +243,9 @@ internal static class MessageTimeline
                 return $"Not accepted. {events.LastOrDefault(e => e.Outcome == TraceOutcomes.Failed)?.Summary ?? "The message was refused during the SMTP session"}; the sending device got an error reply.";
             case TraceStatuses.Discarded:
                 return $"Not delivered. {events.LastOrDefault(e => e.Outcome == TraceOutcomes.Failed)?.Summary ?? "A rule discarded the message"}; the sending device was told it was accepted.";
+            case MessageTraceReader.UnknownStatus:
+                return $"Received on {row.ReceivedAt:d} at {row.ReceivedAt:HH:mm}. Its delivery was not recorded "
+                       + "(handled before GraphMailer 1.6.0, or still under way when the service stopped).";
             default:
                 return string.Empty;
         }

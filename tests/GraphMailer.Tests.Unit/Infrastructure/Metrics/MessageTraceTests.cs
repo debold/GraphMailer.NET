@@ -228,4 +228,113 @@ public sealed class MessageTraceTests : IDisposable
 
         MessageTraceReader.ReadReceipt(DbPath, "legacy").Should().Be(new ReceiptFacts(587, true, "scanner", 1234));
     }
+
+    // ── Messages from before 1.6.0: rebuilt from the email_events metrics ─────────────────────
+
+    private async Task RecordLegacyAsync(MetricsService svc, string id, string subject,
+        bool sent = false, bool failed = false, int retries = 0, string error = "")
+    {
+        await svc.RecordEmailReceivedAsync(new ReceivedEmailEvent
+        {
+            From = "scanner@contoso.de",
+            To = ["buchhaltung@contoso.de"],
+            MessageId = id,
+            Subject = subject,
+            ClientIp = "10.0.4.31",
+            SizeBytes = 2048,
+        });
+        if (sent)
+            await svc.RecordEmailSentAsync(new SentEmailEvent
+            {
+                From = "scanner@contoso.de",
+                To = ["buchhaltung@contoso.de"],
+                MessageId = id,
+                Subject = subject,
+                RetryCount = retries,
+            });
+        if (failed)
+            await svc.RecordEmailFailedAsync(id, error, "scanner@contoso.de", subject, retryCount: retries);
+    }
+
+    [Fact]
+    public async Task Metrics_list_rebuilds_messages_that_have_no_history()
+    {
+        var svc = CreateService();
+        await RecordLegacyAsync(svc, "late", "Invoice", sent: true, retries: 2);
+        await RecordLegacyAsync(svc, "lost", "Scan", failed: true, retries: 5, error: "503 Service Unavailable");
+        await RecordLegacyAsync(svc, "open", "Report");
+
+        var (rows, total, hasMore) = MessageTraceReader.ReadMetricsList(DbPath, MessageListFilter.All, null, 50, out var error);
+
+        error.Should().BeNull();
+        total.Should().Be(3);
+        hasMore.Should().BeFalse();
+        var byId = rows.ToDictionary(r => r.MessageId);
+
+        byId["late"].Status.Should().Be(TraceStatuses.Sent);
+        byId["late"].FailedAttempts.Should().Be(2);
+        byId["late"].Attempts.Should().Be("3", "the attempt that delivered counts too");
+        byId["late"].SentAt.Should().NotBeNull();
+        byId["late"].Subject.Should().Be("Invoice");
+        byId["late"].To.Should().Be("buchhaltung@contoso.de");
+        byId["late"].ClientIp.Should().Be("10.0.4.31");
+        byId["late"].HasTrace.Should().BeFalse();
+
+        byId["lost"].Status.Should().Be(TraceStatuses.Failed);
+        byId["lost"].LastError.Should().Be("503 Service Unavailable");
+        byId["lost"].FailedAttempts.Should().Be(5);
+
+        byId["open"].Status.Should().Be(MessageTraceReader.UnknownStatus);
+        byId["open"].Attempts.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Metrics_list_leaves_out_messages_that_have_a_history()
+    {
+        var svc = CreateService();
+        await RecordLegacyAsync(svc, "both", "New", sent: true);
+        await svc.RecordTraceAsync(Header("both"), TraceStatuses.Sent, 1, [Step(TraceStages.Graph, TraceOutcomes.Ok, "Delivered")]);
+        await RecordLegacyAsync(svc, "old", "Old", sent: true);
+
+        MessageTraceReader.ReadMetricsList(DbPath, MessageListFilter.All, null, 50, out _)
+            .Rows.Select(r => r.MessageId).Should().Equal("old");
+    }
+
+    [Fact]
+    public async Task Metrics_list_applies_filter_and_search()
+    {
+        var svc = CreateService();
+        await RecordLegacyAsync(svc, "fine", "Daily export", sent: true);
+        await RecordLegacyAsync(svc, "late", "Invoice", sent: true, retries: 1);
+        await RecordLegacyAsync(svc, "lost", "Scan", failed: true, retries: 3, error: "504 GatewayTimeout");
+
+        IEnumerable<string> Ids(MessageListFilter f, string? term = null)
+            => MessageTraceReader.ReadMetricsList(DbPath, f, term, 50, out _).Rows.Select(r => r.MessageId);
+
+        Ids(MessageListFilter.Sent).Should().BeEquivalentTo("fine", "late");
+        Ids(MessageListFilter.Delayed).Should().Equal("late");
+        Ids(MessageListFilter.Failed).Should().Equal("lost");
+        Ids(MessageListFilter.Queue).Should().BeEmpty("queued messages come from the queue folder");
+        Ids(MessageListFilter.Rejected).Should().BeEmpty("rejections were not recorded per message before 1.6.0");
+        Ids(MessageListFilter.All, "504").Should().Equal("lost");
+        Ids(MessageListFilter.All, "invoice").Should().Equal("late");
+    }
+
+    [Fact]
+    public void Metrics_list_returns_nothing_for_a_missing_database()
+    {
+        var missing = Path.Combine(_tempDir, "nope", "metrics.db");
+        MessageTraceReader.ReadMetricsList(missing, MessageListFilter.All, null, 50, out var error).Rows.Should().BeEmpty();
+        error.Should().BeNull();
+    }
+
+    [Fact]
+    public void Unreadable_database_reports_the_reason()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(DbPath)!);
+        File.WriteAllText(DbPath, "this is not a SQLite database");
+
+        MessageTraceReader.ReadList(DbPath, MessageListFilter.All, null, 50, out var error).Rows.Should().BeEmpty();
+        error.Should().NotBeNullOrEmpty();
+    }
 }

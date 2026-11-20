@@ -17,14 +17,22 @@ files: a delivered message whose `.eml` was cleaned out of `sent\` after 7 days 
 and how it went out.
 
 The page also reads the mail folders (`queue`, `sent`, `failed` under the mail directory, see
-[Mail Queue](../configuration/mail-queue.md)). Messages that were handled **before 1.6.0** are only
-known from there. For them the timeline is pieced together from what the `.meta.json` file and the
-receipt statistics still tell: when and from where the message came in, how many attempts failed
-and the last error, and the result. A yellow note above the details says so.
+[Mail Queue](../configuration/mail-queue.md)). A message whose `.eml` file is stored there carries a
+small **envelope** in the first column of the list; hover over it for the path. The details show the
+same path under **Stored file**. Without the envelope, only the recorded facts are known about the
+message: delivered mail is not archived unless **Archive sent emails** is on, and many sites keep it
+off on purpose.
+
+Messages that were handled **before 1.6.0** have no step-by-step history. They are rebuilt from the
+receipt statistics in `metrics.db` and, if a file is still stored, from its `.meta.json`: when and
+from where the message came in, how many attempts failed and the last error, and the result. A
+yellow note above the details says so. If the statistics only recorded the receipt (for example
+because the service stopped before delivery), the status reads **unknown**.
 
 > [!NOTE]
 > With **Enable metrics** switched off, no history is recorded. The page then shows only the
-> messages in the mail folders, each with the reduced timeline.
+> messages in the mail folders, each with the reduced timeline. If the list stays empty, a note
+> above it explains why (metrics off, no archive, nothing recorded yet, or `metrics.db` unreadable).
 
 ## Choosing what to show
 

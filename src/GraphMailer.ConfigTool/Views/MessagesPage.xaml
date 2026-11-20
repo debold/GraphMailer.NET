@@ -136,6 +136,36 @@
                           VirtualizingPanel.VirtualizationMode="Recycling"
                           SelectionChanged="MessagesGrid_SelectionChanged">
                     <DataGrid.Columns>
+                        <!-- Envelope: the message file (.eml) is still on disk. Without it only the
+                             recorded facts are left (sent mail not archived, or already cleaned up). -->
+                        <DataGridTemplateColumn Width="26"
+                                                CanUserResize="False">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock FontFamily="Segoe MDL2 Assets"
+                                               Text="&#xE715;"
+                                               FontSize="12"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               ToolTip="{Binding EmlPath}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility"
+                                                        Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasFile}"
+                                                                 Value="True">
+                                                        <Setter Property="Visibility"
+                                                                Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTextColumn Header="Received"
                                             Binding="{Binding ReceivedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}"
                                             Width="140"/>
@@ -296,6 +326,7 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <Grid.Resources>
                                 <Style x:Key="DetailLabel"
@@ -339,6 +370,8 @@
                             <TextBlock x:Name="DetailMessageId" Grid.Row="7" Grid.Column="1" Style="{StaticResource DetailValue}" ContextMenu="{StaticResource CopyMenu}" ToolTip="Right-click to copy"/>
                             <TextBlock Grid.Row="8" Text="Queue ID" Style="{StaticResource DetailLabel}"/>
                             <TextBlock x:Name="DetailQueueId" Grid.Row="8" Grid.Column="1" Style="{StaticResource DetailValue}" ContextMenu="{StaticResource CopyMenu}" ToolTip="Right-click to copy"/>
+                            <TextBlock Grid.Row="9" Text="Stored file" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="DetailFile" Grid.Row="9" Grid.Column="1" Style="{StaticResource DetailValue}" ContextMenu="{StaticResource CopyMenu}" ToolTip="Right-click to copy"/>
                         </Grid>
 
                         <TextBlock Text="Timeline"
